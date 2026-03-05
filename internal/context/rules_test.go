@@ -38,14 +38,14 @@ func TestLoadRules_Node(t *testing.T) {
 func TestDetectLanguage(t *testing.T) {
 	tests := []struct {
 		name     string
-		files    []string
 		expected string
+		files    []string
 	}{
-		{"go", []string{"go.mod", "main.go"}, "go"},
-		{"node", []string{"package.json", "index.js"}, "node"},
-		{"rust", []string{"Cargo.toml", "src/main.rs"}, "rust"},
-		{"python", []string{"requirements.txt", "main.py"}, "python"},
-		{"unknown", []string{"unknown.xyz"}, ""},
+		{name: "go", files: []string{"go.mod", "main.go"}, expected: "go"},
+		{name: "node", files: []string{"package.json", "index.js"}, expected: "node"},
+		{name: "rust", files: []string{"Cargo.toml", "src/main.rs"}, expected: "rust"},
+		{name: "python", files: []string{"requirements.txt", "main.py"}, expected: "python"},
+		{name: "unknown", files: []string{"unknown.xyz"}, expected: ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

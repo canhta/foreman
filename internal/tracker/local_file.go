@@ -18,9 +18,9 @@ type localTicket struct {
 	Title              string   `json:"title"`
 	Description        string   `json:"description"`
 	AcceptanceCriteria string   `json:"acceptance_criteria"`
-	Labels             []string `json:"labels"`
 	Priority           string   `json:"priority"`
 	Status             string   `json:"status"`
+	Labels             []string `json:"labels"`
 }
 
 // LocalFileTracker reads tickets from JSON files in a directory.

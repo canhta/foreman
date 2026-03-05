@@ -8,10 +8,10 @@ import (
 )
 
 type FullTestResult struct {
-	Passed   bool
-	TimedOut bool
 	Output   string
 	ExitCode int
+	Passed   bool
+	TimedOut bool
 }
 
 // RunFullTestSuite executes the full test suite as a pre-PR gate.

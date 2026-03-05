@@ -7,9 +7,9 @@ import (
 
 // TDDResult holds the outcome of mechanical TDD verification.
 type TDDResult struct {
-	Valid  bool
 	Reason string
-	Phase  string // "red" or "green"
+	Phase  string
+	Valid  bool
 }
 
 // TestFailureType categorizes how a test failed.

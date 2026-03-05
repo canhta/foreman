@@ -108,7 +108,9 @@ func (t *runTestTool) Execute(ctx context.Context, workDir string, input json.Ra
 		Package     string `json:"package"`
 		TimeoutSecs int    `json:"timeout_secs"`
 	}
-	json.Unmarshal(input, &args)
+	if err := json.Unmarshal(input, &args); err != nil {
+		return "", fmt.Errorf("RunTest: %w", err)
+	}
 	pkg := args.Package
 	if pkg == "" {
 		pkg = "./..."

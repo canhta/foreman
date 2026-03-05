@@ -287,7 +287,7 @@ func globMatch(baseDir, pattern string) ([]string, error) {
 		return nil, err
 	}
 	var matches []string
-	filepath.WalkDir(baseDir, func(path string, d fs.DirEntry, err error) error {
+	_ = filepath.WalkDir(baseDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return nil
 		}
@@ -339,10 +339,10 @@ func (t *grepTool) Schema() json.RawMessage {
 }
 func (t *grepTool) Execute(_ context.Context, workDir string, input json.RawMessage) (string, error) {
 	var args struct {
+		CaseSensitive *bool  `json:"case_sensitive"`
 		Pattern       string `json:"pattern"`
 		Path          string `json:"path"`
 		FilePattern   string `json:"file_pattern"`
-		CaseSensitive *bool  `json:"case_sensitive"`
 	}
 	if err := json.Unmarshal(input, &args); err != nil {
 		return "", fmt.Errorf("Grep: %w", err)
@@ -368,7 +368,7 @@ func (t *grepTool) Execute(_ context.Context, workDir string, input json.RawMess
 	const maxMatches = 200
 	var results []string
 
-	filepath.WalkDir(absPath, func(path string, d fs.DirEntry, err error) error {
+	_ = filepath.WalkDir(absPath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() || len(results) >= maxMatches {
 			return nil
 		}

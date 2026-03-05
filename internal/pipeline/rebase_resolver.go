@@ -12,8 +12,8 @@ import (
 
 // ConflictResolution holds the result of an LLM-assisted conflict resolution attempt.
 type ConflictResolution struct {
-	Success  bool
 	Resolved string
+	Success  bool
 }
 
 // AttemptConflictResolution asks the LLM to resolve a git merge conflict.

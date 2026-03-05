@@ -21,14 +21,14 @@ var builtinSecretPatterns = []*regexp.Regexp{
 
 type ScanResult struct {
 	Path       string
-	HasSecrets bool
 	Matches    []SecretMatch
+	HasSecrets bool
 }
 
 type SecretMatch struct {
-	Line    int
 	Pattern string
 	Snippet string
+	Line    int
 }
 
 type SecretsScanner struct {

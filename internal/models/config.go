@@ -1,36 +1,36 @@
 package models
 
 type Config struct {
-	Daemon    DaemonConfig    `mapstructure:"daemon"`
-	Dashboard DashboardConfig `mapstructure:"dashboard"`
-	Tracker   TrackerConfig   `mapstructure:"tracker"`
-	Git       GitConfig       `mapstructure:"git"`
+	Cost      CostConfig      `mapstructure:"cost"`
 	LLM       LLMConfig       `mapstructure:"llm"`
 	Models    ModelsConfig    `mapstructure:"models"`
-	Cost      CostConfig      `mapstructure:"cost"`
-	Limits    LimitsConfig    `mapstructure:"limits"`
-	Secrets   SecretsConfig   `mapstructure:"secrets"`
-	RateLimit RateLimitConfig `mapstructure:"rate_limit"`
+	Daemon    DaemonConfig    `mapstructure:"daemon"`
+	Dashboard DashboardConfig `mapstructure:"dashboard"`
 	Runner    RunnerConfig    `mapstructure:"runner"`
+	Git       GitConfig       `mapstructure:"git"`
 	Database  DatabaseConfig  `mapstructure:"database"`
 	Pipeline  PipelineConfig  `mapstructure:"pipeline"`
+	Secrets   SecretsConfig   `mapstructure:"secrets"`
+	Tracker   TrackerConfig   `mapstructure:"tracker"`
 	Skills    SkillsConfig    `mapstructure:"skills"`
+	Limits    LimitsConfig    `mapstructure:"limits"`
+	RateLimit RateLimitConfig `mapstructure:"rate_limit"`
 }
 
 type DaemonConfig struct {
-	PollIntervalSecs     int    `mapstructure:"poll_interval_secs"`
-	IdlePollIntervalSecs int    `mapstructure:"idle_poll_interval_secs"`
-	MaxParallelTickets   int    `mapstructure:"max_parallel_tickets"`
 	WorkDir              string `mapstructure:"work_dir"`
 	LogLevel             string `mapstructure:"log_level"`
 	LogFormat            string `mapstructure:"log_format"`
+	PollIntervalSecs     int    `mapstructure:"poll_interval_secs"`
+	IdlePollIntervalSecs int    `mapstructure:"idle_poll_interval_secs"`
+	MaxParallelTickets   int    `mapstructure:"max_parallel_tickets"`
 }
 
 type DashboardConfig struct {
-	Enabled   bool   `mapstructure:"enabled"`
-	Port      int    `mapstructure:"port"`
 	Host      string `mapstructure:"host"`
 	AuthToken string `mapstructure:"auth_token"`
+	Port      int    `mapstructure:"port"`
+	Enabled   bool   `mapstructure:"enabled"`
 }
 
 type TrackerConfig struct {
@@ -45,10 +45,10 @@ type GitConfig struct {
 	Backend        string   `mapstructure:"backend"`
 	CloneURL       string   `mapstructure:"clone_url"`
 	DefaultBranch  string   `mapstructure:"default_branch"`
+	BranchPrefix   string   `mapstructure:"branch_prefix"`
+	PRReviewers    []string `mapstructure:"pr_reviewers"`
 	AutoPush       bool     `mapstructure:"auto_push"`
 	PRDraft        bool     `mapstructure:"pr_draft"`
-	PRReviewers    []string `mapstructure:"pr_reviewers"`
-	BranchPrefix   string   `mapstructure:"branch_prefix"`
 	RebaseBeforePR bool     `mapstructure:"rebase_before_pr"`
 }
 
@@ -67,9 +67,9 @@ type LLMProviderConfig struct {
 }
 
 type LLMOutageConfig struct {
+	FallbackProvider         string `mapstructure:"fallback_provider"`
 	MaxConnectionRetries     int    `mapstructure:"max_connection_retries"`
 	ConnectionRetryDelaySecs int    `mapstructure:"connection_retry_delay_secs"`
-	FallbackProvider         string `mapstructure:"fallback_provider"`
 }
 
 type ModelsConfig struct {
@@ -82,12 +82,12 @@ type ModelsConfig struct {
 }
 
 type CostConfig struct {
+	Pricing             map[string]PricingConfig `mapstructure:"pricing"`
 	MaxCostPerTicketUSD float64                  `mapstructure:"max_cost_per_ticket_usd"`
 	MaxCostPerDayUSD    float64                  `mapstructure:"max_cost_per_day_usd"`
 	MaxCostPerMonthUSD  float64                  `mapstructure:"max_cost_per_month_usd"`
 	AlertThresholdPct   int                      `mapstructure:"alert_threshold_percent"`
 	MaxLlmCallsPerTask  int                      `mapstructure:"max_llm_calls_per_task"`
-	Pricing             map[string]PricingConfig `mapstructure:"pricing"`
 }
 
 type PricingConfig struct {
@@ -111,9 +111,9 @@ type LimitsConfig struct {
 }
 
 type SecretsConfig struct {
-	Enabled       bool     `mapstructure:"enabled"`
 	ExtraPatterns []string `mapstructure:"extra_patterns"`
 	AlwaysExclude []string `mapstructure:"always_exclude"`
+	Enabled       bool     `mapstructure:"enabled"`
 }
 
 type RateLimitConfig struct {
@@ -132,10 +132,10 @@ type RunnerConfig struct {
 
 type DockerRunnerConfig struct {
 	Image             string `mapstructure:"image"`
-	PersistPerTicket  bool   `mapstructure:"persist_per_ticket"`
 	Network           string `mapstructure:"network"`
 	CPULimit          string `mapstructure:"cpu_limit"`
 	MemoryLimit       string `mapstructure:"memory_limit"`
+	PersistPerTicket  bool   `mapstructure:"persist_per_ticket"`
 	AutoReinstallDeps bool   `mapstructure:"auto_reinstall_deps"`
 }
 
@@ -146,8 +146,8 @@ type LocalRunnerConfig struct {
 
 type DatabaseConfig struct {
 	Driver   string         `mapstructure:"driver"`
-	SQLite   SQLiteConfig   `mapstructure:"sqlite"`
 	Postgres PostgresConfig `mapstructure:"postgres"`
+	SQLite   SQLiteConfig   `mapstructure:"sqlite"`
 }
 
 type SQLiteConfig struct {
@@ -177,13 +177,13 @@ type SkillsConfig struct {
 }
 
 type AgentRunnerConfig struct {
+	ClaudeCode          ClaudeCodeRunnerConfig `mapstructure:"claudecode"`
 	Provider            string                 `mapstructure:"provider"`
+	Builtin             BuiltinRunnerConfig    `mapstructure:"builtin"`
+	Copilot             CopilotRunnerConfig    `mapstructure:"copilot"`
 	MaxCostPerTicketUSD float64                `mapstructure:"max_cost_per_ticket_usd"`
 	MaxTurnsDefault     int                    `mapstructure:"max_turns_default"`
 	TimeoutSecsDefault  int                    `mapstructure:"timeout_secs_default"`
-	Builtin             BuiltinRunnerConfig    `mapstructure:"builtin"`
-	ClaudeCode          ClaudeCodeRunnerConfig `mapstructure:"claudecode"`
-	Copilot             CopilotRunnerConfig    `mapstructure:"copilot"`
 }
 
 type BuiltinRunnerConfig struct {
@@ -192,11 +192,11 @@ type BuiltinRunnerConfig struct {
 
 type ClaudeCodeRunnerConfig struct {
 	Bin                 string   `mapstructure:"bin"`
+	Model               string   `mapstructure:"model"`
 	DefaultAllowedTools []string `mapstructure:"default_allowed_tools"`
 	MaxTurnsDefault     int      `mapstructure:"max_turns_default"`
 	TimeoutSecsDefault  int      `mapstructure:"timeout_secs_default"`
 	MaxBudgetUSD        float64  `mapstructure:"max_budget_usd"`
-	Model               string   `mapstructure:"model"`
 }
 
 type CopilotRunnerConfig struct {

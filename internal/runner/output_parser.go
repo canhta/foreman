@@ -8,12 +8,12 @@ import (
 
 // TestResult holds the parsed result of a test run.
 type TestResult struct {
-	Passed      bool
+	RawOutput   string
+	Failures    []TestFailure
 	TotalTests  int
 	PassedTests int
 	FailedTests int
-	Failures    []TestFailure
-	RawOutput   string
+	Passed      bool
 }
 
 // TestFailure holds details about a single test failure.
@@ -26,15 +26,15 @@ type TestFailure struct {
 
 // LintResult holds the parsed result of a lint run.
 type LintResult struct {
-	Clean  bool
 	Issues []LintIssue
+	Clean  bool
 }
 
 // LintIssue holds details about a single lint issue.
 type LintIssue struct {
 	File    string
-	Line    int
 	Message string
+	Line    int
 }
 
 var (

@@ -14,10 +14,10 @@ var _ IssueTracker = (*LinearTracker)(nil)
 
 // LinearTracker implements IssueTracker for Linear.app via GraphQL.
 type LinearTracker struct {
+	client  *http.Client
 	apiKey  string
 	label   string
 	baseURL string
-	client  *http.Client
 }
 
 // NewLinearTracker creates a Linear tracker.
@@ -44,18 +44,18 @@ type linearGraphQLResponse struct {
 }
 
 type linearIssue struct {
-	Identifier  string  `json:"identifier"`
-	Title       string  `json:"title"`
-	Description string  `json:"description"`
-	Priority    float64 `json:"priority"`
+	Assignee *struct {
+		Name string `json:"name"`
+	} `json:"assignee"`
+	Identifier  string `json:"identifier"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
 	Labels      struct {
 		Nodes []struct {
 			Name string `json:"name"`
 		} `json:"nodes"`
 	} `json:"labels"`
-	Assignee *struct {
-		Name string `json:"name"`
-	} `json:"assignee"`
+	Priority float64 `json:"priority"`
 }
 
 func (l *LinearTracker) FetchReadyTickets(ctx context.Context) ([]Ticket, error) {

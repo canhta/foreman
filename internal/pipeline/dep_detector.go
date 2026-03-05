@@ -7,10 +7,10 @@ import (
 
 // DepChangeResult describes a detected dependency file change.
 type DepChangeResult struct {
+	File    string
+	Command string
+	Args    []string
 	Changed bool
-	File    string   // The dependency file that changed (basename)
-	Command string   // Install command to run
-	Args    []string // Install command arguments
 }
 
 // depFileMapping maps dependency file basenames to install commands.

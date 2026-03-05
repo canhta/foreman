@@ -19,12 +19,12 @@ type AssembledContext struct {
 
 // FeedbackContext holds retry information for implementer retries.
 type FeedbackContext struct {
-	Attempt         int
-	MaxAttempts     int
 	PreviousError   string
 	SpecFeedback    string
 	QualityFeedback string
 	TDDFeedback     string
+	Attempt         int
+	MaxAttempts     int
 }
 
 // AssemblePlannerContext builds the context for a planner LLM call.

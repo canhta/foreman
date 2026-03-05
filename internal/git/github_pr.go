@@ -17,11 +17,11 @@ type PRCreator interface {
 
 // GitHubPRCreator creates PRs via the GitHub REST API.
 type GitHubPRCreator struct {
+	client  *http.Client
 	baseURL string
 	token   string
 	owner   string
 	repo    string
-	client  *http.Client
 }
 
 // NewGitHubPRCreator creates a GitHub PR client.
@@ -44,9 +44,9 @@ type githubPRRequest struct {
 }
 
 type githubPRResponse struct {
-	Number  int    `json:"number"`
 	URL     string `json:"url"`
 	HTMLURL string `json:"html_url"`
+	Number  int    `json:"number"`
 }
 
 // CreatePR creates a pull request on GitHub.

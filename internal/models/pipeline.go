@@ -78,28 +78,28 @@ type ThinkingConfig struct {
 
 // LlmRequest holds the parameters for a single stateless LLM call.
 type LlmRequest struct {
+	OutputSchema      *json.RawMessage `json:"output_schema,omitempty"`
+	Thinking          *ThinkingConfig  `json:"thinking,omitempty"`
 	Model             string           `json:"model"`
 	SystemPrompt      string           `json:"system_prompt"`
 	UserPrompt        string           `json:"user_prompt"`
+	StopSequences     []string         `json:"stop_sequences,omitempty"`
+	Messages          []Message        `json:"messages,omitempty"`
+	Tools             []ToolDef        `json:"tools,omitempty"`
 	MaxTokens         int              `json:"max_tokens"`
 	Temperature       float64          `json:"temperature"`
-	StopSequences     []string         `json:"stop_sequences,omitempty"`
-	Messages          []Message        `json:"messages,omitempty"`            // Multi-turn (overrides UserPrompt when non-empty)
-	Tools             []ToolDef        `json:"tools,omitempty"`               // Tool definitions for tool-use
-	OutputSchema      *json.RawMessage `json:"output_schema,omitempty"`       // JSON Schema for structured output
-	Thinking          *ThinkingConfig  `json:"thinking,omitempty"`            // Extended thinking (Anthropic only)
-	CacheSystemPrompt bool             `json:"cache_system_prompt,omitempty"` // Prompt caching (Anthropic only)
+	CacheSystemPrompt bool             `json:"cache_system_prompt,omitempty"`
 }
 
 // LlmResponse holds the result of a single LLM call.
 type LlmResponse struct {
 	Content             string     `json:"content"`
+	Model               string     `json:"model"`
+	StopReason          StopReason `json:"stop_reason"`
+	ToolCalls           []ToolCall `json:"tool_calls,omitempty"`
 	TokensInput         int        `json:"tokens_input"`
 	TokensOutput        int        `json:"tokens_output"`
-	Model               string     `json:"model"`
 	DurationMs          int64      `json:"duration_ms"`
-	StopReason          StopReason `json:"stop_reason"`
-	ToolCalls           []ToolCall `json:"tool_calls,omitempty"`            // Populated when StopReason == StopReasonToolUse
-	CacheReadTokens     int        `json:"cache_read_tokens,omitempty"`     // Anthropic prompt caching
-	CacheCreationTokens int        `json:"cache_creation_tokens,omitempty"` // Anthropic prompt caching
+	CacheReadTokens     int        `json:"cache_read_tokens,omitempty"`
+	CacheCreationTokens int        `json:"cache_creation_tokens,omitempty"`
 }

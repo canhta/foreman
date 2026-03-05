@@ -61,7 +61,9 @@ var dashboardCmd = &cobra.Command{
 			<-ctx.Done()
 			shutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
-			srv.Shutdown(shutCtx)
+			if err := srv.Shutdown(shutCtx); err != nil {
+				log.Error().Err(err).Msg("dashboard shutdown error")
+			}
 		}()
 
 		log.Info().Int("port", port).Msg("Starting dashboard")

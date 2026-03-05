@@ -67,7 +67,7 @@ func (t *getSymbolTool) Execute(_ context.Context, workDir string, input json.Ra
 	}
 
 	var results []string
-	filepath.WalkDir(searchDir, func(path string, d fs.DirEntry, err error) error {
+	_ = filepath.WalkDir(searchDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return nil
 		}

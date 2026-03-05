@@ -14,12 +14,12 @@ import (
 
 // GitHubIssuesTracker implements IssueTracker for GitHub Issues.
 type GitHubIssuesTracker struct {
+	client      *http.Client
 	baseURL     string
 	token       string
 	owner       string
 	repo        string
 	pickupLabel string
-	client      *http.Client
 }
 
 // NewGitHubIssuesTracker creates a GitHub Issues tracker.
@@ -38,11 +38,11 @@ func NewGitHubIssuesTracker(baseURL, token, owner, repo, pickupLabel string) *Gi
 }
 
 type ghIssue struct {
-	Number int       `json:"number"`
 	Title  string    `json:"title"`
 	Body   string    `json:"body"`
-	Labels []ghLabel `json:"labels"`
 	User   ghUser    `json:"user"`
+	Labels []ghLabel `json:"labels"`
+	Number int       `json:"number"`
 }
 
 type ghLabel struct {

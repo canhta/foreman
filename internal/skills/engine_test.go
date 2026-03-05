@@ -212,8 +212,8 @@ func (m *mockAgentRunner) Close() error                        { return nil }
 
 // mockGitForEngine satisfies git.GitProvider for engine tests.
 type mockGitForEngine struct {
-	diff string
 	err  error
+	diff string
 }
 
 func (m *mockGitForEngine) EnsureRepo(_ context.Context, _ string) error           { return nil }

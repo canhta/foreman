@@ -21,9 +21,9 @@ type GitProvider interface {
 
 // RebaseResult holds rebase outcome.
 type RebaseResult struct {
-	Success       bool
-	ConflictFiles []string
 	ConflictDiff  string
+	ConflictFiles []string
+	Success       bool
 }
 
 // FileEntry represents a file in the repo tree.
@@ -35,8 +35,8 @@ type FileEntry struct {
 
 // CommitEntry represents a git commit.
 type CommitEntry struct {
+	Date    time.Time
 	SHA     string
 	Message string
 	Author  string
-	Date    time.Time
 }

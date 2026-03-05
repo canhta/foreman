@@ -18,11 +18,11 @@ import (
 
 // SkillContext holds the execution context for a skill run.
 type SkillContext struct {
-	Ticket   interface{}            // Current ticket (set by caller)
-	Diff     string                 // Current branch diff
-	FileTree string                 // Repo file tree
-	Models   map[string]string      // Model routing config
-	Steps    map[string]*StepResult // Results of previous steps
+	Ticket   interface{}
+	Models   map[string]string
+	Steps    map[string]*StepResult
+	Diff     string
+	FileTree string
 }
 
 // NewSkillContext creates an empty skill execution context.
@@ -37,10 +37,10 @@ type Engine struct {
 	llm           llm.LlmProvider
 	runner        runner.CommandRunner
 	agentRunner   agent.AgentRunner
-	git           git.GitProvider // optional — nil if not configured
+	git           git.GitProvider
+	skillsByID    map[string]*Skill
 	workDir       string
 	defaultBranch string
-	skillsByID    map[string]*Skill
 }
 
 // SetAgentRunner configures the agent runner for agentsdk step types.

@@ -38,12 +38,12 @@ type DaemonStatusProvider interface {
 
 // API handles REST API requests for the dashboard.
 type API struct {
+	costCfg        models.CostConfig
+	startedAt      time.Time
 	db             DashboardDB
 	emitter        EventSubscriber
-	statusProvider DaemonStatusProvider // nil = standalone (no daemon)
-	costCfg        models.CostConfig
+	statusProvider DaemonStatusProvider
 	version        string
-	startedAt      time.Time
 }
 
 // NewAPI creates a new API instance.
@@ -240,7 +240,7 @@ func (a *API) handleDaemonResume(w http.ResponseWriter, r *http.Request) {
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(v)
+	_ = json.NewEncoder(w).Encode(v)
 }
 
 func extractPathParam(path, prefix string) string {

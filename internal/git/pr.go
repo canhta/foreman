@@ -12,16 +12,16 @@ type PrRequest struct {
 	Body       string
 	HeadBranch string
 	BaseBranch string
-	Draft      bool
 	Reviewers  []string
 	Labels     []string
+	Draft      bool
 }
 
 // PrResponse holds the created PR details.
 type PrResponse struct {
-	Number  int
 	URL     string
 	HTMLURL string
+	Number  int
 }
 
 // PRTaskSummary is a brief task status for PR body formatting.
@@ -34,11 +34,11 @@ type PRTaskSummary struct {
 type PRBodyInput struct {
 	TicketExternalID string
 	TicketTitle      string
-	TaskSummaries    []PRTaskSummary
 	ReviewNotes      string
-	IsPartial        bool
 	FailedTask       string
 	FailureReason    string
+	TaskSummaries    []PRTaskSummary
+	IsPartial        bool
 }
 
 // FormatPRBody generates a formatted PR description.

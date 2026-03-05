@@ -19,34 +19,25 @@ type CompletedTask struct {
 
 // PromptContext holds all variables available to prompt templates.
 type PromptContext struct {
-	// Ticket-level
-	TicketTitle        string
-	TicketDescription  string
-	AcceptanceCriteria []string
-	FileTree           string
-	ProjectContext     string
-	FullDiff           string
-
-	// Task-level
-	TaskTitle        string
-	TaskDescription  string
-	ContextFiles     map[string]string
-	CodebasePatterns string
-	Diff             string
-
-	// Retry
-	Attempt               int
-	MaxAttempts           int
-	SpecReviewFeedback    string
+	ContextFiles          map[string]string
+	ProjectContext        string
 	QualityReviewFeedback string
-	TDDFailure            string
+	FileTree              string
+	TicketTitle           string
+	FullDiff              string
+	TaskTitle             string
+	TaskDescription       string
+	TicketDescription     string
 	TestFailure           string
-
-	// Final review
-	CompletedTasks []CompletedTask
-
-	// Config
-	MaxTasks int
+	TDDFailure            string
+	Diff                  string
+	CodebasePatterns      string
+	SpecReviewFeedback    string
+	AcceptanceCriteria    []string
+	CompletedTasks        []CompletedTask
+	MaxAttempts           int
+	Attempt               int
+	MaxTasks              int
 }
 
 // promptsDir is the directory containing prompt templates.

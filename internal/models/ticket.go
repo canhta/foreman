@@ -3,106 +3,107 @@ package models
 import "time"
 
 type Ticket struct {
+	UpdatedAt                time.Time
+	CreatedAt                time.Time
+	ClarificationRequestedAt *time.Time
+	CompletedAt              *time.Time
+	StartedAt                *time.Time
+	Assignee                 string
+	RepoURL                  string
 	ID                       string
+	Reporter                 string
 	ExternalID               string
+	Status                   TicketStatus
+	ExternalStatus           string
+	Priority                 string
+	BranchName               string
+	PRURL                    string
 	Title                    string
 	Description              string
 	AcceptanceCriteria       string
+	ErrorMessage             string
 	Labels                   []string
-	Priority                 string
-	Assignee                 string
-	Reporter                 string
 	Comments                 []TicketComment
-	Status                   TicketStatus
-	ExternalStatus           string
-	RepoURL                  string
-	BranchName               string
-	PRURL                    string
+	TotalLlmCalls            int
+	TokensOutput             int
+	TokensInput              int
+	LastCompletedTaskSeq     int
+	CostUSD                  float64
 	PRNumber                 int
 	IsPartial                bool
-	CostUSD                  float64
-	TokensInput              int
-	TokensOutput             int
-	TotalLlmCalls            int
-	ClarificationRequestedAt *time.Time
-	ErrorMessage             string
-	LastCompletedTaskSeq     int
-	CreatedAt                time.Time
-	StartedAt                *time.Time
-	CompletedAt              *time.Time
-	UpdatedAt                time.Time
 }
 
 type TicketComment struct {
+	CreatedAt time.Time
 	Author    string
 	Body      string
-	CreatedAt time.Time
 }
 
 type Task struct {
+	CreatedAt              time.Time
+	CompletedAt            *time.Time
+	StartedAt              *time.Time
 	ID                     string
 	TicketID               string
-	Sequence               int
 	Title                  string
 	Description            string
-	AcceptanceCriteria     []string
-	FilesToRead            []string
-	FilesToModify          []string
-	TestAssertions         []string
+	CommitSHA              string
+	Status                 TaskStatus
 	EstimatedComplexity    string
 	DependsOn              []string
-	Status                 TaskStatus
+	TestAssertions         []string
+	FilesToModify          []string
+	FilesToRead            []string
+	AcceptanceCriteria     []string
 	ImplementationAttempts int
 	SpecReviewAttempts     int
 	QualityReviewAttempts  int
 	TotalLlmCalls          int
-	CommitSHA              string
 	CostUSD                float64
-	CreatedAt              time.Time
-	StartedAt              *time.Time
-	CompletedAt            *time.Time
+	Sequence               int
 }
 
 type LlmCallRecord struct {
-	ID              string
-	TicketID        string
-	TaskID          string
+	CreatedAt       time.Time
+	ResponseSummary string
+	PromptHash      string
 	Role            string
 	Provider        string
 	Model           string
-	Attempt         int
-	TokensInput     int
-	TokensOutput    int
-	CostUSD         float64
-	DurationMs      int64
-	PromptHash      string
-	ResponseSummary string
-	Status          string
+	TicketID        string
+	TaskID          string
 	ErrorMessage    string
-	CreatedAt       time.Time
+	Status          string
+	ID              string
+	TokensOutput    int
+	DurationMs      int64
+	TokensInput     int
+	CostUSD         float64
+	Attempt         int
 }
 
 type HandoffRecord struct {
+	CreatedAt time.Time
 	ID        string
 	TicketID  string
 	FromRole  string
 	ToRole    string
 	Key       string
 	Value     string
-	CreatedAt time.Time
 }
 
 type ProgressPattern struct {
+	CreatedAt        time.Time
 	ID               string
 	TicketID         string
 	PatternKey       string
 	PatternValue     string
-	Directories      []string
 	DiscoveredByTask string
-	CreatedAt        time.Time
+	Directories      []string
 }
 
 type EventRecord struct {
+	CreatedAt time.Time
 	ID        string
 	TicketID  string
 	TaskID    string
@@ -110,7 +111,6 @@ type EventRecord struct {
 	Severity  string
 	Message   string
 	Details   string
-	CreatedAt time.Time
 }
 
 type TicketFilter struct {

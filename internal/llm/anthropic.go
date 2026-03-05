@@ -13,9 +13,9 @@ import (
 )
 
 type AnthropicProvider struct {
+	client  *http.Client
 	apiKey  string
 	baseURL string
-	client  *http.Client
 }
 
 func NewAnthropicProvider(apiKey, baseURL string) *AnthropicProvider {
@@ -36,15 +36,15 @@ func (p *AnthropicProvider) ProviderName() string {
 // --- Anthropic API request types ---
 
 type anthropicRequest struct {
-	Model       string               `json:"model"`
-	MaxTokens   int                  `json:"max_tokens"`
-	System      interface{}          `json:"system,omitempty"` // string or []anthropicSystemBlock
-	Messages    []anthropicMessage   `json:"messages"`
-	Temperature float64              `json:"temperature,omitempty"`
-	Stop        []string             `json:"stop_sequences,omitempty"`
-	Tools       []anthropicToolDef   `json:"tools,omitempty"`
+	System      interface{}          `json:"system,omitempty"`
 	ToolChoice  *anthropicToolChoice `json:"tool_choice,omitempty"`
 	Thinking    *anthropicThinking   `json:"thinking,omitempty"`
+	Model       string               `json:"model"`
+	Messages    []anthropicMessage   `json:"messages"`
+	Stop        []string             `json:"stop_sequences,omitempty"`
+	Tools       []anthropicToolDef   `json:"tools,omitempty"`
+	MaxTokens   int                  `json:"max_tokens"`
+	Temperature float64              `json:"temperature,omitempty"`
 }
 
 type anthropicToolChoice struct {
@@ -58,9 +58,9 @@ type anthropicThinking struct {
 }
 
 type anthropicSystemBlock struct {
-	Type         string                 `json:"type"` // "text"
-	Text         string                 `json:"text"`
 	CacheControl *anthropicCacheControl `json:"cache_control,omitempty"`
+	Type         string                 `json:"type"`
+	Text         string                 `json:"text"`
 }
 
 type anthropicCacheControl struct {
@@ -77,8 +77,8 @@ type anthropicToolDef struct {
 // For simple messages: Content is a string.
 // For tool-use/tool-result messages: Content is an array of content blocks.
 type anthropicMessage struct {
-	Role    string      `json:"role"`
 	Content interface{} `json:"content"`
+	Role    string      `json:"role"`
 }
 
 // --- Anthropic API response types ---
@@ -102,9 +102,9 @@ type anthropicResponse struct {
 	ID         string                  `json:"id"`
 	Type       string                  `json:"type"`
 	Role       string                  `json:"role"`
-	Content    []anthropicContentBlock `json:"content"`
 	Model      string                  `json:"model"`
 	StopReason string                  `json:"stop_reason"`
+	Content    []anthropicContentBlock `json:"content"`
 	Usage      anthropicUsage          `json:"usage"`
 }
 
@@ -223,13 +223,13 @@ func (p *AnthropicProvider) Complete(ctx context.Context, req models.LlmRequest)
 
 	if httpResp.StatusCode == 401 || httpResp.StatusCode == 403 {
 		var apiErr anthropicError
-		json.Unmarshal(respBody, &apiErr)
+		_ = json.Unmarshal(respBody, &apiErr)
 		return nil, &AuthError{Message: apiErr.Error.Message}
 	}
 
 	if httpResp.StatusCode != 200 {
 		var apiErr anthropicError
-		json.Unmarshal(respBody, &apiErr)
+		_ = json.Unmarshal(respBody, &apiErr)
 		return nil, fmt.Errorf("anthropic API error (status %d): %s", httpResp.StatusCode, apiErr.Error.Message)
 	}
 

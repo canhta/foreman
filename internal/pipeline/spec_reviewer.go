@@ -12,9 +12,9 @@ import (
 // SpecReviewInput is what the spec reviewer needs.
 type SpecReviewInput struct {
 	TaskTitle          string
-	AcceptanceCriteria []string
 	Diff               string
 	TestOutput         string
+	AcceptanceCriteria []string
 }
 
 // SpecReviewRunner is the interface for spec compliance checking.

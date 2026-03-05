@@ -10,8 +10,8 @@ import (
 )
 
 type mockImplLLM struct {
-	response        string
 	capturedRequest *models.LlmRequest
+	response        string
 }
 
 func (m *mockImplLLM) Complete(_ context.Context, req models.LlmRequest) (*models.LlmResponse, error) {

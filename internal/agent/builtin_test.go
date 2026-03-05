@@ -238,8 +238,8 @@ func TestBuiltinRunner_Fallback(t *testing.T) {
 
 // mockFallbackLLM returns rate limit error on first call, success on second.
 type mockFallbackLLM struct {
-	calls     int
 	lastModel string
+	calls     int
 }
 
 func (m *mockFallbackLLM) Complete(_ context.Context, req models.LlmRequest) (*models.LlmResponse, error) {

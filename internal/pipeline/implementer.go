@@ -24,9 +24,9 @@ type ImplementerInput struct {
 	Task         *models.Task
 	ContextFiles map[string]string
 	Model        string
+	Feedback     string
 	MaxTokens    int
 	Attempt      int
-	Feedback     string
 }
 
 // ImplementerResult holds the raw LLM response from the implementer.

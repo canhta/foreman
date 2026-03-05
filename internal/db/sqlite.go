@@ -122,7 +122,7 @@ func (s *SQLiteDB) CreateTasks(ctx context.Context, ticketID string, tasks []mod
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	stmt, err := tx.PrepareContext(ctx,
 		`INSERT INTO tasks (id, ticket_id, sequence, title, description, acceptance_criteria,
@@ -420,7 +420,7 @@ func (s *SQLiteDB) ValidateAuthToken(ctx context.Context, tokenHash string) (boo
 		return false, err
 	}
 	if !revoked {
-		s.db.ExecContext(ctx, `UPDATE auth_tokens SET last_used_at = ? WHERE token_hash = ?`, time.Now(), tokenHash)
+		_, _ = s.db.ExecContext(ctx, `UPDATE auth_tokens SET last_used_at = ? WHERE token_hash = ?`, time.Now(), tokenHash)
 	}
 	return !revoked, nil
 }

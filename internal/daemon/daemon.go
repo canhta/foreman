@@ -14,10 +14,10 @@ import (
 
 // DaemonConfig holds daemon configuration.
 type DaemonConfig struct {
+	RunnerMode           string
 	PollIntervalSecs     int
 	IdlePollIntervalSecs int
 	MaxParallelTickets   int
-	RunnerMode           string // "docker" or "local"
 }
 
 // DefaultDaemonConfig returns sensible defaults.
@@ -31,21 +31,21 @@ func DefaultDaemonConfig() DaemonConfig {
 
 // DaemonStatus holds the current state of the daemon.
 type DaemonStatus struct {
-	State           string // "running", "paused", "stopped"
-	ActivePipelines int
 	StartedAt       time.Time
+	State           string
+	ActivePipelines int
 	Uptime          time.Duration
 }
 
 // Daemon is the main 24/7 event loop.
 type Daemon struct {
-	config    DaemonConfig
+	startedAt time.Time
 	db        db.Database
+	config    DaemonConfig
+	mu        sync.Mutex
 	running   atomic.Bool
 	paused    atomic.Bool
-	startedAt time.Time
 	active    atomic.Int32
-	mu        sync.Mutex
 }
 
 // NewDaemon creates a new daemon.

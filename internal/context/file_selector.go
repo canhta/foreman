@@ -13,8 +13,8 @@ import (
 // ScoredFile is a file ranked by relevance to a task.
 type ScoredFile struct {
 	Path      string
-	Score     float64
 	Reason    string
+	Score     float64
 	SizeBytes int64
 }
 
@@ -146,7 +146,7 @@ func inAnyDirectory(file string, dirs []string) bool {
 
 func listSourceFiles(workDir string) []string {
 	var files []string
-	filepath.Walk(workDir, func(path string, fi os.FileInfo, err error) error {
+	_ = filepath.Walk(workDir, func(path string, fi os.FileInfo, err error) error {
 		if err != nil {
 			return nil
 		}

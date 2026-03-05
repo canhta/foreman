@@ -37,9 +37,9 @@ func (p *OpenAIProvider) ProviderName() string { return "openai" }
 type openaiRequest struct {
 	Model       string          `json:"model"`
 	Messages    []openaiMessage `json:"messages"`
+	Stop        []string        `json:"stop,omitempty"`
 	MaxTokens   int             `json:"max_tokens,omitempty"`
 	Temperature float64         `json:"temperature"`
-	Stop        []string        `json:"stop,omitempty"`
 }
 
 type openaiMessage struct {

@@ -20,8 +20,8 @@ type EventStore interface {
 // EventEmitter writes events to the database and fans them out to WebSocket subscribers.
 type EventEmitter struct {
 	store       EventStore
-	mu          sync.RWMutex
 	subscribers map[chan *models.EventRecord]struct{}
+	mu          sync.RWMutex
 }
 
 // NewEventEmitter creates a new EventEmitter backed by the given store.

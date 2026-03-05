@@ -138,7 +138,7 @@ func (p *PostgresDB) CreateTasks(ctx context.Context, ticketID string, tasks []m
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	stmt, err := tx.PrepareContext(ctx,
 		`INSERT INTO tasks (id, ticket_id, sequence, title, description, acceptance_criteria,
@@ -261,7 +261,7 @@ func (p *PostgresDB) ReserveFiles(ctx context.Context, ticketID string, paths []
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	for i, path := range paths {
 		_, err := tx.ExecContext(ctx,
@@ -449,7 +449,7 @@ func (p *PostgresDB) ValidateAuthToken(ctx context.Context, tokenHash string) (b
 		return false, err
 	}
 	if !revoked {
-		p.db.ExecContext(ctx, `UPDATE auth_tokens SET last_used_at = $1 WHERE token_hash = $2`, time.Now(), tokenHash)
+		_, _ = p.db.ExecContext(ctx, `UPDATE auth_tokens SET last_used_at = $1 WHERE token_hash = $2`, time.Now(), tokenHash)
 	}
 	return !revoked, nil
 }

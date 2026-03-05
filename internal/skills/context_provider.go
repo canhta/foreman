@@ -14,9 +14,9 @@ import (
 // Injection stops when the token budget is consumed.
 type SkillsContextProvider struct {
 	db             fmtctx.ProgressStore
-	ticketID       string
 	injected       map[string]bool
-	tokensBudget   int // 0 = unlimited; rough estimate: len(text)/4
+	ticketID       string
+	tokensBudget   int
 	tokensInjected int
 }
 

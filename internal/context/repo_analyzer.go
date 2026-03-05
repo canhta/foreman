@@ -148,7 +148,7 @@ var skipDirs = map[string]bool{
 
 func generateFileTree(workDir string) string {
 	var entries []string
-	filepath.Walk(workDir, func(path string, fi os.FileInfo, err error) error {
+	_ = filepath.Walk(workDir, func(path string, fi os.FileInfo, err error) error {
 		if err != nil {
 			return nil
 		}

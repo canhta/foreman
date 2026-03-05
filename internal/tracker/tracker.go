@@ -7,24 +7,24 @@ import (
 
 // Ticket represents an issue from any tracker.
 type Ticket struct {
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 	ExternalID         string
 	Title              string
 	Description        string
 	AcceptanceCriteria string
-	Labels             []string
 	Priority           string
 	Assignee           string
 	Reporter           string
+	Labels             []string
 	Comments           []TicketComment
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
 }
 
 // TicketComment is a single comment on a ticket.
 type TicketComment struct {
+	CreatedAt time.Time
 	Author    string
 	Body      string
-	CreatedAt time.Time
 }
 
 // IssueTracker abstracts Jira, GitHub Issues, Linear, etc.

@@ -12,12 +12,12 @@ import (
 
 // ClaudeCodeConfig holds configuration for the Claude Code CLI runner.
 type ClaudeCodeConfig struct {
-	Bin                 string   // Path to "claude" binary
-	DefaultAllowedTools []string // e.g. ["Read", "Edit", "Glob", "Grep", "Bash"]
+	Bin                 string
+	Model               string
+	DefaultAllowedTools []string
 	MaxTurnsDefault     int
 	TimeoutSecsDefault  int
-	MaxBudgetUSD        float64 // Per-invocation cost cap
-	Model               string  // e.g. "sonnet", "opus"
+	MaxBudgetUSD        float64
 }
 
 // ClaudeCodeRunner invokes the Claude Agent SDK via CLI subprocess.
@@ -91,19 +91,19 @@ func (r *ClaudeCodeRunner) Run(ctx context.Context, req AgentRequest) (AgentResu
 
 // sdkResultMessage mirrors the Claude Agent SDK's SDKResultMessage JSON output.
 type sdkResultMessage struct {
-	Type         string   `json:"type"`
-	Subtype      string   `json:"subtype"`
-	Result       string   `json:"result"`
-	IsError      bool     `json:"is_error"`
-	TotalCostUSD float64  `json:"total_cost_usd"`
-	NumTurns     int      `json:"num_turns"`
-	DurationMs   int      `json:"duration_ms"`
-	Errors       []string `json:"errors"`
-	Usage        struct {
+	StructuredOutput interface{} `json:"structured_output"`
+	Type             string      `json:"type"`
+	Subtype          string      `json:"subtype"`
+	Result           string      `json:"result"`
+	Errors           []string    `json:"errors"`
+	Usage            struct {
 		InputTokens  int `json:"input_tokens"`
 		OutputTokens int `json:"output_tokens"`
 	} `json:"usage"`
-	StructuredOutput interface{} `json:"structured_output"`
+	TotalCostUSD float64 `json:"total_cost_usd"`
+	NumTurns     int     `json:"num_turns"`
+	DurationMs   int     `json:"duration_ms"`
+	IsError      bool    `json:"is_error"`
 }
 
 func parseSDKResultMessage(stdout string) (AgentResult, error) {

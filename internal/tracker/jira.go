@@ -14,11 +14,11 @@ import (
 )
 
 type JiraTracker struct {
+	client     *http.Client
 	baseURL    string
 	authHeader string
 	project    string
 	label      string
-	client     *http.Client
 }
 
 var _ IssueTracker = (*JiraTracker)(nil)
@@ -41,18 +41,18 @@ type jiraSearchResponse struct {
 }
 
 type jiraIssue struct {
-	Key    string     `json:"key"`
 	Fields jiraFields `json:"fields"`
+	Key    string     `json:"key"`
 }
 
 type jiraFields struct {
-	Summary     string            `json:"summary"`
-	Description string            `json:"description"`
-	Labels      []string          `json:"labels"`
 	Priority    *jiraPriority     `json:"priority"`
 	Assignee    *jiraUser         `json:"assignee"`
 	Reporter    *jiraUser         `json:"reporter"`
 	Comment     *jiraCommentBlock `json:"comment"`
+	Summary     string            `json:"summary"`
+	Description string            `json:"description"`
+	Labels      []string          `json:"labels"`
 }
 
 type jiraPriority struct {

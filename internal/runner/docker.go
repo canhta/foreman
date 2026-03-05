@@ -12,12 +12,12 @@ import (
 
 type DockerRunner struct {
 	image            string
-	persistPerTicket bool
 	network          string
 	cpuLimit         string
 	memoryLimit      string
-	autoReinstall    bool
 	currentTicketID  string
+	persistPerTicket bool
+	autoReinstall    bool
 }
 
 func NewDockerRunner(image string, persistPerTicket bool, network, cpuLimit, memoryLimit string, autoReinstall bool) *DockerRunner {

@@ -23,22 +23,22 @@ type AgentRunner interface {
 
 // AgentRequest defines the input for a single agent task.
 type AgentRequest struct {
-	Prompt        string                // What the agent should do
-	SystemPrompt  string                // Appended to the agent's system prompt
-	WorkDir       string                // Working directory for file operations
-	AllowedTools  []string              // Enforced per-runner; empty = runner default
-	MaxTurns      int                   // 0 = runner default
-	TimeoutSecs   int                   // 0 = runner default
-	OutputSchema  json.RawMessage       // Optional: JSON Schema for structured output
-	FallbackModel string                // e.g. "openrouter:claude-sonnet-4-5-20250929" — used on overload errors
-	AgentDepth    int                   // Depth in subagent call stack; 0 = top-level, max 3
-	MCPServers    []mcp.MCPServerConfig // Reserved for post-V1 MCP integration
+	Prompt        string
+	SystemPrompt  string
+	WorkDir       string
+	FallbackModel string
+	AllowedTools  []string
+	OutputSchema  json.RawMessage
+	MCPServers    []mcp.MCPServerConfig
+	MaxTurns      int
+	TimeoutSecs   int
+	AgentDepth    int
 }
 
 // AgentResult holds the output of an agent task.
 type AgentResult struct {
-	Output     string      // Final text or JSON string output
-	Structured interface{} // Populated if OutputSchema was provided and runner supports it
+	Structured interface{}
+	Output     string
 	Usage      AgentUsage
 }
 

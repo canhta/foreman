@@ -13,9 +13,9 @@ type ParsedOutput struct {
 
 type FileChange struct {
 	Path    string
-	IsNew   bool
 	Content string
 	Patches []SearchReplace
+	IsNew   bool
 }
 
 type SearchReplace struct {

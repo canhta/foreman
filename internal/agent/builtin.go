@@ -17,18 +17,18 @@ import (
 
 // BuiltinConfig holds configuration for the builtin runner.
 type BuiltinConfig struct {
+	DefaultAllowedTools []string
 	MaxTurnsDefault     int
-	DefaultAllowedTools []string // e.g. ["Read", "Glob", "Grep"]
 }
 
 // BuiltinRunner runs a multi-turn tool-use loop against the LlmProvider.
 // Tool calls within a single turn execute in parallel via errgroup.
 type BuiltinRunner struct {
 	provider        llm.LlmProvider
+	contextProvider ContextProvider
+	registry        *tools.Registry
 	model           string
 	config          BuiltinConfig
-	registry        *tools.Registry
-	contextProvider ContextProvider // nil-safe
 }
 
 // NewBuiltinRunner creates a builtin runner.
@@ -172,7 +172,7 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 					return nil // tool errors become result content, not Go errors
 				})
 			}
-			g.Wait()
+			_ = g.Wait()
 
 			// Collect all touched paths (after parallel completion — no data race)
 			var touchedPaths []string

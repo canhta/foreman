@@ -45,9 +45,9 @@ func TestDockerRunner_CommandExists(t *testing.T) {
 
 func TestDockerRunner_ParseContainerList(t *testing.T) {
 	tests := []struct {
+		expected map[string]string
 		name     string
 		input    string
-		expected map[string]string
 	}{
 		{
 			name:     "empty output",

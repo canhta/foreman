@@ -25,10 +25,10 @@ type ToolHooks struct {
 // Registry maps tool names to implementations and fires hooks around execution.
 // It is safe for concurrent reads (Execute may be called from multiple goroutines).
 type Registry struct {
-	tools           map[string]Tool
 	hooks           ToolHooks
-	allowedCommands []string // for Bash/RunTest whitelist
-	runFn           RunFn    // injected by SetRunFn for SubagentTool — nil until set
+	tools           map[string]Tool
+	runFn           RunFn
+	allowedCommands []string
 }
 
 // NewRegistry creates a Registry. gitProvider and cmdRunner may be nil — those

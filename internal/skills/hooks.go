@@ -7,8 +7,8 @@ import (
 
 // HookResult holds the outcome of running a single skill at a hook point.
 type HookResult struct {
-	SkillID string
 	Error   error
+	SkillID string
 }
 
 // HookRunner executes skills at pipeline hook points.

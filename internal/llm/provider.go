@@ -42,8 +42,8 @@ func (e *BudgetExceededError) Error() string {
 }
 
 type ConnectionError struct {
-	Attempt int
 	Err     error
+	Attempt int
 }
 
 func (e *ConnectionError) Error() string {

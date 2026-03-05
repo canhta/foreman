@@ -10,12 +10,12 @@ var statusRe = regexp.MustCompile(`(?i)(?:^|\n)STATUS:\s*(APPROVED|REJECTED|CHAN
 
 // ReviewResult holds the parsed output from any reviewer (spec, quality, final).
 type ReviewResult struct {
-	Approved    bool
-	Issues      []string
-	HasCritical bool
 	Summary     string
 	ReviewNotes string
 	RawOutput   string
+	Issues      []string
+	Approved    bool
+	HasCritical bool
 }
 
 // ParseReviewOutput parses STATUS: APPROVED|REJECTED|CHANGES_REQUESTED from reviewer LLM output.

@@ -30,9 +30,9 @@ var complexityTiers = map[string]complexityTier{
 
 // PlanValidation holds the result of validating a planner's output.
 type PlanValidation struct {
-	Valid    bool
 	Errors   []string
 	Warnings []string
+	Valid    bool
 }
 
 func (v *PlanValidation) addError(format string, args ...interface{}) {

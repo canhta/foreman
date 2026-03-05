@@ -73,8 +73,8 @@ func (t *getCommitLogTool) Execute(ctx context.Context, workDir string, input js
 		return "", fmt.Errorf("GetCommitLog: git provider not available")
 	}
 	var args struct {
-		Count int    `json:"count"`
 		Path  string `json:"path"`
+		Count int    `json:"count"`
 	}
 	if err := json.Unmarshal(input, &args); err != nil {
 		return "", fmt.Errorf("GetCommitLog: %w", err)
@@ -116,8 +116,8 @@ func (t *treeSummaryTool) Execute(ctx context.Context, workDir string, input jso
 		return "", fmt.Errorf("TreeSummary: git provider not available")
 	}
 	var args struct {
-		MaxDepth int    `json:"max_depth"`
 		Focus    string `json:"focus"`
+		MaxDepth int    `json:"max_depth"`
 	}
 	if err := json.Unmarshal(input, &args); err != nil {
 		return "", fmt.Errorf("TreeSummary: %w", err)
