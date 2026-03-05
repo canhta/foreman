@@ -104,5 +104,4 @@ TOML config (`foreman.toml`) with `${ENV_VAR}` substitution for secrets. Key sec
 - **Logging:** zerolog
 - **Metrics:** prometheus/client_golang
 - **HTTP:** stdlib net/http + gorilla/websocket
-- **Tokens:** tiktoken-go
 - **Concurrency:** golang.org/x/sync/errgroup (parallel tool execution)
