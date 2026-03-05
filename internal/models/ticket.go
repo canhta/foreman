@@ -31,6 +31,9 @@ type Ticket struct {
 	CostUSD                  float64
 	PRNumber                 int
 	IsPartial                bool
+	ParentTicketID           string
+	ChildTicketIDs           []string
+	DecomposeDepth           int
 }
 
 type TicketComment struct {

@@ -16,6 +16,11 @@ const (
 	TicketStatusPartial             TicketStatus = "partial"
 	TicketStatusFailed              TicketStatus = "failed"
 	TicketStatusBlocked             TicketStatus = "blocked"
+	TicketStatusDecomposing          TicketStatus = "decomposing"
+	TicketStatusDecomposed           TicketStatus = "decomposed"
+	TicketStatusAwaitingMerge        TicketStatus = "awaiting_merge"
+	TicketStatusMerged               TicketStatus = "merged"
+	TicketStatusPRClosed             TicketStatus = "pr_closed"
 )
 
 type TaskStatus string

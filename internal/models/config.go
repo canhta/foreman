@@ -15,7 +15,8 @@ type Config struct {
 	Daemon    DaemonConfig    `mapstructure:"daemon"`
 	Skills    SkillsConfig    `mapstructure:"skills"`
 	Limits    LimitsConfig    `mapstructure:"limits"`
-	RateLimit RateLimitConfig `mapstructure:"rate_limit"`
+	RateLimit RateLimitConfig  `mapstructure:"rate_limit"`
+	Decompose DecomposeConfig  `mapstructure:"decompose"`
 	Agents    []AgentRoleConfig `mapstructure:"agents"`
 }
 
@@ -55,7 +56,8 @@ type DaemonConfig struct {
 	IdlePollIntervalSecs int    `mapstructure:"idle_poll_interval_secs"`
 	MaxParallelTickets   int    `mapstructure:"max_parallel_tickets"`
 	MaxParallelTasks     int    `mapstructure:"max_parallel_tasks"`
-	TaskTimeoutMinutes   int    `mapstructure:"task_timeout_minutes"`
+	TaskTimeoutMinutes     int    `mapstructure:"task_timeout_minutes"`
+	MergeCheckIntervalSecs int    `mapstructure:"merge_check_interval_secs"`
 }
 
 type DashboardConfig struct {
@@ -156,6 +158,14 @@ type RateLimitConfig struct {
 	JitterPercent     int `mapstructure:"jitter_percent"`
 }
 
+type DecomposeConfig struct {
+	Enabled          bool   `mapstructure:"enabled"`
+	MaxTicketWords   int    `mapstructure:"max_ticket_words"`
+	MaxScopeKeywords int    `mapstructure:"max_scope_keywords"`
+	ApprovalLabel    string `mapstructure:"approval_label"`
+	ParentLabel      string `mapstructure:"parent_label"`
+}
+
 type RunnerConfig struct {
 	Mode   string             `mapstructure:"mode"`
 	Docker DockerRunnerConfig `mapstructure:"docker"`
@@ -201,7 +211,8 @@ type PipelineConfig struct {
 type HooksConfig struct {
 	PostLint []string `mapstructure:"post_lint"`
 	PrePR    []string `mapstructure:"pre_pr"`
-	PostPR   []string `mapstructure:"post_pr"`
+	PostPR    []string `mapstructure:"post_pr"`
+	PostMerge []string `mapstructure:"post_merge"`
 }
 
 type SkillsConfig struct {
