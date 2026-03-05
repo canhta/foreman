@@ -30,7 +30,7 @@ func (m *mockCmdRunner) CommandExists(_ context.Context, _ string) bool { return
 func TestClaudeCodeRunner_Run_Success(t *testing.T) {
 	sdkResult := map[string]interface{}{
 		"type": "result", "subtype": "success",
-		"result": "Fixed the bug by adding nil check",
+		"result":         "Fixed the bug by adding nil check",
 		"total_cost_usd": 0.035, "num_turns": 3, "duration_ms": 4500, "is_error": false,
 		"usage": map[string]interface{}{"input_tokens": 2000, "output_tokens": 800},
 	}

@@ -92,8 +92,10 @@ type runTestTool struct {
 	registry *Registry
 }
 
-func (t *runTestTool) Name() string        { return "RunTest" }
-func (t *runTestTool) Description() string { return "Run tests and return structured pass/fail results" }
+func (t *runTestTool) Name() string { return "RunTest" }
+func (t *runTestTool) Description() string {
+	return "Run tests and return structured pass/fail results"
+}
 func (t *runTestTool) Schema() json.RawMessage {
 	return json.RawMessage(`{"type":"object","properties":{"test":{"type":"string","description":"Test name filter"},"package":{"type":"string","description":"Package path (default ./...)"},"timeout_secs":{"type":"integer"}}}`)
 }

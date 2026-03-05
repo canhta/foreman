@@ -11,11 +11,11 @@ import (
 
 // CopilotConfig holds configuration for the Copilot SDK runner.
 type CopilotConfig struct {
-	CLIPath             string              // Path to copilot CLI; empty = "copilot"
-	GitHubToken         string              // Authentication token
-	Model               string              // e.g. "gpt-4o", "claude-sonnet-4"
-	DefaultAllowedTools []string            // e.g. ["Read", "Edit", "Bash"]
-	TimeoutSecsDefault  int                 // Default timeout per invocation
+	CLIPath             string                  // Path to copilot CLI; empty = "copilot"
+	GitHubToken         string                  // Authentication token
+	Model               string                  // e.g. "gpt-4o", "claude-sonnet-4"
+	DefaultAllowedTools []string                // e.g. ["Read", "Edit", "Bash"]
+	TimeoutSecsDefault  int                     // Default timeout per invocation
 	Provider            *copilot.ProviderConfig // BYOK: use own API keys
 }
 

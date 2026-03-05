@@ -20,8 +20,10 @@ func registerGit(r *Registry, g git.GitProvider) {
 
 type getDiffTool struct{ git git.GitProvider }
 
-func (t *getDiffTool) Name() string        { return "GetDiff" }
-func (t *getDiffTool) Description() string { return "Get git diff — working tree by default, or between two refs" }
+func (t *getDiffTool) Name() string { return "GetDiff" }
+func (t *getDiffTool) Description() string {
+	return "Get git diff — working tree by default, or between two refs"
+}
 func (t *getDiffTool) Schema() json.RawMessage {
 	return json.RawMessage(`{"type":"object","properties":{"base":{"type":"string","description":"Base ref (e.g. HEAD~1). If omitted, diffs the working tree."},"head":{"type":"string","description":"Head ref (e.g. HEAD). Required if base is set."},"path":{"type":"string","description":"Restrict diff to this path"}}}`)
 }

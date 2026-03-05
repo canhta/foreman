@@ -36,15 +36,15 @@ func (p *AnthropicProvider) ProviderName() string {
 // --- Anthropic API request types ---
 
 type anthropicRequest struct {
-	Model       string                `json:"model"`
-	MaxTokens   int                   `json:"max_tokens"`
-	System      interface{}           `json:"system,omitempty"` // string or []anthropicSystemBlock
-	Messages    []anthropicMessage    `json:"messages"`
-	Temperature float64               `json:"temperature,omitempty"`
-	Stop        []string              `json:"stop_sequences,omitempty"`
-	Tools       []anthropicToolDef    `json:"tools,omitempty"`
-	ToolChoice  *anthropicToolChoice  `json:"tool_choice,omitempty"`
-	Thinking    *anthropicThinking    `json:"thinking,omitempty"`
+	Model       string               `json:"model"`
+	MaxTokens   int                  `json:"max_tokens"`
+	System      interface{}          `json:"system,omitempty"` // string or []anthropicSystemBlock
+	Messages    []anthropicMessage   `json:"messages"`
+	Temperature float64              `json:"temperature,omitempty"`
+	Stop        []string             `json:"stop_sequences,omitempty"`
+	Tools       []anthropicToolDef   `json:"tools,omitempty"`
+	ToolChoice  *anthropicToolChoice `json:"tool_choice,omitempty"`
+	Thinking    *anthropicThinking   `json:"thinking,omitempty"`
 }
 
 type anthropicToolChoice struct {
@@ -53,14 +53,14 @@ type anthropicToolChoice struct {
 }
 
 type anthropicThinking struct {
-	Type         string `json:"type"`          // "enabled"
+	Type         string `json:"type"` // "enabled"
 	BudgetTokens int    `json:"budget_tokens"`
 }
 
 type anthropicSystemBlock struct {
-	Type         string                   `json:"type"` // "text"
-	Text         string                   `json:"text"`
-	CacheControl *anthropicCacheControl   `json:"cache_control,omitempty"`
+	Type         string                 `json:"type"` // "text"
+	Text         string                 `json:"text"`
+	CacheControl *anthropicCacheControl `json:"cache_control,omitempty"`
 }
 
 type anthropicCacheControl struct {

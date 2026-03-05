@@ -18,12 +18,18 @@ type mockGitProvider struct {
 	treeEntries []git.FileEntry
 }
 
-func (m *mockGitProvider) EnsureRepo(_ context.Context, _ string) error              { return nil }
-func (m *mockGitProvider) CreateBranch(_ context.Context, _, _ string) error         { return nil }
-func (m *mockGitProvider) Commit(_ context.Context, _, _ string) (string, error)     { return "abc123", nil }
-func (m *mockGitProvider) Diff(_ context.Context, _, _, _ string) (string, error)    { return m.diffOutput, nil }
-func (m *mockGitProvider) DiffWorking(_ context.Context, _ string) (string, error)   { return m.diffOutput, nil }
-func (m *mockGitProvider) Push(_ context.Context, _, _ string) error                 { return nil }
+func (m *mockGitProvider) EnsureRepo(_ context.Context, _ string) error      { return nil }
+func (m *mockGitProvider) CreateBranch(_ context.Context, _, _ string) error { return nil }
+func (m *mockGitProvider) Commit(_ context.Context, _, _ string) (string, error) {
+	return "abc123", nil
+}
+func (m *mockGitProvider) Diff(_ context.Context, _, _, _ string) (string, error) {
+	return m.diffOutput, nil
+}
+func (m *mockGitProvider) DiffWorking(_ context.Context, _ string) (string, error) {
+	return m.diffOutput, nil
+}
+func (m *mockGitProvider) Push(_ context.Context, _, _ string) error { return nil }
 func (m *mockGitProvider) RebaseOnto(_ context.Context, _, _ string) (*git.RebaseResult, error) {
 	return &git.RebaseResult{Success: true}, nil
 }

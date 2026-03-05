@@ -216,9 +216,9 @@ type mockGitForEngine struct {
 	err  error
 }
 
-func (m *mockGitForEngine) EnsureRepo(_ context.Context, _ string) error  { return nil }
-func (m *mockGitForEngine) CreateBranch(_ context.Context, _, _ string) error { return nil }
-func (m *mockGitForEngine) Commit(_ context.Context, _, _ string) (string, error) { return "", nil }
+func (m *mockGitForEngine) EnsureRepo(_ context.Context, _ string) error           { return nil }
+func (m *mockGitForEngine) CreateBranch(_ context.Context, _, _ string) error      { return nil }
+func (m *mockGitForEngine) Commit(_ context.Context, _, _ string) (string, error)  { return "", nil }
 func (m *mockGitForEngine) Diff(_ context.Context, _, _, _ string) (string, error) { return "", nil }
 func (m *mockGitForEngine) DiffWorking(_ context.Context, _ string) (string, error) {
 	return m.diff, m.err
@@ -230,7 +230,7 @@ func (m *mockGitForEngine) RebaseOnto(_ context.Context, _, _ string) (*git.Reba
 func (m *mockGitForEngine) CreatePR(_ context.Context, _ git.PrRequest) (*git.PrResponse, error) {
 	return nil, nil
 }
-func (m *mockGitForEngine) StageAll(_ context.Context, _ string) error               { return nil }
+func (m *mockGitForEngine) StageAll(_ context.Context, _ string) error { return nil }
 func (m *mockGitForEngine) FileTree(_ context.Context, _ string) ([]git.FileEntry, error) {
 	return nil, nil
 }

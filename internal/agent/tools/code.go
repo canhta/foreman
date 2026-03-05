@@ -23,8 +23,10 @@ func registerCode(r *Registry, cmd runner.CommandRunner) {
 
 type getSymbolTool struct{}
 
-func (t *getSymbolTool) Name() string        { return "GetSymbol" }
-func (t *getSymbolTool) Description() string { return "Find where a symbol (function, type, class) is defined" }
+func (t *getSymbolTool) Name() string { return "GetSymbol" }
+func (t *getSymbolTool) Description() string {
+	return "Find where a symbol (function, type, class) is defined"
+}
 func (t *getSymbolTool) Schema() json.RawMessage {
 	return json.RawMessage(`{"type":"object","properties":{"symbol":{"type":"string","description":"Symbol name to find"},"kind":{"type":"string","description":"Symbol kind: func, type, class, def (optional)"},"path":{"type":"string","description":"Directory to search (default: working dir)"}},"required":["symbol"]}`)
 }
@@ -100,8 +102,10 @@ func (t *getSymbolTool) Execute(_ context.Context, workDir string, input json.Ra
 
 type getErrorsTool struct{ cmd runner.CommandRunner }
 
-func (t *getErrorsTool) Name() string        { return "GetErrors" }
-func (t *getErrorsTool) Description() string { return "Run a lint/check tool and return structured errors" }
+func (t *getErrorsTool) Name() string { return "GetErrors" }
+func (t *getErrorsTool) Description() string {
+	return "Run a lint/check tool and return structured errors"
+}
 func (t *getErrorsTool) Schema() json.RawMessage {
 	return json.RawMessage(`{"type":"object","properties":{"tool":{"type":"string","description":"Tool to run e.g. golangci-lint, eslint"},"path":{"type":"string","description":"Path to lint (default: working dir)"}},"required":["tool"]}`)
 }

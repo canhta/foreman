@@ -26,8 +26,10 @@ func registerFS(r *Registry) {
 
 type readTool struct{}
 
-func (t *readTool) Name() string        { return "Read" }
-func (t *readTool) Description() string { return "Read file contents, optionally restricting to a line range" }
+func (t *readTool) Name() string { return "Read" }
+func (t *readTool) Description() string {
+	return "Read file contents, optionally restricting to a line range"
+}
 func (t *readTool) Schema() json.RawMessage {
 	return json.RawMessage(`{"type":"object","properties":{"path":{"type":"string"},"start_line":{"type":"integer","description":"1-based start line (inclusive)"},"end_line":{"type":"integer","description":"1-based end line (inclusive)"}},"required":["path"]}`)
 }
@@ -99,8 +101,10 @@ func (t *writeTool) Execute(_ context.Context, workDir string, input json.RawMes
 
 type editTool struct{}
 
-func (t *editTool) Name() string        { return "Edit" }
-func (t *editTool) Description() string { return "Replace first occurrence of old_string with new_string in a file" }
+func (t *editTool) Name() string { return "Edit" }
+func (t *editTool) Description() string {
+	return "Replace first occurrence of old_string with new_string in a file"
+}
 func (t *editTool) Schema() json.RawMessage {
 	return json.RawMessage(`{"type":"object","properties":{"path":{"type":"string"},"old_string":{"type":"string"},"new_string":{"type":"string"}},"required":["path","old_string","new_string"]}`)
 }

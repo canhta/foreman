@@ -53,7 +53,7 @@ type GitConfig struct {
 }
 
 type LLMConfig struct {
-	DefaultProvider string          `mapstructure:"default_provider"`
+	DefaultProvider string            `mapstructure:"default_provider"`
 	Anthropic       LLMProviderConfig `mapstructure:"anthropic"`
 	OpenAI          LLMProviderConfig `mapstructure:"openai"`
 	OpenRouter      LLMProviderConfig `mapstructure:"openrouter"`
@@ -125,7 +125,7 @@ type RateLimitConfig struct {
 }
 
 type RunnerConfig struct {
-	Mode   string            `mapstructure:"mode"`
+	Mode   string             `mapstructure:"mode"`
 	Docker DockerRunnerConfig `mapstructure:"docker"`
 	Local  LocalRunnerConfig  `mapstructure:"local"`
 }

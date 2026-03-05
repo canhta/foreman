@@ -20,8 +20,8 @@ import (
 // For OpenAI/local: a future Client implementation proxies calls client-side.
 type MCPServerConfig struct {
 	Name         string   `json:"name"`
-	URL          string   `json:"url,omitempty"`          // Anthropic API-side MCP
-	AuthToken    string   `json:"auth_token,omitempty"`   // Anthropic API-side MCP
+	URL          string   `json:"url,omitempty"`        // Anthropic API-side MCP
+	AuthToken    string   `json:"auth_token,omitempty"` // Anthropic API-side MCP
 	AllowedTools []string `json:"allowed_tools,omitempty"`
 	Command      string   `json:"command,omitempty"` // future: stdio transport
 	Args         []string `json:"args,omitempty"`    // future: stdio transport
