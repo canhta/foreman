@@ -1,0 +1,27 @@
+{% include "implementer.md.j2" %}
+
+## RETRY (attempt {{ attempt }}/{{ max_attempts }})
+
+The previous implementation failed. Here is the feedback:
+
+{% if spec_review_feedback %}
+## SPEC REVIEWER FOUND ISSUES
+{{ spec_review_feedback }}
+{% endif %}
+
+{% if quality_review_feedback %}
+## QUALITY REVIEWER FOUND ISSUES
+{{ quality_review_feedback }}
+{% endif %}
+
+{% if tdd_failure %}
+## TDD VERIFICATION FAILED
+{{ tdd_failure }}
+{% endif %}
+
+{% if test_failure %}
+## TEST FAILURE
+{{ test_failure }}
+{% endif %}
+
+Fix the issues above. Do NOT repeat the same mistake.

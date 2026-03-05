@@ -1,0 +1,21 @@
+id: write-changelog
+description: "Generate a changelog entry from the PR diff and ticket context"
+trigger: pre_pr
+steps:
+  - id: generate
+    type: llm_call
+    prompt_template: |
+      Generate a concise changelog entry for this change.
+      Format: "- [TYPE] Description (ticket reference)"
+      Types: Added, Changed, Fixed, Removed
+      Diff: {{ .Diff }}
+      Ticket: {{ .Ticket.Title }}
+    model: "{{ .Models.Clarifier }}"
+    context:
+      diff: "{{ .Diff }}"
+      ticket: "{{ .Ticket }}"
+  - id: write
+    type: file_write
+    path: "CHANGELOG.md"
+    content: "{{ .Steps.generate.output }}"
+    mode: prepend

@@ -104,6 +104,29 @@ func TestValidatePlan_TooManyTasks(t *testing.T) {
 	assert.Contains(t, result.Errors[0], "exceeding limit")
 }
 
+func TestEstimateTicketCost(t *testing.T) {
+	pricing := map[string]models.PricingConfig{
+		"anthropic:claude-sonnet-4-5-20250929": {Input: 3.00, Output: 15.00},
+		"anthropic:claude-haiku-4-5-20251001":  {Input: 0.80, Output: 4.00},
+	}
+
+	tasks := []PlannedTask{
+		{EstimatedComplexity: "simple"},
+		{EstimatedComplexity: "medium"},
+		{EstimatedComplexity: "complex"},
+	}
+
+	cost, missing := EstimateTicketCost(tasks, pricing, "anthropic:claude-sonnet-4-5-20250929", "anthropic:claude-haiku-4-5-20251001")
+	assert.Empty(t, missing, "no unknown models expected")
+	// Expected cost breakdown (sonnet impl, haiku review):
+	//   simple:  1*(0.060+0.060) + 1*(0.008+0.004) = 0.132
+	//   medium:  2*(0.120+0.120) + 2*(0.016+0.008) = 0.528
+	//   complex: 3*(0.180+0.180) + 3*(0.024+0.012) = 1.188
+	//   total: 1.848
+	assert.InDelta(t, 1.848, cost, 0.001)
+	assert.Greater(t, cost, 0.0)
+}
+
 func TestValidatePlan_SharedFileWithoutOrdering(t *testing.T) {
 	workDir := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(workDir, "internal"), 0o755))
