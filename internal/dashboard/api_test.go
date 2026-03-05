@@ -236,6 +236,10 @@ func TestAPIGetStatus_DaemonPaused(t *testing.T) {
 	rec := httptest.NewRecorder()
 	api.handleStatus(rec, req)
 
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
 	var resp map[string]interface{}
 	json.NewDecoder(rec.Body).Decode(&resp)
 	if resp["daemon_state"] != "paused" {
