@@ -2,6 +2,8 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/canhta/foreman/internal/llm"
@@ -51,6 +53,16 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 		maxTurns = 10
 	}
 
+	// Prepare OutputSchema for passing to LlmRequest
+	var outputSchema *json.RawMessage
+	if req.OutputSchema != nil {
+		s := json.RawMessage(req.OutputSchema)
+		outputSchema = &s
+	}
+
+	// Track fallback model — consumed on first overload, then cleared
+	fallbackModel := req.FallbackModel
+
 	messages := []models.Message{
 		{Role: "user", Content: req.Prompt},
 	}
@@ -58,14 +70,26 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 	var usage AgentUsage
 
 	for turn := 0; turn < maxTurns; turn++ {
-		resp, err := r.provider.Complete(ctx, models.LlmRequest{
+		llmReq := models.LlmRequest{
 			Model:        r.model,
 			SystemPrompt: systemPrompt,
 			MaxTokens:    4096,
 			Temperature:  0.2,
 			Messages:     messages,
 			Tools:        toolDefs,
-		})
+			OutputSchema: outputSchema,
+		}
+
+		resp, err := r.provider.Complete(ctx, llmReq)
+		if err != nil {
+			// Try fallback on overload errors
+			var rateLimitErr *llm.RateLimitError
+			if errors.As(err, &rateLimitErr) && fallbackModel != "" {
+				llmReq.Model = fallbackModel
+				fallbackModel = "" // prevent infinite fallback loop
+				resp, err = r.provider.Complete(ctx, llmReq)
+			}
+		}
 		if err != nil {
 			return AgentResult{}, fmt.Errorf("builtin: turn %d: %w", turn+1, err)
 		}

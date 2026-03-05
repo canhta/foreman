@@ -36,13 +36,35 @@ func (p *AnthropicProvider) ProviderName() string {
 // --- Anthropic API request types ---
 
 type anthropicRequest struct {
-	Model       string               `json:"model"`
-	MaxTokens   int                  `json:"max_tokens"`
-	System      string               `json:"system,omitempty"`
-	Messages    []anthropicMessage   `json:"messages"`
-	Temperature float64              `json:"temperature,omitempty"`
-	Stop        []string             `json:"stop_sequences,omitempty"`
-	Tools       []anthropicToolDef   `json:"tools,omitempty"`
+	Model       string                `json:"model"`
+	MaxTokens   int                   `json:"max_tokens"`
+	System      interface{}           `json:"system,omitempty"` // string or []anthropicSystemBlock
+	Messages    []anthropicMessage    `json:"messages"`
+	Temperature float64               `json:"temperature,omitempty"`
+	Stop        []string              `json:"stop_sequences,omitempty"`
+	Tools       []anthropicToolDef    `json:"tools,omitempty"`
+	ToolChoice  *anthropicToolChoice  `json:"tool_choice,omitempty"`
+	Thinking    *anthropicThinking    `json:"thinking,omitempty"`
+}
+
+type anthropicToolChoice struct {
+	Type string `json:"type"` // "auto", "any", "tool"
+	Name string `json:"name,omitempty"`
+}
+
+type anthropicThinking struct {
+	Type         string `json:"type"`          // "enabled"
+	BudgetTokens int    `json:"budget_tokens"`
+}
+
+type anthropicSystemBlock struct {
+	Type         string                   `json:"type"` // "text"
+	Text         string                   `json:"text"`
+	CacheControl *anthropicCacheControl   `json:"cache_control,omitempty"`
+}
+
+type anthropicCacheControl struct {
+	Type string `json:"type"` // "ephemeral"
 }
 
 type anthropicToolDef struct {
@@ -70,8 +92,10 @@ type anthropicContentBlock struct {
 }
 
 type anthropicUsage struct {
-	InputTokens  int `json:"input_tokens"`
-	OutputTokens int `json:"output_tokens"`
+	InputTokens              int `json:"input_tokens"`
+	OutputTokens             int `json:"output_tokens"`
+	CacheReadInputTokens     int `json:"cache_read_input_tokens"`
+	CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
 }
 
 type anthropicResponse struct {
@@ -112,9 +136,29 @@ func (p *AnthropicProvider) Complete(ctx context.Context, req models.LlmRequest)
 	body := anthropicRequest{
 		Model:       req.Model,
 		MaxTokens:   req.MaxTokens,
-		System:      req.SystemPrompt,
 		Temperature: req.Temperature,
 		Stop:        req.StopSequences,
+	}
+
+	// System prompt — use cache_control block format when caching is requested
+	if req.CacheSystemPrompt && req.SystemPrompt != "" {
+		body.System = []anthropicSystemBlock{{
+			Type:         "text",
+			Text:         req.SystemPrompt,
+			CacheControl: &anthropicCacheControl{Type: "ephemeral"},
+		}}
+	} else {
+		body.System = req.SystemPrompt
+	}
+
+	// Extended thinking
+	if req.Thinking != nil && req.Thinking.Enabled {
+		body.Thinking = &anthropicThinking{
+			Type:         "enabled",
+			BudgetTokens: req.Thinking.BudgetTokens,
+		}
+		// Thinking requires temperature=1; silence temperature when thinking is on
+		body.Temperature = 0
 	}
 
 	// Convert tool definitions
@@ -124,6 +168,16 @@ func (p *AnthropicProvider) Complete(ctx context.Context, req models.LlmRequest)
 			Description: t.Description,
 			InputSchema: t.InputSchema,
 		})
+	}
+
+	// Structured output via forced tool_choice
+	if req.OutputSchema != nil {
+		body.Tools = append(body.Tools, anthropicToolDef{
+			Name:        "structured_output",
+			Description: "Return the result in the required structured format",
+			InputSchema: *req.OutputSchema,
+		})
+		body.ToolChoice = &anthropicToolChoice{Type: "tool", Name: "structured_output"}
 	}
 
 	// Build messages
@@ -148,6 +202,7 @@ func (p *AnthropicProvider) Complete(ctx context.Context, req models.LlmRequest)
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("x-api-key", p.apiKey)
 	httpReq.Header.Set("anthropic-version", "2023-06-01")
+	httpReq.Header.Set("anthropic-beta", "prompt-caching-2024-07-31,interleaved-thinking-2025-05-14")
 
 	start := time.Now()
 	httpResp, err := p.client.Do(httpReq)
@@ -229,31 +284,52 @@ func buildAnthropicMessages(messages []models.Message) []anthropicMessage {
 }
 
 // parseAnthropicResponse extracts text content and tool calls from the API response.
+// When a "structured_output" tool_use block is present, its input becomes resp.Content.
 func parseAnthropicResponse(resp anthropicResponse, durationMs int64) *models.LlmResponse {
 	var content string
 	var toolCalls []models.ToolCall
+	var structuredOutput json.RawMessage
 
 	for _, block := range resp.Content {
 		switch block.Type {
 		case "text":
 			content += block.Text
+		case "thinking":
+			// Extended thinking — informational only, not included in content
 		case "tool_use":
-			toolCalls = append(toolCalls, models.ToolCall{
-				ID:    block.ID,
-				Name:  block.Name,
-				Input: block.Input,
-			})
+			if block.Name == "structured_output" {
+				structuredOutput = block.Input
+			} else {
+				toolCalls = append(toolCalls, models.ToolCall{
+					ID:    block.ID,
+					Name:  block.Name,
+					Input: block.Input,
+				})
+			}
 		}
 	}
 
+	// Structured output overrides text content
+	if structuredOutput != nil {
+		content = string(structuredOutput)
+	}
+
+	stopReason := models.StopReason(resp.StopReason)
+	// When structured output forced a tool call, report end_turn to the caller
+	if structuredOutput != nil && stopReason == models.StopReasonToolUse {
+		stopReason = models.StopReasonEndTurn
+	}
+
 	return &models.LlmResponse{
-		Content:      content,
-		TokensInput:  resp.Usage.InputTokens,
-		TokensOutput: resp.Usage.OutputTokens,
-		Model:        resp.Model,
-		DurationMs:   durationMs,
-		StopReason:   models.StopReason(resp.StopReason),
-		ToolCalls:    toolCalls,
+		Content:             content,
+		TokensInput:         resp.Usage.InputTokens,
+		TokensOutput:        resp.Usage.OutputTokens,
+		Model:               resp.Model,
+		DurationMs:          durationMs,
+		StopReason:          stopReason,
+		ToolCalls:           toolCalls,
+		CacheReadTokens:     resp.Usage.CacheReadInputTokens,
+		CacheCreationTokens: resp.Usage.CacheCreationInputTokens,
 	}
 }
 

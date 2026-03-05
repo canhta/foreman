@@ -192,6 +192,170 @@ func TestAnthropicProvider_Complete_WithToolResults(t *testing.T) {
 	}
 }
 
+func TestAnthropicProvider_StructuredOutput(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var reqBody map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&reqBody)
+
+		// Verify tool_choice was set to force structured_output tool
+		toolChoice, ok := reqBody["tool_choice"].(map[string]interface{})
+		if !ok {
+			t.Error("expected tool_choice in request")
+		}
+		if toolChoice["type"] != "tool" || toolChoice["name"] != "structured_output" {
+			t.Errorf("unexpected tool_choice: %v", toolChoice)
+		}
+
+		// Return structured output as a tool_use block
+		resp := map[string]interface{}{
+			"id":   "msg_struct",
+			"type": "message",
+			"role": "assistant",
+			"content": []map[string]interface{}{
+				{
+					"type":  "tool_use",
+					"id":    "call_struct",
+					"name":  "structured_output",
+					"input": map[string]string{"severity": "high", "summary": "Issue found"},
+				},
+			},
+			"model":       "claude-sonnet-4-5-20250929",
+			"stop_reason": "tool_use",
+			"usage":       map[string]interface{}{"input_tokens": 50, "output_tokens": 20},
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	schema := json.RawMessage(`{"type":"object","properties":{"severity":{"type":"string"},"summary":{"type":"string"}}}`)
+	provider := NewAnthropicProvider("test-key", server.URL)
+	resp, err := provider.Complete(context.Background(), models.LlmRequest{
+		Model:        "claude-sonnet-4-5-20250929",
+		UserPrompt:   "Analyze this",
+		MaxTokens:    1024,
+		OutputSchema: &schema,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Content should be the JSON of the tool input, stop reason should be end_turn
+	if resp.StopReason != models.StopReasonEndTurn {
+		t.Errorf("expected end_turn, got %s", resp.StopReason)
+	}
+	if resp.Content == "" {
+		t.Error("expected structured output in content")
+	}
+	var result map[string]string
+	if err := json.Unmarshal([]byte(resp.Content), &result); err != nil {
+		t.Errorf("content should be valid JSON, got: %s", resp.Content)
+	}
+}
+
+func TestAnthropicProvider_Thinking(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var reqBody map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&reqBody)
+
+		// Verify thinking param was sent
+		thinking, ok := reqBody["thinking"].(map[string]interface{})
+		if !ok {
+			t.Error("expected thinking in request")
+		}
+		if thinking["type"] != "enabled" {
+			t.Errorf("unexpected thinking type: %v", thinking["type"])
+		}
+
+		// Return response with thinking block + text
+		resp := map[string]interface{}{
+			"id":   "msg_think",
+			"type": "message",
+			"role": "assistant",
+			"content": []map[string]interface{}{
+				{"type": "thinking", "thinking": "Let me reason through this..."},
+				{"type": "text", "text": "The answer is 42."},
+			},
+			"model":       "claude-sonnet-4-5-20250929",
+			"stop_reason": "end_turn",
+			"usage":       map[string]interface{}{"input_tokens": 100, "output_tokens": 50},
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	provider := NewAnthropicProvider("test-key", server.URL)
+	resp, err := provider.Complete(context.Background(), models.LlmRequest{
+		Model:      "claude-sonnet-4-5-20250929",
+		UserPrompt: "What is the answer?",
+		MaxTokens:  1024,
+		Thinking:   &models.ThinkingConfig{Enabled: true, BudgetTokens: 5000},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Thinking block should NOT appear in content
+	if resp.Content != "The answer is 42." {
+		t.Errorf("expected only text content, got: %q", resp.Content)
+	}
+}
+
+func TestAnthropicProvider_PromptCaching(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var reqBody map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&reqBody)
+
+		// System should be an array of blocks with cache_control
+		system, ok := reqBody["system"].([]interface{})
+		if !ok {
+			t.Errorf("expected system to be array of blocks when caching, got: %T", reqBody["system"])
+		} else if len(system) != 1 {
+			t.Errorf("expected 1 system block, got %d", len(system))
+		} else {
+			block := system[0].(map[string]interface{})
+			if block["type"] != "text" {
+				t.Errorf("expected text block, got %v", block["type"])
+			}
+			cc, ok := block["cache_control"].(map[string]interface{})
+			if !ok || cc["type"] != "ephemeral" {
+				t.Errorf("expected ephemeral cache_control, got %v", block["cache_control"])
+			}
+		}
+
+		resp := map[string]interface{}{
+			"id":   "msg_cache",
+			"type": "message",
+			"role": "assistant",
+			"content": []map[string]interface{}{
+				{"type": "text", "text": "cached response"},
+			},
+			"model":       "claude-sonnet-4-5-20250929",
+			"stop_reason": "end_turn",
+			"usage": map[string]interface{}{
+				"input_tokens":                50,
+				"output_tokens":               10,
+				"cache_read_input_tokens":     200,
+				"cache_creation_input_tokens": 0,
+			},
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	provider := NewAnthropicProvider("test-key", server.URL)
+	resp, err := provider.Complete(context.Background(), models.LlmRequest{
+		Model:             "claude-sonnet-4-5-20250929",
+		SystemPrompt:      "Large system prompt to cache",
+		UserPrompt:        "Hello",
+		MaxTokens:         1024,
+		CacheSystemPrompt: true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.CacheReadTokens != 200 {
+		t.Errorf("expected 200 cache read tokens, got %d", resp.CacheReadTokens)
+	}
+}
+
 func TestBuildAnthropicMessages(t *testing.T) {
 	messages := []models.Message{
 		{Role: "user", Content: "Hello"},

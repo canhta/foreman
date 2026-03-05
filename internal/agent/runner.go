@@ -21,13 +21,14 @@ type AgentRunner interface {
 
 // AgentRequest defines the input for a single agent task.
 type AgentRequest struct {
-	Prompt       string          // What the agent should do
-	SystemPrompt string          // Appended to the agent's system prompt
-	WorkDir      string          // Working directory for file operations
-	AllowedTools []string        // Enforced per-runner; empty = runner default
-	MaxTurns     int             // 0 = runner default
-	TimeoutSecs  int             // 0 = runner default
-	OutputSchema json.RawMessage // Optional: JSON Schema for structured output
+	Prompt        string          // What the agent should do
+	SystemPrompt  string          // Appended to the agent's system prompt
+	WorkDir       string          // Working directory for file operations
+	AllowedTools  []string        // Enforced per-runner; empty = runner default
+	MaxTurns      int             // 0 = runner default
+	TimeoutSecs   int             // 0 = runner default
+	OutputSchema  json.RawMessage // Optional: JSON Schema for structured output
+	FallbackModel string          // e.g. "openrouter:claude-sonnet-4-5-20250929" — used on overload errors
 }
 
 // AgentResult holds the output of an agent task.

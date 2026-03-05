@@ -115,6 +115,135 @@ func TestBuiltinToolDefs(t *testing.T) {
 	}
 }
 
+func TestEditTool(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "file.go"), []byte("package main\n\nfunc old() {}\n"), 0644)
+
+	input, _ := json.Marshal(map[string]string{
+		"path":       "file.go",
+		"old_string": "func old() {}",
+		"new_string": "func new() {}",
+	})
+	result, err := builtinTools["Edit"](dir, input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result != "OK" {
+		t.Errorf("expected 'OK', got %q", result)
+	}
+	content, _ := os.ReadFile(filepath.Join(dir, "file.go"))
+	if !containsStr(string(content), "func new() {}") {
+		t.Errorf("expected new string in file, got: %s", content)
+	}
+	if containsStr(string(content), "func old() {}") {
+		t.Error("old string should be replaced")
+	}
+}
+
+func TestEditTool_OldStringNotFound(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "file.go"), []byte("package main"), 0644)
+
+	input, _ := json.Marshal(map[string]string{
+		"path":       "file.go",
+		"old_string": "nonexistent string",
+		"new_string": "replacement",
+	})
+	_, err := builtinTools["Edit"](dir, input)
+	if err == nil {
+		t.Fatal("expected error when old_string not found")
+	}
+}
+
+func TestEditTool_PathTraversal(t *testing.T) {
+	dir := t.TempDir()
+	input, _ := json.Marshal(map[string]string{
+		"path":       "../../etc/passwd",
+		"old_string": "root",
+		"new_string": "hacked",
+	})
+	_, err := builtinTools["Edit"](dir, input)
+	if err == nil {
+		t.Fatal("expected error for path traversal")
+	}
+}
+
+func TestEditTool_ForbiddenFile(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, ".env"), []byte("SECRET=abc"), 0644)
+
+	input, _ := json.Marshal(map[string]string{
+		"path":       ".env",
+		"old_string": "SECRET=abc",
+		"new_string": "SECRET=hacked",
+	})
+	_, err := builtinTools["Edit"](dir, input)
+	if err == nil {
+		t.Fatal("expected error for forbidden .env file")
+	}
+}
+
+func TestWriteTool(t *testing.T) {
+	dir := t.TempDir()
+
+	input, _ := json.Marshal(map[string]string{
+		"path":    "output.txt",
+		"content": "hello world",
+	})
+	result, err := builtinTools["Write"](dir, input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result != "OK" {
+		t.Errorf("expected 'OK', got %q", result)
+	}
+	content, _ := os.ReadFile(filepath.Join(dir, "output.txt"))
+	if string(content) != "hello world" {
+		t.Errorf("unexpected content: %s", content)
+	}
+}
+
+func TestWriteTool_CreatesSubdirectory(t *testing.T) {
+	dir := t.TempDir()
+
+	input, _ := json.Marshal(map[string]string{
+		"path":    "subdir/file.txt",
+		"content": "nested content",
+	})
+	_, err := builtinTools["Write"](dir, input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	content, _ := os.ReadFile(filepath.Join(dir, "subdir", "file.txt"))
+	if string(content) != "nested content" {
+		t.Errorf("unexpected content: %s", content)
+	}
+}
+
+func TestWriteTool_PathTraversal(t *testing.T) {
+	dir := t.TempDir()
+	input, _ := json.Marshal(map[string]string{
+		"path":    "../../etc/evil",
+		"content": "evil",
+	})
+	_, err := builtinTools["Write"](dir, input)
+	if err == nil {
+		t.Fatal("expected error for path traversal")
+	}
+}
+
+func TestWriteTool_ForbiddenKey(t *testing.T) {
+	dir := t.TempDir()
+	input, _ := json.Marshal(map[string]string{
+		"path":    "private.key",
+		"content": "key data",
+	})
+	_, err := builtinTools["Write"](dir, input)
+	if err == nil {
+		t.Fatal("expected error for .key file")
+	}
+}
+
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsStr(s, substr))
 }

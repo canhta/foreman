@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/canhta/foreman/internal/llm"
 	"github.com/canhta/foreman/internal/models"
 )
 
@@ -212,3 +213,46 @@ func TestBuiltinRunner_HealthCheck(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestBuiltinRunner_Fallback(t *testing.T) {
+	fallbackLLM := &mockFallbackLLM{}
+	runner := NewBuiltinRunner(fallbackLLM, "primary-model", BuiltinConfig{MaxTurnsDefault: 5})
+
+	result, err := runner.Run(context.Background(), AgentRequest{
+		Prompt:        "Do something",
+		WorkDir:       t.TempDir(),
+		FallbackModel: "fallback-model",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Output != "fallback response" {
+		t.Fatalf("expected fallback response, got %q", result.Output)
+	}
+	// Verify the fallback model was used for the second call
+	if fallbackLLM.lastModel != "fallback-model" {
+		t.Errorf("expected fallback model, got %q", fallbackLLM.lastModel)
+	}
+}
+
+// mockFallbackLLM returns rate limit error on first call, success on second.
+type mockFallbackLLM struct {
+	calls     int
+	lastModel string
+}
+
+func (m *mockFallbackLLM) Complete(_ context.Context, req models.LlmRequest) (*models.LlmResponse, error) {
+	m.calls++
+	m.lastModel = req.Model
+	if m.calls == 1 {
+		// Simulate rate limit / overload on primary model
+		return nil, &llm.RateLimitError{RetryAfterSecs: 30}
+	}
+	return &models.LlmResponse{
+		Content:    "fallback response",
+		StopReason: models.StopReasonEndTurn,
+		Model:      req.Model,
+	}, nil
+}
+func (m *mockFallbackLLM) ProviderName() string                { return "mock" }
+func (m *mockFallbackLLM) HealthCheck(_ context.Context) error { return nil }
