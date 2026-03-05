@@ -6,8 +6,6 @@
 
 Foreman polls your issue tracker, decomposes tickets into granular tasks, writes code via LLM with TDD discipline, runs deterministic checks and reviews, and opens pull requests with minimal human intervention.
 
-If Foreman is useful to your team, support the project by starring the repository.
-
 ## Why Foreman
 
 - **Stateless LLM calls:** every call is made with explicitly assembled context.
@@ -114,7 +112,21 @@ provider = "github"  # github, jira, linear, local_file
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=canhta/foreman&type=Date)](https://star-history.com/#canhta/foreman&Date)
+<p align="center">
+  <a href="https://www.star-history.com/#canhta/foreman&type=date&legend=top-left">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=canhta/foreman&type=date&theme=dark&legend=top-left" />
+      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=canhta/foreman&type=date&legend=top-left" />
+      <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=canhta/foreman&type=date&legend=top-left" />
+    </picture>
+  </a>
+</p>
+
+## Support the Project
+
+If Foreman helps your team, please support it with a GitHub star.
+
+[![Star Foreman](https://img.shields.io/badge/Support-Star%20on%20GitHub-black?logo=github)](https://github.com/canhta/foreman/stargazers)
 
 ## License
 
