@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- **Go 1.23+** with a C toolchain (CGO is required by `go-sqlite3`)
+- **Go 1.26+** with a C toolchain (CGO is required by `go-sqlite3`)
 - **Git** (the `git` CLI must be available on `$PATH`)
 - An **LLM API key** for your chosen provider (Anthropic, OpenAI, or OpenRouter)
 - An **issue tracker** account (Jira, GitHub, Linear, or a local file for testing)
