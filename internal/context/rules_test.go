@@ -10,8 +10,11 @@ func TestLoadRules_Default(t *testing.T) {
 	if rules == nil {
 		t.Fatal("expected non-nil rules")
 	}
-	if rules.TestCommand == "" {
-		t.Error("expected default test command")
+	if rules.TestCommand != "make test" {
+		t.Errorf("expected default test command 'make test', got %q", rules.TestCommand)
+	}
+	if rules.LintCommand != "make lint" {
+		t.Errorf("expected default lint command 'make lint', got %q", rules.LintCommand)
 	}
 }
 
@@ -34,19 +37,22 @@ func TestLoadRules_Node(t *testing.T) {
 
 func TestDetectLanguage(t *testing.T) {
 	tests := []struct {
+		name     string
 		files    []string
 		expected string
 	}{
-		{[]string{"go.mod", "main.go"}, "go"},
-		{[]string{"package.json", "index.js"}, "node"},
-		{[]string{"Cargo.toml", "src/main.rs"}, "rust"},
-		{[]string{"requirements.txt", "main.py"}, "python"},
-		{[]string{"unknown.xyz"}, ""},
+		{"go", []string{"go.mod", "main.go"}, "go"},
+		{"node", []string{"package.json", "index.js"}, "node"},
+		{"rust", []string{"Cargo.toml", "src/main.rs"}, "rust"},
+		{"python", []string{"requirements.txt", "main.py"}, "python"},
+		{"unknown", []string{"unknown.xyz"}, ""},
 	}
 	for _, tt := range tests {
-		got := DetectLanguage(tt.files)
-		if got != tt.expected {
-			t.Errorf("DetectLanguage(%v) = %q, want %q", tt.files, got, tt.expected)
-		}
+		t.Run(tt.name, func(t *testing.T) {
+			got := DetectLanguage(tt.files)
+			if got != tt.expected {
+				t.Errorf("DetectLanguage(%v) = %q, want %q", tt.files, got, tt.expected)
+			}
+		})
 	}
 }
