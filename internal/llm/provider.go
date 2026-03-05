@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/canhta/foreman/internal/models"
 )
@@ -51,4 +52,20 @@ func (e *ConnectionError) Error() string {
 
 func (e *ConnectionError) Unwrap() error {
 	return e.Err
+}
+
+// NewProviderFromConfig constructs an LlmProvider from the named provider and config.
+func NewProviderFromConfig(providerName string, cfg models.LLMConfig) (LlmProvider, error) {
+	switch providerName {
+	case "anthropic":
+		return NewAnthropicProvider(cfg.Anthropic.APIKey, cfg.Anthropic.BaseURL), nil
+	case "openai":
+		return NewOpenAIProvider(cfg.OpenAI.APIKey, cfg.OpenAI.BaseURL), nil
+	case "openrouter":
+		return NewOpenRouterProvider(cfg.OpenRouter.APIKey, cfg.OpenRouter.BaseURL), nil
+	case "local":
+		return NewLocalProvider(cfg.Local.BaseURL), nil
+	default:
+		return nil, fmt.Errorf("unknown LLM provider: %s", providerName)
+	}
 }
