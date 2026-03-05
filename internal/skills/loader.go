@@ -58,9 +58,10 @@ type StepResult struct {
 }
 
 var validTriggers = map[string]bool{
-	"post_lint": true,
-	"pre_pr":    true,
-	"post_pr":   true,
+	"post_lint":  true,
+	"pre_pr":     true,
+	"post_pr":    true,
+	"post_merge": true,
 }
 
 var validStepTypes = map[string]bool{
@@ -86,7 +87,7 @@ func LoadSkill(path string) (*Skill, error) {
 
 	// Validate trigger
 	if !validTriggers[skill.Trigger] {
-		return nil, fmt.Errorf("invalid trigger '%s' in skill '%s' (valid: post_lint, pre_pr, post_pr)", skill.Trigger, skill.ID)
+		return nil, fmt.Errorf("invalid trigger '%s' in skill '%s' (valid: post_lint, pre_pr, post_pr, post_merge)", skill.Trigger, skill.ID)
 	}
 
 	// Validate step types
