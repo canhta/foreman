@@ -27,8 +27,19 @@ type TicketComment struct {
 	Body      string
 }
 
+// CreateTicketRequest describes a new ticket to create in the tracker.
+type CreateTicketRequest struct {
+	Title              string
+	Description        string
+	AcceptanceCriteria string
+	Labels             []string
+	ParentID           string
+	Metadata           map[string]string
+}
+
 // IssueTracker abstracts Jira, GitHub Issues, Linear, etc.
 type IssueTracker interface {
+	CreateTicket(ctx context.Context, req CreateTicketRequest) (*Ticket, error)
 	FetchReadyTickets(ctx context.Context) ([]Ticket, error)
 	GetTicket(ctx context.Context, externalID string) (*Ticket, error)
 	UpdateStatus(ctx context.Context, externalID string, status string) error

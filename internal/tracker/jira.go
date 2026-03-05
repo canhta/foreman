@@ -72,6 +72,57 @@ type jiraComment struct {
 	Body   string   `json:"body"`
 }
 
+func (j *JiraTracker) CreateTicket(ctx context.Context, req CreateTicketRequest) (*Ticket, error) {
+	fields := map[string]interface{}{
+		"project":     map[string]string{"key": j.project},
+		"summary":     req.Title,
+		"description": req.Description,
+		"labels":      req.Labels,
+		"issuetype":   map[string]string{"name": "Task"},
+	}
+	if req.ParentID != "" {
+		fields["parent"] = map[string]string{"key": req.ParentID}
+	}
+
+	payload := map[string]interface{}{"fields": fields}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("jira marshal: %w", err)
+	}
+
+	u := fmt.Sprintf("%s/rest/api/2/issue", j.baseURL)
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", u, bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", j.authHeader)
+
+	resp, err := j.client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("jira create issue: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("jira create issue: status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var result struct {
+		Key string `json:"key"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("jira unmarshal: %w", err)
+	}
+
+	return &Ticket{
+		ExternalID:  result.Key,
+		Title:       req.Title,
+		Description: req.Description,
+	}, nil
+}
+
 func (j *JiraTracker) FetchReadyTickets(ctx context.Context) ([]Ticket, error) {
 	jql := fmt.Sprintf("project=%s AND labels=%s AND status!=Done", j.project, j.label)
 	url := fmt.Sprintf("%s/rest/api/2/search?jql=%s", j.baseURL, url.QueryEscape(jql))

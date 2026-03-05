@@ -39,6 +39,41 @@ func (t *LocalFileTracker) ticketsDir() string {
 	return filepath.Join(t.dir, "tickets")
 }
 
+func (t *LocalFileTracker) CreateTicket(ctx context.Context, req CreateTicketRequest) (*Ticket, error) {
+	externalID := fmt.Sprintf("local-%d", time.Now().UnixNano())
+
+	lt := &localTicket{
+		ExternalID:         externalID,
+		Title:              req.Title,
+		Description:        req.Description,
+		AcceptanceCriteria: req.AcceptanceCriteria,
+		Labels:             req.Labels,
+		Status:             "open",
+	}
+
+	if err := os.MkdirAll(t.ticketsDir(), 0o755); err != nil {
+		return nil, fmt.Errorf("creating tickets dir: %w", err)
+	}
+
+	data, err := json.MarshalIndent(lt, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("marshaling ticket: %w", err)
+	}
+
+	path := filepath.Join(t.ticketsDir(), externalID+".json")
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		return nil, fmt.Errorf("writing ticket file: %w", err)
+	}
+
+	return &Ticket{
+		ExternalID:         externalID,
+		Title:              req.Title,
+		Description:        req.Description,
+		AcceptanceCriteria: req.AcceptanceCriteria,
+		Labels:             req.Labels,
+	}, nil
+}
+
 func (t *LocalFileTracker) FetchReadyTickets(ctx context.Context) ([]Ticket, error) {
 	entries, err := os.ReadDir(t.ticketsDir())
 	if err != nil {

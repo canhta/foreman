@@ -58,6 +58,40 @@ type linearIssue struct {
 	Priority float64 `json:"priority"`
 }
 
+func (l *LinearTracker) CreateTicket(ctx context.Context, req CreateTicketRequest) (*Ticket, error) {
+	description := req.Description
+	if req.ParentID != "" {
+		description = fmt.Sprintf("Parent: %s\n\n%s", req.ParentID, description)
+	}
+
+	mutation := fmt.Sprintf(
+		`mutation { issueCreate(input: { title: %q, description: %q }) { success issue { identifier title description } } }`,
+		req.Title, description)
+
+	body, err := l.graphql(ctx, mutation)
+	if err != nil {
+		return nil, fmt.Errorf("linear create issue: %w", err)
+	}
+
+	var result struct {
+		Data struct {
+			IssueCreate struct {
+				Issue linearIssue `json:"issue"`
+			} `json:"issueCreate"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("linear unmarshal: %w", err)
+	}
+
+	issue := result.Data.IssueCreate.Issue
+	return &Ticket{
+		ExternalID:  issue.Identifier,
+		Title:       issue.Title,
+		Description: issue.Description,
+	}, nil
+}
+
 func (l *LinearTracker) FetchReadyTickets(ctx context.Context) ([]Ticket, error) {
 	query := fmt.Sprintf(`{
 		issues(filter: { labels: { name: { eq: %q } }, state: { type: { neq: "completed" } } }) {

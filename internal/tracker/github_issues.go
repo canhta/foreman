@@ -176,6 +176,58 @@ func (g *GitHubIssuesTracker) HasLabel(ctx context.Context, externalID, label st
 	return containsLabel(ticket.Labels, label), nil
 }
 
+func (g *GitHubIssuesTracker) CreateTicket(ctx context.Context, req CreateTicketRequest) (*Ticket, error) {
+	body := req.Description
+	if req.ParentID != "" {
+		body = fmt.Sprintf("Parent: #%s\n\n%s", req.ParentID, body)
+	}
+	if req.AcceptanceCriteria != "" {
+		body += "\n\n## Acceptance Criteria\n" + req.AcceptanceCriteria
+	}
+
+	payload := map[string]interface{}{
+		"title":  req.Title,
+		"body":   body,
+		"labels": req.Labels,
+	}
+
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("marshaling create issue request: %w", err)
+	}
+
+	u := fmt.Sprintf("%s/repos/%s/%s/issues",
+		g.baseURL, url.PathEscape(g.owner), url.PathEscape(g.repo))
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", u, bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("creating HTTP request: %w", err)
+	}
+	g.setHeaders(httpReq)
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := g.client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("GitHub API request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusCreated {
+		return nil, fmt.Errorf("GitHub API %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var issue ghIssue
+	if err := json.Unmarshal(respBody, &issue); err != nil {
+		return nil, fmt.Errorf("decoding issue response: %w", err)
+	}
+
+	return &Ticket{
+		ExternalID:  strconv.Itoa(issue.Number),
+		Title:       issue.Title,
+		Description: issue.Body,
+	}, nil
+}
+
 func (g *GitHubIssuesTracker) ProviderName() string { return "github" }
 
 func (g *GitHubIssuesTracker) doGet(ctx context.Context, url string) ([]byte, error) {
