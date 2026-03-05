@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -102,5 +103,5 @@ func TestNativeGitProvider_Log(t *testing.T) {
 }
 
 func trimNewline(s string) string {
-	return s[:len(s)-1]
+	return strings.TrimRight(s, "\r\n")
 }

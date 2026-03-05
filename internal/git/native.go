@@ -39,7 +39,8 @@ func (g *NativeGitProvider) Commit(ctx context.Context, workDir, message string)
 }
 
 func (g *NativeGitProvider) Diff(ctx context.Context, workDir, base, head string) (string, error) {
-	out, err := g.run(ctx, workDir, "git", "diff", base+"..."+head)
+	// Use two-dot range: changes between base and head (not symmetric difference).
+	out, err := g.run(ctx, workDir, "git", "diff", base+".."+head)
 	if err != nil {
 		return "", err
 	}
@@ -47,7 +48,8 @@ func (g *NativeGitProvider) Diff(ctx context.Context, workDir, base, head string
 }
 
 func (g *NativeGitProvider) DiffWorking(ctx context.Context, workDir string) (string, error) {
-	out, err := g.run(ctx, workDir, "git", "diff")
+	// Use "git diff HEAD" to include both staged and unstaged changes vs last commit.
+	out, err := g.run(ctx, workDir, "git", "diff", "HEAD")
 	if err != nil {
 		return "", err
 	}
@@ -62,11 +64,16 @@ func (g *NativeGitProvider) Push(ctx context.Context, workDir, branchName string
 func (g *NativeGitProvider) RebaseOnto(ctx context.Context, workDir, targetBranch string) (*RebaseResult, error) {
 	_, err := g.run(ctx, workDir, "git", "rebase", targetBranch)
 	if err != nil {
-		// Check for conflicts
-		out, _ := g.run(ctx, workDir, "git", "diff", "--name-only", "--diff-filter=U")
-		conflicts := strings.Split(strings.TrimSpace(out), "\n")
-		if len(conflicts) == 1 && conflicts[0] == "" {
-			conflicts = nil
+		// Check for conflicts using git status --porcelain (reliable across git versions).
+		// Lines with 'U' in either column, or 'AA'/'DD', indicate unmerged paths.
+		statusOut, _ := g.run(ctx, workDir, "git", "status", "--porcelain")
+		var conflicts []string
+		for _, line := range strings.Split(strings.TrimSpace(statusOut), "\n") {
+			if len(line) >= 2 && (line[0] == 'U' || line[1] == 'U' ||
+				(line[0] == 'A' && line[1] == 'A') ||
+				(line[0] == 'D' && line[1] == 'D')) {
+				conflicts = append(conflicts, strings.TrimSpace(line[3:]))
+			}
 		}
 		diffOut, _ := g.run(ctx, workDir, "git", "diff")
 		return &RebaseResult{
