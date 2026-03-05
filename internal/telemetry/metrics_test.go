@@ -93,3 +93,31 @@ func TestMetrics_AllCountersRegistered(t *testing.T) {
 		}
 	}
 }
+
+func TestMetrics_RecordDAGExecution(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	m := NewMetrics(reg)
+
+	m.RecordDAGExecution(5, 2, 3, 45000)
+
+	families, err := reg.Gather()
+	if err != nil {
+		t.Fatalf("gather failed: %v", err)
+	}
+	names := make(map[string]bool)
+	for _, f := range families {
+		names[f.GetName()] = true
+	}
+
+	dagMetrics := []string{
+		"foreman_dag_tasks_completed_total",
+		"foreman_dag_tasks_failed_total",
+		"foreman_dag_tasks_skipped_total",
+		"foreman_dag_execution_duration_seconds",
+	}
+	for _, name := range dagMetrics {
+		if !names[name] {
+			t.Errorf("missing DAG metric: %s", name)
+		}
+	}
+}

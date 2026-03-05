@@ -32,6 +32,11 @@ type Metrics struct {
 	SearchBlockMisses        prometheus.Counter
 	ProviderOutages          *prometheus.CounterVec
 	CrashRecoveries          prometheus.Counter
+
+	DAGTasksCompleted prometheus.Counter
+	DAGTasksFailed    prometheus.Counter
+	DAGTasksSkipped   prometheus.Counter
+	DAGDuration       prometheus.Histogram
 }
 
 // NewMetrics creates and registers all Prometheus metrics with the given registerer.
@@ -131,6 +136,23 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 			Name: "foreman_crash_recoveries_total",
 			Help: "Total crash recoveries",
 		}),
+		DAGTasksCompleted: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "foreman_dag_tasks_completed_total",
+			Help: "Total DAG tasks completed successfully",
+		}),
+		DAGTasksFailed: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "foreman_dag_tasks_failed_total",
+			Help: "Total DAG tasks failed",
+		}),
+		DAGTasksSkipped: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "foreman_dag_tasks_skipped_total",
+			Help: "Total DAG tasks skipped due to dependency failure",
+		}),
+		DAGDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:    "foreman_dag_execution_duration_seconds",
+			Help:    "DAG execution duration in seconds",
+			Buckets: []float64{10, 30, 60, 120, 300, 600, 1200, 3600},
+		}),
 	}
 
 	reg.MustRegister(
@@ -143,6 +165,7 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 		m.ClarificationTimeouts, m.FileReservationConflicts,
 		m.SearchBlockFuzzyMatches, m.SearchBlockMisses,
 		m.ProviderOutages, m.CrashRecoveries,
+		m.DAGTasksCompleted, m.DAGTasksFailed, m.DAGTasksSkipped, m.DAGDuration,
 	)
 
 	return m
@@ -185,4 +208,12 @@ func (m *Metrics) RecordRetry(role string) {
 // RecordRateLimit increments the rate limits counter for the given provider.
 func (m *Metrics) RecordRateLimit(provider string) {
 	m.RateLimitsTotal.WithLabelValues(provider).Inc()
+}
+
+// RecordDAGExecution records the outcome of a DAG execution run.
+func (m *Metrics) RecordDAGExecution(completed, failed, skipped int, durationMs int64) {
+	m.DAGTasksCompleted.Add(float64(completed))
+	m.DAGTasksFailed.Add(float64(failed))
+	m.DAGTasksSkipped.Add(float64(skipped))
+	m.DAGDuration.Observe(float64(durationMs) / float64(time.Second/time.Millisecond))
 }
