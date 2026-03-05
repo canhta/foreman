@@ -5,7 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 
+	"golang.org/x/sync/errgroup"
+
+	"github.com/canhta/foreman/internal/agent/tools"
 	"github.com/canhta/foreman/internal/llm"
 	"github.com/canhta/foreman/internal/models"
 )
@@ -17,33 +22,76 @@ type BuiltinConfig struct {
 }
 
 // BuiltinRunner runs a multi-turn tool-use loop against the LlmProvider.
-// Unlike Claude Code or Copilot, this uses Foreman's own provider interface,
-// making it work across all LLM providers (Anthropic, OpenAI, OpenRouter, local).
+// Tool calls within a single turn execute in parallel via errgroup.
 type BuiltinRunner struct {
-	provider llm.LlmProvider
-	model    string
-	config   BuiltinConfig
+	provider        llm.LlmProvider
+	model           string
+	config          BuiltinConfig
+	registry        *tools.Registry
+	contextProvider ContextProvider // nil-safe
 }
 
-// NewBuiltinRunner creates a builtin runner with multi-turn tool-use capability.
-func NewBuiltinRunner(provider llm.LlmProvider, model string, config BuiltinConfig) *BuiltinRunner {
-	return &BuiltinRunner{provider: provider, model: model, config: config}
+// NewBuiltinRunner creates a builtin runner.
+// registry is required; cp (ContextProvider) may be nil.
+//
+// Two-phase init for SubagentTool:
+//
+//	reg    := tools.NewRegistry(git, cmd, hooks)
+//	runner := NewBuiltinRunner(provider, model, config, reg, cp)
+//	reg.SetRunFn(runner.subagentRunFn)  // inject after construction
+func NewBuiltinRunner(
+	provider llm.LlmProvider,
+	model string,
+	config BuiltinConfig,
+	registry *tools.Registry,
+	cp ContextProvider,
+) *BuiltinRunner {
+	return &BuiltinRunner{
+		provider:        provider,
+		model:           model,
+		config:          config,
+		registry:        registry,
+		contextProvider: cp,
+	}
+}
+
+// subagentRunFn is injected into the registry for SubagentTool.
+func (r *BuiltinRunner) subagentRunFn(ctx context.Context, task, workDir string, toolNames []string, maxTurns int) (string, error) {
+	result, err := r.Run(ctx, AgentRequest{
+		Prompt:       task,
+		WorkDir:      workDir,
+		AllowedTools: toolNames,
+		MaxTurns:     maxTurns,
+		// No ContextProvider for subagents — baseline context only
+	})
+	if err != nil {
+		return "", err
+	}
+	return result.Output, nil
 }
 
 func (r *BuiltinRunner) RunnerName() string { return "builtin" }
 
 func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult, error) {
 	systemPrompt := "You are a focused task executor. Complete the task and return only the result."
+
+	// Layer 1: inject .foreman-context.md if present
+	if fc := loadForemanContext(req.WorkDir); fc != "" {
+		systemPrompt = fc + "\n\n" + systemPrompt
+	}
 	if req.SystemPrompt != "" {
 		systemPrompt = systemPrompt + "\n\n" + req.SystemPrompt
 	}
 
-	// Determine which tools to offer
 	toolNames := req.AllowedTools
 	if len(toolNames) == 0 {
 		toolNames = r.config.DefaultAllowedTools
 	}
-	toolDefs := BuiltinToolDefs(toolNames)
+
+	var toolDefs []models.ToolDef
+	if r.registry != nil {
+		toolDefs = r.registry.Defs(toolNames)
+	}
 
 	maxTurns := req.MaxTurns
 	if maxTurns == 0 {
@@ -53,20 +101,14 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 		maxTurns = 10
 	}
 
-	// Prepare OutputSchema for passing to LlmRequest
 	var outputSchema *json.RawMessage
 	if req.OutputSchema != nil {
 		s := json.RawMessage(req.OutputSchema)
 		outputSchema = &s
 	}
 
-	// Track fallback model — consumed on first overload, then cleared
 	fallbackModel := req.FallbackModel
-
-	messages := []models.Message{
-		{Role: "user", Content: req.Prompt},
-	}
-
+	messages := []models.Message{{Role: "user", Content: req.Prompt}}
 	var usage AgentUsage
 
 	for turn := 0; turn < maxTurns; turn++ {
@@ -82,11 +124,10 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 
 		resp, err := r.provider.Complete(ctx, llmReq)
 		if err != nil {
-			// Try fallback on overload errors
 			var rateLimitErr *llm.RateLimitError
 			if errors.As(err, &rateLimitErr) && fallbackModel != "" {
 				llmReq.Model = fallbackModel
-				fallbackModel = "" // prevent infinite fallback loop
+				fallbackModel = ""
 				resp, err = r.provider.Complete(ctx, llmReq)
 			}
 		}
@@ -99,12 +140,10 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 		usage.DurationMs += int(resp.DurationMs)
 		usage.NumTurns++
 
-		// Done — model returned a final text response
 		if resp.StopReason == models.StopReasonEndTurn || resp.StopReason == models.StopReasonMaxTokens {
 			return AgentResult{Output: resp.Content, Usage: usage}, nil
 		}
 
-		// Tool use — execute each tool call, append results
 		if resp.StopReason == models.StopReasonToolUse && len(resp.ToolCalls) > 0 {
 			messages = append(messages, models.Message{
 				Role:      "assistant",
@@ -112,40 +151,48 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 				ToolCalls: resp.ToolCalls,
 			})
 
-			var toolResults []models.ToolResult
-			for _, tc := range resp.ToolCalls {
-				executor, ok := builtinTools[tc.Name]
-				if !ok {
-					toolResults = append(toolResults, models.ToolResult{
-						ToolCallID: tc.ID,
-						Content:    fmt.Sprintf("unknown tool: %s", tc.Name),
-						IsError:    true,
-					})
-					continue
-				}
-				output, err := executor(req.WorkDir, tc.Input)
-				if err != nil {
-					toolResults = append(toolResults, models.ToolResult{
-						ToolCallID: tc.ID,
-						Content:    err.Error(),
-						IsError:    true,
-					})
-					continue
-				}
-				toolResults = append(toolResults, models.ToolResult{
-					ToolCallID: tc.ID,
-					Content:    output,
+			// Execute all tool calls in parallel (mirrors SDK betatoolrunner.go)
+			results := make([]models.ToolResult, len(resp.ToolCalls))
+			g, gctx := errgroup.WithContext(ctx)
+			for i, tc := range resp.ToolCalls {
+				i, tc := i, tc
+				g.Go(func() error {
+					var out string
+					var err error
+					if r.registry != nil {
+						out, err = r.registry.Execute(gctx, req.WorkDir, tc.Name, tc.Input)
+					} else {
+						err = fmt.Errorf("unknown tool: %s", tc.Name)
+					}
+					if err != nil {
+						results[i] = models.ToolResult{ToolCallID: tc.ID, Content: err.Error(), IsError: true}
+					} else {
+						results[i] = models.ToolResult{ToolCallID: tc.ID, Content: out}
+					}
+					return nil // tool errors become result content, not Go errors
 				})
 			}
+			g.Wait()
 
-			messages = append(messages, models.Message{
-				Role:        "user",
-				ToolResults: toolResults,
-			})
+			// Collect all touched paths (after parallel completion — no data race)
+			var touchedPaths []string
+			for _, tc := range resp.ToolCalls {
+				if path := extractPath(tc.Input); path != "" {
+					touchedPaths = append(touchedPaths, path)
+				}
+			}
+
+			messages = append(messages, models.Message{Role: "user", ToolResults: results})
+
+			// Layer 2: reactive context injection (once per turn, after all tools complete)
+			if r.contextProvider != nil && len(touchedPaths) > 0 {
+				if inject, err := r.contextProvider.OnFilesAccessed(ctx, touchedPaths); err == nil && inject != "" {
+					messages = append(messages, models.Message{Role: "user", Content: "[context update]\n" + inject})
+				}
+			}
 			continue
 		}
 
-		// Unexpected stop reason — return what we have
 		return AgentResult{Output: resp.Content, Usage: usage}, nil
 	}
 
@@ -153,7 +200,33 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 }
 
 func (r *BuiltinRunner) HealthCheck(ctx context.Context) error {
+	if r.provider == nil {
+		return nil
+	}
 	return r.provider.HealthCheck(ctx)
 }
 
 func (r *BuiltinRunner) Close() error { return nil }
+
+// loadForemanContext reads .foreman-context.md from workDir or a parent .foreman/ directory.
+func loadForemanContext(workDir string) string {
+	candidates := []string{
+		filepath.Join(workDir, ".foreman", "context.md"),
+		filepath.Join(workDir, ".foreman-context.md"),
+	}
+	for _, path := range candidates {
+		if content, err := os.ReadFile(path); err == nil {
+			return string(content)
+		}
+	}
+	return ""
+}
+
+// extractPath reads the "path" field from tool input JSON.
+func extractPath(input json.RawMessage) string {
+	var v struct {
+		Path string `json:"path"`
+	}
+	json.Unmarshal(input, &v)
+	return v.Path
+}

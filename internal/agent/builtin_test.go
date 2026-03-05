@@ -37,7 +37,7 @@ type mockToolUseLLM struct {
 
 func (m *mockToolUseLLM) Complete(_ context.Context, req models.LlmRequest) (*models.LlmResponse, error) {
 	m.calls++
-	if m.calls == 1 && len(req.Tools) > 0 {
+	if m.calls == 1 {
 		return &models.LlmResponse{
 			StopReason:   models.StopReasonToolUse,
 			TokensInput:  500,
@@ -83,6 +83,7 @@ func TestBuiltinRunner_SingleShot(t *testing.T) {
 		&mockSingleShotLLM{response: "simple answer"},
 		"test-model",
 		BuiltinConfig{MaxTurnsDefault: 10},
+		nil, nil,
 	)
 
 	result, err := runner.Run(context.Background(), AgentRequest{
@@ -108,7 +109,7 @@ func TestBuiltinRunner_MultiTurnToolUse(t *testing.T) {
 	runner := NewBuiltinRunner(mockLLM, "test-model", BuiltinConfig{
 		MaxTurnsDefault:     10,
 		DefaultAllowedTools: []string{"Read", "Glob", "Grep"},
-	})
+	}, nil, nil)
 
 	result, err := runner.Run(context.Background(), AgentRequest{
 		Prompt:  "What is in main.go?",
@@ -138,7 +139,7 @@ func TestBuiltinRunner_MaxTurnsExceeded(t *testing.T) {
 	runner := NewBuiltinRunner(&alwaysToolUseLLM{}, "test-model", BuiltinConfig{
 		MaxTurnsDefault:     3,
 		DefaultAllowedTools: []string{"Read"},
-	})
+	}, nil, nil)
 
 	_, err := runner.Run(context.Background(), AgentRequest{
 		Prompt:  "Read everything",
@@ -155,7 +156,7 @@ func TestBuiltinRunner_UnknownTool(t *testing.T) {
 	runner := NewBuiltinRunner(unknownToolLLM, "test-model", BuiltinConfig{
 		MaxTurnsDefault:     10,
 		DefaultAllowedTools: []string{"Read"},
-	})
+	}, nil, nil)
 
 	result, err := runner.Run(context.Background(), AgentRequest{
 		Prompt:  "Do something",
@@ -194,21 +195,21 @@ func (m *mockToolUseLLMWithUnknown) ProviderName() string                { retur
 func (m *mockToolUseLLMWithUnknown) HealthCheck(_ context.Context) error { return nil }
 
 func TestBuiltinRunner_RunnerName(t *testing.T) {
-	runner := NewBuiltinRunner(nil, "", BuiltinConfig{})
+	runner := NewBuiltinRunner(nil, "", BuiltinConfig{}, nil, nil)
 	if runner.RunnerName() != "builtin" {
 		t.Fatalf("expected 'builtin', got %q", runner.RunnerName())
 	}
 }
 
 func TestBuiltinRunner_Close(t *testing.T) {
-	runner := NewBuiltinRunner(nil, "", BuiltinConfig{})
+	runner := NewBuiltinRunner(nil, "", BuiltinConfig{}, nil, nil)
 	if err := runner.Close(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
 func TestBuiltinRunner_HealthCheck(t *testing.T) {
-	runner := NewBuiltinRunner(&mockSingleShotLLM{response: "ok"}, "test-model", BuiltinConfig{})
+	runner := NewBuiltinRunner(&mockSingleShotLLM{response: "ok"}, "test-model", BuiltinConfig{}, nil, nil)
 	if err := runner.HealthCheck(context.Background()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -216,7 +217,7 @@ func TestBuiltinRunner_HealthCheck(t *testing.T) {
 
 func TestBuiltinRunner_Fallback(t *testing.T) {
 	fallbackLLM := &mockFallbackLLM{}
-	runner := NewBuiltinRunner(fallbackLLM, "primary-model", BuiltinConfig{MaxTurnsDefault: 5})
+	runner := NewBuiltinRunner(fallbackLLM, "primary-model", BuiltinConfig{MaxTurnsDefault: 5}, nil, nil)
 
 	result, err := runner.Run(context.Background(), AgentRequest{
 		Prompt:        "Do something",

@@ -3,6 +3,7 @@ package agent
 import (
 	"fmt"
 
+	"github.com/canhta/foreman/internal/agent/tools"
 	"github.com/canhta/foreman/internal/llm"
 	"github.com/canhta/foreman/internal/models"
 	"github.com/canhta/foreman/internal/runner"
@@ -18,10 +19,13 @@ func NewAgentRunner(
 ) (AgentRunner, error) {
 	switch cfg.Provider {
 	case "builtin", "":
-		return NewBuiltinRunner(llmProvider, agentModel, BuiltinConfig{
+		reg := tools.NewRegistry(nil, cmdRunner, tools.ToolHooks{})
+		builtinRunner := NewBuiltinRunner(llmProvider, agentModel, BuiltinConfig{
 			MaxTurnsDefault:     cfg.MaxTurnsDefault,
 			DefaultAllowedTools: cfg.Builtin.DefaultAllowedTools,
-		}), nil
+		}, reg, nil)
+		reg.SetRunFn(builtinRunner.subagentRunFn)
+		return builtinRunner, nil
 
 	case "claudecode":
 		c := cfg.ClaudeCode
