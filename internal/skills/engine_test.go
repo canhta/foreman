@@ -33,6 +33,15 @@ func (m *mockRunner) Run(_ context.Context, _, _ string, _ []string, _ int) (*ru
 }
 func (m *mockRunner) CommandExists(_ context.Context, _ string) bool { return true }
 
+type mockSmartRunner struct {
+	fn func() (*runner.CommandOutput, error)
+}
+
+func (m *mockSmartRunner) Run(_ context.Context, _, _ string, _ []string, _ int) (*runner.CommandOutput, error) {
+	return m.fn()
+}
+func (m *mockSmartRunner) CommandExists(_ context.Context, _ string) bool { return true }
+
 func TestEngine_ExecuteRunCommand(t *testing.T) {
 	workDir := t.TempDir()
 	engine := NewEngine(&mockLLMProvider{}, &mockRunner{stdout: "hello", exitCode: 0}, workDir, "main")
@@ -121,7 +130,19 @@ func TestEngine_ExecuteLLMCall(t *testing.T) {
 
 func TestEngine_AllowFailure(t *testing.T) {
 	workDir := t.TempDir()
-	engine := NewEngine(&mockLLMProvider{}, &mockRunner{exitCode: 1, stdout: "error"}, workDir, "main")
+
+	// First call fails, subsequent calls succeed
+	callCount := 0
+	smartRunner := &mockSmartRunner{
+		fn: func() (*runner.CommandOutput, error) {
+			callCount++
+			if callCount == 1 {
+				return &runner.CommandOutput{Stdout: "error", ExitCode: 1}, nil
+			}
+			return &runner.CommandOutput{Stdout: "ok", ExitCode: 0}, nil
+		},
+	}
+	engine := NewEngine(&mockLLMProvider{}, smartRunner, workDir, "main")
 
 	skill := &Skill{
 		ID:      "failing-skill",
@@ -135,7 +156,6 @@ func TestEngine_AllowFailure(t *testing.T) {
 	sCtx := NewSkillContext()
 	err := engine.Execute(context.Background(), skill, sCtx)
 	require.NoError(t, err)
-	// First step failed but allowed, second step ran
 	assert.NotEmpty(t, sCtx.Steps["may-fail"].Error)
 	assert.NotNil(t, sCtx.Steps["after"])
 }
