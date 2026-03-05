@@ -2,19 +2,27 @@
 package pipeline
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/flosch/pongo2/v6"
 )
+
+// CompletedTask represents a task that has been completed, used in final review prompts.
+type CompletedTask struct {
+	Title  string
+	Status string
+}
 
 // PromptContext holds all variables available to prompt templates.
 type PromptContext struct {
 	// Ticket-level
 	TicketTitle        string
 	TicketDescription  string
-	AcceptanceCriteria string
+	AcceptanceCriteria []string
 	FileTree           string
 	ProjectContext     string
 	FullDiff           string
@@ -35,10 +43,7 @@ type PromptContext struct {
 	TestFailure           string
 
 	// Final review
-	CompletedTasks []struct {
-		Title  string
-		Status string
-	}
+	CompletedTasks []CompletedTask
 
 	// Config
 	MaxTasks int
@@ -49,14 +54,15 @@ type PromptContext struct {
 // It can be overridden in tests.
 var promptsDir = ""
 
+var (
+	resolvedPromptsDir string
+	promptsDirOnce     sync.Once
+)
+
 // resolvePromptsDir returns the prompts directory path.
 // If promptsDir is explicitly set (non-empty), it is used directly.
 // Otherwise, it walks up from cwd to find the project root (go.mod).
 func resolvePromptsDir() (string, error) {
-	if promptsDir != "" {
-		return promptsDir, nil
-	}
-
 	// Walk up from cwd to find go.mod (project root)
 	dir, err := os.Getwd()
 	if err != nil {
@@ -76,16 +82,32 @@ func resolvePromptsDir() (string, error) {
 	}
 }
 
+// getPromptsDir returns the resolved prompts directory, using sync.Once to cache
+// the result of the filesystem walk (unless promptsDir is explicitly set).
+func getPromptsDir() (string, error) {
+	if promptsDir != "" {
+		return promptsDir, nil
+	}
+	var resolveErr error
+	promptsDirOnce.Do(func() {
+		resolvedPromptsDir, resolveErr = resolvePromptsDir()
+	})
+	if resolveErr != nil {
+		return "", resolveErr
+	}
+	return resolvedPromptsDir, nil
+}
+
 // RenderPrompt renders a named prompt template with the given context.
 // templateName should be the filename without the ".md.j2" extension.
 func RenderPrompt(templateName string, ctx PromptContext) (string, error) {
-	dir, err := resolvePromptsDir()
+	dir, err := getPromptsDir()
 	if err != nil {
 		return "", fmt.Errorf("resolve prompts dir: %w", err)
 	}
 
 	path := filepath.Join(dir, templateName+".md.j2")
-	if _, err := os.Stat(path); os.IsNotExist(err) {
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
 		return "", fmt.Errorf("prompt template not found: %s", path)
 	}
 

@@ -36,7 +36,10 @@ tasks:
 **Description:** {{ ticket_description }}
 
 {% if acceptance_criteria %}
-**Acceptance Criteria:** {{ acceptance_criteria }}
+**Acceptance Criteria:**
+{% for ac in acceptance_criteria %}
+- {{ ac }}
+{% endfor %}
 {% endif %}
 
 ## Repository
