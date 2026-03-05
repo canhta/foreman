@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/canhta/foreman/internal/models"
 )
 
 func TestAnthropicProvider_Complete(t *testing.T) {
@@ -40,7 +42,7 @@ func TestAnthropicProvider_Complete(t *testing.T) {
 	defer server.Close()
 
 	provider := NewAnthropicProvider("test-key", server.URL)
-	resp, err := provider.Complete(context.Background(), LlmRequest{
+	resp, err := provider.Complete(context.Background(), models.LlmRequest{
 		Model:        "claude-sonnet-4-5-20250929",
 		SystemPrompt: "You are helpful.",
 		UserPrompt:   "Say hello",

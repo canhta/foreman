@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/canhta/foreman/internal/models"
 )
 
 type AnthropicProvider struct {
@@ -69,7 +71,7 @@ type anthropicError struct {
 	} `json:"error"`
 }
 
-func (p *AnthropicProvider) Complete(ctx context.Context, req LlmRequest) (*LlmResponse, error) {
+func (p *AnthropicProvider) Complete(ctx context.Context, req models.LlmRequest) (*models.LlmResponse, error) {
 	body := anthropicRequest{
 		Model:       req.Model,
 		MaxTokens:   req.MaxTokens,
@@ -136,18 +138,18 @@ func (p *AnthropicProvider) Complete(ctx context.Context, req LlmRequest) (*LlmR
 		}
 	}
 
-	return &LlmResponse{
+	return &models.LlmResponse{
 		Content:      content,
 		TokensInput:  resp.Usage.InputTokens,
 		TokensOutput: resp.Usage.OutputTokens,
 		Model:        resp.Model,
 		DurationMs:   durationMs,
-		StopReason:   resp.StopReason,
+		StopReason:   models.StopReason(resp.StopReason),
 	}, nil
 }
 
 func (p *AnthropicProvider) HealthCheck(ctx context.Context) error {
-	_, err := p.Complete(ctx, LlmRequest{
+	_, err := p.Complete(ctx, models.LlmRequest{
 		Model:      "claude-haiku-4-5-20251001",
 		UserPrompt: "ping",
 		MaxTokens:  5,

@@ -17,6 +17,11 @@ type LLMProvider interface {
 	HealthCheck(ctx context.Context) error
 }
 
+const (
+	plannerMaxTokens   = 4096
+	plannerTemperature = 0.2
+)
+
 // Planner decomposes a ticket into implementation tasks via LLM.
 type Planner struct {
 	llm    LLMProvider
@@ -40,8 +45,8 @@ func (p *Planner) Plan(ctx context.Context, workDir string, ticket *models.Ticke
 	resp, err := p.llm.Complete(ctx, models.LlmRequest{
 		SystemPrompt: assembled.SystemPrompt,
 		UserPrompt:   assembled.UserPrompt,
-		MaxTokens:    4096,
-		Temperature:  0.2,
+		MaxTokens:    plannerMaxTokens,
+		Temperature:  plannerTemperature,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("planner LLM call: %w", err)

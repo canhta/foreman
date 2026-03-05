@@ -1,31 +1,17 @@
 package llm
 
-import "context"
+import (
+	"context"
+
+	"github.com/canhta/foreman/internal/models"
+)
 
 // LlmProvider is implemented by each LLM backend (Anthropic, OpenAI, etc.)
 // Every call is stateless — no conversation memory.
 type LlmProvider interface {
-	Complete(ctx context.Context, req LlmRequest) (*LlmResponse, error)
+	Complete(ctx context.Context, req models.LlmRequest) (*models.LlmResponse, error)
 	ProviderName() string
 	HealthCheck(ctx context.Context) error
-}
-
-type LlmRequest struct {
-	Model         string   `json:"model"`
-	SystemPrompt  string   `json:"system_prompt"`
-	UserPrompt    string   `json:"user_prompt"`
-	MaxTokens     int      `json:"max_tokens"`
-	Temperature   float64  `json:"temperature"`
-	StopSequences []string `json:"stop_sequences,omitempty"`
-}
-
-type LlmResponse struct {
-	Content      string `json:"content"`
-	TokensInput  int    `json:"tokens_input"`
-	TokensOutput int    `json:"tokens_output"`
-	Model        string `json:"model"`
-	DurationMs   int64  `json:"duration_ms"`
-	StopReason   string `json:"stop_reason"`
 }
 
 // Error types for structured error handling.
