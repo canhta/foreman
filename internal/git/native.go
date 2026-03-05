@@ -3,7 +3,9 @@ package git
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -47,6 +49,8 @@ func (g *NativeGitProvider) Diff(ctx context.Context, workDir, base, head string
 	return out, nil
 }
 
+// DiffWorking returns the diff of the working tree against HEAD.
+// Precondition: the repository must have at least one commit (HEAD must be valid).
 func (g *NativeGitProvider) DiffWorking(ctx context.Context, workDir string) (string, error) {
 	// Use "git diff HEAD" to include both staged and unstaged changes vs last commit.
 	out, err := g.run(ctx, workDir, "git", "diff", "HEAD")
@@ -96,7 +100,12 @@ func (g *NativeGitProvider) FileTree(ctx context.Context, workDir string) ([]Fil
 		if f == "" {
 			continue
 		}
-		entries = append(entries, FileEntry{Path: f})
+		entry := FileEntry{Path: f}
+		if info, statErr := os.Stat(filepath.Join(workDir, f)); statErr == nil {
+			entry.IsDir = info.IsDir()
+			entry.SizeBytes = info.Size()
+		}
+		entries = append(entries, entry)
 	}
 	return entries, nil
 }
@@ -119,7 +128,10 @@ func (g *NativeGitProvider) Log(ctx context.Context, workDir string, count int) 
 		if len(parts) < 4 {
 			continue
 		}
-		date, _ := time.Parse(time.RFC3339, parts[3])
+		date, err := time.Parse(time.RFC3339, parts[3])
+		if err != nil {
+			return nil, fmt.Errorf("log: parse date %q: %w", parts[3], err)
+		}
 		entries = append(entries, CommitEntry{
 			SHA:     parts[0],
 			Message: parts[1],
