@@ -45,6 +45,12 @@ FAIL	example.com/pkg	0.003s`
 	if result.Failures[0].Message == "" {
 		t.Error("expected non-empty failure message")
 	}
+	if result.Failures[0].File == "" {
+		t.Error("expected non-empty failure file")
+	}
+	if result.Failures[0].Line == 0 {
+		t.Error("expected non-zero failure line number")
+	}
 }
 
 func TestParseLintOutput_Clean(t *testing.T) {
