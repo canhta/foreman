@@ -31,6 +31,10 @@ type SkillStep struct {
 	Path           string            `yaml:"path,omitempty"`
 	Content        string            `yaml:"content,omitempty"`
 	Mode           string            `yaml:"mode,omitempty"`
+	AllowedTools   []string          `yaml:"allowed_tools,omitempty"`
+	MaxTurns       int               `yaml:"max_turns,omitempty"`
+	OutputKey      string            `yaml:"output_key,omitempty"`
+	TimeoutSecs    int               `yaml:"timeout_secs,omitempty"`
 }
 
 // StepResult holds the output of an executed skill step.
@@ -52,6 +56,7 @@ var validStepTypes = map[string]bool{
 	"run_command": true,
 	"file_write":  true,
 	"git_diff":    true,
+	"agentsdk":    true,
 }
 
 // LoadSkill loads and validates a single skill file.

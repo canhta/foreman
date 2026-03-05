@@ -1,17 +1,23 @@
 id: security-scan
-description: "Run a security-focused LLM review after lint"
+description: Review code changes for security vulnerabilities
 trigger: post_lint
 steps:
-  - id: scan
-    type: llm_call
-    prompt_template: |
-      Review this diff for security vulnerabilities:
-      - SQL injection, XSS, command injection
-      - Hardcoded secrets or credentials
-      - Insecure deserialization
-      - Path traversal
-      Respond with APPROVED or ISSUES: followed by findings.
-    model: "{{ .Models.QualityReviewer }}"
-    context:
-      diff: "{{ .Diff }}"
-      file_tree: "{{ .FileTree }}"
+  - id: audit
+    type: agentsdk
+    content: |
+      Review the code in the current working directory for security issues.
+      Focus on: injection vulnerabilities, hardcoded secrets, insecure defaults,
+      and OWASP Top 10 issues.
+      Return JSON: {"severity": "low|medium|high|critical", "findings": [...]}
+    allowed_tools:
+      - Read
+      - Glob
+      - Grep
+    max_turns: 6
+    output_key: result
+
+  - id: write-report
+    type: file_write
+    path: .foreman/security-report.json
+    content: "{{ .Steps.audit.result }}"
+    mode: overwrite

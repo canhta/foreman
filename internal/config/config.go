@@ -105,6 +105,21 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("runner.mode", "local")
 	v.SetDefault("runner.local.allowed_commands", []string{"npm", "yarn", "pnpm", "cargo", "go", "pytest", "make", "bun"})
 
+	// Skills agent runner defaults
+	v.SetDefault("skills.agent_runner.provider", "builtin")
+	v.SetDefault("skills.agent_runner.max_cost_per_ticket_usd", 2.0)
+	v.SetDefault("skills.agent_runner.max_turns_default", 10)
+	v.SetDefault("skills.agent_runner.timeout_secs_default", 120)
+	v.SetDefault("skills.agent_runner.builtin.default_allowed_tools", []string{"Read", "Glob", "Grep"})
+	v.SetDefault("skills.agent_runner.claudecode.bin", "claude")
+	v.SetDefault("skills.agent_runner.claudecode.default_allowed_tools", []string{"Read", "Edit", "Glob", "Grep", "Bash"})
+	v.SetDefault("skills.agent_runner.claudecode.max_turns_default", 10)
+	v.SetDefault("skills.agent_runner.claudecode.timeout_secs_default", 180)
+	v.SetDefault("skills.agent_runner.copilot.cli_path", "copilot")
+	v.SetDefault("skills.agent_runner.copilot.model", "gpt-4o")
+	v.SetDefault("skills.agent_runner.copilot.default_allowed_tools", []string{"Read", "Edit", "Glob", "Grep", "Bash"})
+	v.SetDefault("skills.agent_runner.copilot.timeout_secs_default", 180)
+
 	v.SetDefault("database.driver", "sqlite")
 	v.SetDefault("database.sqlite.path", "~/.foreman/foreman.db")
 	v.SetDefault("database.sqlite.busy_timeout_ms", 5000)
@@ -118,6 +133,7 @@ func expandEnvVars(cfg *models.Config) {
 	cfg.LLM.OpenRouter.APIKey = expandEnv(cfg.LLM.OpenRouter.APIKey)
 	cfg.Dashboard.AuthToken = expandEnv(cfg.Dashboard.AuthToken)
 	cfg.Database.Postgres.URL = expandEnv(cfg.Database.Postgres.URL)
+	cfg.Skills.AgentRunner.Copilot.GitHubToken = expandEnv(cfg.Skills.AgentRunner.Copilot.GitHubToken)
 }
 
 func expandEnv(s string) string {

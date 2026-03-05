@@ -3,10 +3,12 @@ package skills
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/canhta/foreman/internal/agent"
 	"github.com/canhta/foreman/internal/models"
 	"github.com/canhta/foreman/internal/runner"
 	"github.com/stretchr/testify/assert"
@@ -179,4 +181,97 @@ func TestEngine_StepFailureStopsExecution(t *testing.T) {
 	assert.Contains(t, err.Error(), "must-pass")
 	// Second step should not have run
 	assert.Nil(t, sCtx.Steps["never-runs"])
+}
+
+// --- agentsdk step type tests ---
+
+type mockAgentRunner struct {
+	output string
+	err    error
+}
+
+func (m *mockAgentRunner) Run(_ context.Context, req agent.AgentRequest) (agent.AgentResult, error) {
+	if m.err != nil {
+		return agent.AgentResult{}, m.err
+	}
+	return agent.AgentResult{
+		Output: m.output,
+		Usage: agent.AgentUsage{
+			InputTokens:  1000,
+			OutputTokens: 500,
+			NumTurns:     3,
+		},
+	}, nil
+}
+func (m *mockAgentRunner) HealthCheck(_ context.Context) error { return nil }
+func (m *mockAgentRunner) RunnerName() string                  { return "mock" }
+func (m *mockAgentRunner) Close() error                        { return nil }
+
+func TestEngine_ExecuteAgentSDK(t *testing.T) {
+	workDir := t.TempDir()
+	engine := NewEngine(&mockLLMProvider{}, &mockRunner{}, workDir, "main")
+	engine.SetAgentRunner(&mockAgentRunner{output: `{"severity":"low","findings":[]}`})
+
+	skill := &Skill{
+		ID:      "security-scan",
+		Trigger: "post_lint",
+		Steps: []SkillStep{
+			{
+				ID:           "audit",
+				Type:         "agentsdk",
+				Content:      "Review this diff for security issues",
+				AllowedTools: []string{"Read"},
+				MaxTurns:     6,
+				OutputKey:    "result",
+			},
+		},
+	}
+
+	sCtx := NewSkillContext()
+	err := engine.Execute(context.Background(), skill, sCtx)
+	require.NoError(t, err)
+
+	result, ok := sCtx.Steps["audit"]
+	require.True(t, ok, "expected step result for 'audit'")
+	assert.Equal(t, `{"severity":"low","findings":[]}`, result.Output)
+}
+
+func TestEngine_ExecuteAgentSDK_NoRunner(t *testing.T) {
+	workDir := t.TempDir()
+	engine := NewEngine(&mockLLMProvider{}, &mockRunner{}, workDir, "main")
+	// No agent runner set
+
+	skill := &Skill{
+		ID:      "test",
+		Trigger: "post_lint",
+		Steps: []SkillStep{
+			{ID: "run", Type: "agentsdk", Content: "do something"},
+		},
+	}
+
+	sCtx := NewSkillContext()
+	err := engine.Execute(context.Background(), skill, sCtx)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "no agent runner configured")
+}
+
+func TestEngine_ExecuteAgentSDK_AllowFailure(t *testing.T) {
+	workDir := t.TempDir()
+	engine := NewEngine(&mockLLMProvider{}, &mockRunner{}, workDir, "main")
+	engine.SetAgentRunner(&mockAgentRunner{err: fmt.Errorf("agent failed")})
+
+	skill := &Skill{
+		ID:      "test",
+		Trigger: "post_lint",
+		Steps: []SkillStep{
+			{ID: "agent", Type: "agentsdk", Content: "do something", AllowFailure: true},
+			{ID: "after", Type: "llm_call", Model: "test"},
+		},
+	}
+
+	sCtx := NewSkillContext()
+	err := engine.Execute(context.Background(), skill, sCtx)
+	require.NoError(t, err)
+	assert.NotEmpty(t, sCtx.Steps["agent"].Error)
+	assert.NotNil(t, sCtx.Steps["after"])
 }

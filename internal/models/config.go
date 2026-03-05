@@ -14,6 +14,7 @@ type Config struct {
 	Runner    RunnerConfig    `mapstructure:"runner"`
 	Database  DatabaseConfig  `mapstructure:"database"`
 	Pipeline  PipelineConfig  `mapstructure:"pipeline"`
+	Skills    SkillsConfig    `mapstructure:"skills"`
 }
 
 type DaemonConfig struct {
@@ -169,4 +170,39 @@ type HooksConfig struct {
 	PostLint []string `mapstructure:"post_lint"`
 	PrePR    []string `mapstructure:"pre_pr"`
 	PostPR   []string `mapstructure:"post_pr"`
+}
+
+type SkillsConfig struct {
+	AgentRunner AgentRunnerConfig `mapstructure:"agent_runner"`
+}
+
+type AgentRunnerConfig struct {
+	Provider            string                 `mapstructure:"provider"`
+	MaxCostPerTicketUSD float64                `mapstructure:"max_cost_per_ticket_usd"`
+	MaxTurnsDefault     int                    `mapstructure:"max_turns_default"`
+	TimeoutSecsDefault  int                    `mapstructure:"timeout_secs_default"`
+	Builtin             BuiltinRunnerConfig    `mapstructure:"builtin"`
+	ClaudeCode          ClaudeCodeRunnerConfig `mapstructure:"claudecode"`
+	Copilot             CopilotRunnerConfig    `mapstructure:"copilot"`
+}
+
+type BuiltinRunnerConfig struct {
+	DefaultAllowedTools []string `mapstructure:"default_allowed_tools"`
+}
+
+type ClaudeCodeRunnerConfig struct {
+	Bin                 string   `mapstructure:"bin"`
+	DefaultAllowedTools []string `mapstructure:"default_allowed_tools"`
+	MaxTurnsDefault     int      `mapstructure:"max_turns_default"`
+	TimeoutSecsDefault  int      `mapstructure:"timeout_secs_default"`
+	MaxBudgetUSD        float64  `mapstructure:"max_budget_usd"`
+	Model               string   `mapstructure:"model"`
+}
+
+type CopilotRunnerConfig struct {
+	CLIPath             string   `mapstructure:"cli_path"`
+	GitHubToken         string   `mapstructure:"github_token"`
+	Model               string   `mapstructure:"model"`
+	DefaultAllowedTools []string `mapstructure:"default_allowed_tools"`
+	TimeoutSecsDefault  int      `mapstructure:"timeout_secs_default"`
 }
