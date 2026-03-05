@@ -72,6 +72,12 @@ provider = "github"  # github, jira, linear, local_file
 
 For local runs, use `foreman.toml`. For Docker Compose in this repo, `foreman.example.toml` is mounted as `/app/foreman.toml` by default.
 
+## Project Context for the Agent
+
+Foreman injects project context into every agent call automatically. Add an `AGENTS.md` at the repo root with conventions, architecture notes, and coding standards. Foreman will pre-assemble it into the system prompt for all agent runner implementations (builtin, Claude Code, Copilot).
+
+For Foreman-specific cached context (generated automatically), `.foreman/context.md` is used as a fallback.
+
 ## Tech Stack
 
 ### Core
