@@ -2251,3 +2251,522 @@ The `internal/dashboard/server.go` file uses `context.Context` in `Shutdown` but
 This is a minor fixup — verify during Task 6 that all imports compile. If the build passes, skip this task.
 
 ---
+
+### Task 16: Complete Dashboard REST API Endpoints
+
+**Files:**
+- Modify: `internal/dashboard/api.go`
+- Modify: `internal/dashboard/api_test.go`
+
+Adds all missing endpoints from spec §13.2 not covered in Task 4.
+
+**Step 1: Write failing tests for missing endpoints**
+
+```go
+// Add to internal/dashboard/api_test.go
+
+func TestAPIGetTicketTasks(t *testing.T) {
+	db := &mockDashboardDB{}
+	api := NewAPI(db, nil, "1.0.0")
+
+	req := httptest.NewRequest("GET", "/api/tickets/t1/tasks", nil)
+	rec := httptest.NewRecorder()
+	api.handleGetTasks(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestAPIGetCostsWeek(t *testing.T) {
+	db := &mockDashboardDB{}
+	api := NewAPI(db, nil, "1.0.0")
+
+	req := httptest.NewRequest("GET", "/api/costs/week", nil)
+	rec := httptest.NewRecorder()
+	api.handleCostsWeek(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestAPIGetActivePipelines(t *testing.T) {
+	db := &mockDashboardDB{
+		tickets: []models.Ticket{
+			{ID: "t1", Title: "Active", Status: models.TicketStatusImplementing},
+		},
+	}
+	api := NewAPI(db, nil, "1.0.0")
+
+	req := httptest.NewRequest("GET", "/api/pipeline/active", nil)
+	rec := httptest.NewRecorder()
+	api.handleActivePipelines(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+}
+```
+
+Update `mockDashboardDB` to implement the additional interface methods:
+
+```go
+func (m *mockDashboardDB) ListTasks(_ context.Context, ticketID string) ([]models.Task, error) {
+	return nil, nil
+}
+func (m *mockDashboardDB) ListLlmCalls(_ context.Context, ticketID string) ([]models.LlmCallRecord, error) {
+	return nil, nil
+}
+func (m *mockDashboardDB) GetMonthlyCost(_ context.Context, yearMonth string) (float64, error) {
+	return 250.0, nil
+}
+```
+
+**Step 2: Run test to verify it fails**
+
+Run: `go test ./internal/dashboard/ -run "TestAPIGetTicketTasks|TestAPIGetCostsWeek|TestAPIGetActivePipelines" -v`
+Expected: FAIL — methods not defined
+
+**Step 3: Add missing handlers to api.go**
+
+Extend `DashboardDB` interface:
+
+```go
+type DashboardDB interface {
+	AuthValidator
+	ListTickets(ctx context.Context, filter models.TicketFilter) ([]models.Ticket, error)
+	GetTicket(ctx context.Context, id string) (*models.Ticket, error)
+	GetEvents(ctx context.Context, ticketID string, limit int) ([]models.EventRecord, error)
+	GetDailyCost(ctx context.Context, date string) (float64, error)
+	GetTicketCost(ctx context.Context, ticketID string) (float64, error)
+	// New methods:
+	ListTasks(ctx context.Context, ticketID string) ([]models.Task, error)
+	ListLlmCalls(ctx context.Context, ticketID string) ([]models.LlmCallRecord, error)
+	GetMonthlyCost(ctx context.Context, yearMonth string) (float64, error)
+}
+```
+
+Add handler methods:
+
+```go
+func (a *API) handleGetTasks(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/tickets/"), "/")
+	if len(parts) < 2 {
+		http.Error(w, "missing ticket id", http.StatusBadRequest)
+		return
+	}
+	tasks, err := a.db.ListTasks(r.Context(), parts[0])
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, tasks)
+}
+
+func (a *API) handleGetLlmCalls(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/tickets/"), "/")
+	if len(parts) < 2 {
+		http.Error(w, "missing ticket id", http.StatusBadRequest)
+		return
+	}
+	calls, err := a.db.ListLlmCalls(r.Context(), parts[0])
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, calls)
+}
+
+func (a *API) handleActivePipelines(w http.ResponseWriter, r *http.Request) {
+	active := []models.TicketStatus{
+		models.TicketStatusPlanning, models.TicketStatusImplementing,
+		models.TicketStatusReviewing, models.TicketStatusPlanValidating,
+	}
+	tickets, err := a.db.ListTickets(r.Context(), models.TicketFilter{StatusIn: active})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, tickets)
+}
+
+func (a *API) handleCostsWeek(w http.ResponseWriter, r *http.Request) {
+	var costs []map[string]interface{}
+	for i := 6; i >= 0; i-- {
+		date := time.Now().AddDate(0, 0, -i).Format("2006-01-02")
+		cost, _ := a.db.GetDailyCost(r.Context(), date)
+		costs = append(costs, map[string]interface{}{"date": date, "cost_usd": cost})
+	}
+	writeJSON(w, http.StatusOK, costs)
+}
+
+func (a *API) handleCostsMonth(w http.ResponseWriter, r *http.Request) {
+	yearMonth := time.Now().Format("2006-01")
+	cost, err := a.db.GetMonthlyCost(r.Context(), yearMonth)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"month": yearMonth, "cost_usd": cost})
+}
+
+func (a *API) handleCostsBudgets(w http.ResponseWriter, r *http.Request) {
+	// Returns budget status — requires config injection (add to API struct if needed)
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"note": "Budget status requires config — wire during integration",
+	})
+}
+
+func (a *API) handleRetryTicket(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	id := extractPathParam(r.URL.Path, "/api/tickets/")
+	id = strings.TrimSuffix(id, "/retry")
+	// Reset ticket status to queued for re-processing
+	// Actual implementation requires db.UpdateTicketStatus
+	writeJSON(w, http.StatusOK, map[string]interface{}{"id": id, "action": "retry_queued"})
+}
+
+func (a *API) handleDaemonPause(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	// Signal daemon to pause — requires daemon reference (wire during integration)
+	writeJSON(w, http.StatusOK, map[string]interface{}{"status": "paused"})
+}
+
+func (a *API) handleDaemonResume(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"status": "resumed"})
+}
+```
+
+Also register routes in `server.go`:
+
+```go
+mux.Handle("/api/pipeline/active", auth(http.HandlerFunc(api.handleActivePipelines)))
+mux.Handle("/api/costs/week", auth(http.HandlerFunc(api.handleCostsWeek)))
+mux.Handle("/api/costs/month", auth(http.HandlerFunc(api.handleCostsMonth)))
+mux.Handle("/api/costs/budgets", auth(http.HandlerFunc(api.handleCostsBudgets)))
+mux.Handle("/api/daemon/pause", auth(http.HandlerFunc(api.handleDaemonPause)))
+mux.Handle("/api/daemon/resume", auth(http.HandlerFunc(api.handleDaemonResume)))
+```
+
+And update the ticket sub-route handler to dispatch tasks, events, llm-calls, retry, cancel:
+
+```go
+mux.Handle("/api/tickets/", auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	path := r.URL.Path
+	switch {
+	case strings.HasSuffix(path, "/tasks"):
+		api.handleGetTasks(w, r)
+	case strings.HasSuffix(path, "/events"):
+		api.handleGetEvents(w, r)
+	case strings.HasSuffix(path, "/llm-calls"):
+		api.handleGetLlmCalls(w, r)
+	case strings.HasSuffix(path, "/retry"):
+		api.handleRetryTicket(w, r)
+	case strings.HasSuffix(path, "/cancel"):
+		api.handleRetryTicket(w, r) // Same pattern, different action
+	default:
+		api.handleGetTicket(w, r)
+	}
+})))
+```
+
+**Step 4: Run tests**
+
+Run: `go test ./internal/dashboard/ -v`
+Expected: PASS
+
+**Step 5: Commit**
+
+```bash
+git add internal/dashboard/api.go internal/dashboard/api_test.go internal/dashboard/server.go
+git commit -m "feat(dashboard): add remaining API endpoints (tasks, llm-calls, costs, pipeline, daemon controls)"
+```
+
+---
+
+### Task 17: Add Missing Prometheus Metrics
+
+**Files:**
+- Modify: `internal/telemetry/metrics.go`
+- Modify: `internal/telemetry/metrics_test.go`
+
+Add the 6 missing counters from spec §18.
+
+**Step 1: Write the failing test**
+
+```go
+// Add to metrics_test.go
+func TestMetrics_AllCountersRegistered(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	m := NewMetrics(reg)
+	_ = m
+
+	families, _ := reg.Gather()
+	names := make(map[string]bool)
+	for _, f := range families {
+		names[f.GetName()] = true
+	}
+
+	required := []string{
+		"foreman_clarification_timeouts_total",
+		"foreman_file_reservation_conflicts_total",
+		"foreman_search_block_fuzzy_matches_total",
+		"foreman_search_block_misses_total",
+		"foreman_provider_outages_total",
+		"foreman_crash_recoveries_total",
+	}
+	for _, name := range required {
+		if !names[name] {
+			t.Errorf("missing metric: %s", name)
+		}
+	}
+}
+```
+
+**Step 2: Run test to verify it fails**
+
+Run: `go test ./internal/telemetry/ -run TestMetrics_AllCountersRegistered -v`
+Expected: FAIL — missing metrics
+
+**Step 3: Add missing counters to Metrics struct and NewMetrics**
+
+```go
+// Add to Metrics struct:
+ClarificationTimeouts     prometheus.Counter
+FileReservationConflicts  prometheus.Counter
+SearchBlockFuzzyMatches   prometheus.Counter
+SearchBlockMisses         prometheus.Counter
+ProviderOutages           *prometheus.CounterVec
+CrashRecoveries           prometheus.Counter
+```
+
+```go
+// Add to NewMetrics():
+ClarificationTimeouts: prometheus.NewCounter(prometheus.CounterOpts{
+	Name: "foreman_clarification_timeouts_total",
+	Help: "Total clarification timeouts",
+}),
+FileReservationConflicts: prometheus.NewCounter(prometheus.CounterOpts{
+	Name: "foreman_file_reservation_conflicts_total",
+	Help: "Total file reservation conflicts",
+}),
+SearchBlockFuzzyMatches: prometheus.NewCounter(prometheus.CounterOpts{
+	Name: "foreman_search_block_fuzzy_matches_total",
+	Help: "Total fuzzy matches in SEARCH blocks",
+}),
+SearchBlockMisses: prometheus.NewCounter(prometheus.CounterOpts{
+	Name: "foreman_search_block_misses_total",
+	Help: "Total SEARCH block misses",
+}),
+ProviderOutages: prometheus.NewCounterVec(prometheus.CounterOpts{
+	Name: "foreman_provider_outages_total",
+	Help: "Total provider outages by provider",
+}, []string{"provider"}),
+CrashRecoveries: prometheus.NewCounter(prometheus.CounterOpts{
+	Name: "foreman_crash_recoveries_total",
+	Help: "Total crash recoveries",
+}),
+```
+
+Add them to the `MustRegister` call.
+
+**Step 4: Run tests**
+
+Run: `go test ./internal/telemetry/ -v`
+Expected: PASS
+
+**Step 5: Commit**
+
+```bash
+git add internal/telemetry/metrics.go internal/telemetry/metrics_test.go
+git commit -m "feat(telemetry): add remaining Prometheus counters from spec §18"
+```
+
+---
+
+### Task 18: Wire Docker Orphan Cleanup to Daemon Startup
+
+**Files:**
+- Modify: `internal/daemon/daemon.go`
+- Modify: `internal/runner/docker.go`
+
+**Step 1: Add cleanup call to daemon startup**
+
+In the daemon `Start()` function (Task 7), add at the beginning:
+
+```go
+// On startup, clean up orphaned Docker containers from previous crashes
+if d.config.Runner.Mode == "docker" {
+	activeTickets, _ := d.db.ListTickets(ctx, models.TicketFilter{
+		StatusIn: []models.TicketStatus{
+			models.TicketStatusPlanning, models.TicketStatusImplementing,
+			models.TicketStatusReviewing,
+		},
+	})
+	activeIDs := make(map[string]bool)
+	for _, t := range activeTickets {
+		activeIDs[t.ID] = true
+	}
+	if err := runner.CleanupOrphanContainers(activeIDs); err != nil {
+		log.Warn().Err(err).Msg("Failed to cleanup orphan containers")
+	}
+}
+```
+
+**Step 2: Verify build**
+
+Run: `go build ./...`
+Expected: PASS
+
+**Step 3: Commit**
+
+```bash
+git add internal/daemon/daemon.go
+git commit -m "feat(daemon): wire Docker orphan cleanup to daemon startup"
+```
+
+---
+
+### Task 19: Add DB Methods for Dashboard (ListTasks, ListLlmCalls, GetMonthlyCost)
+
+**Files:**
+- Modify: `internal/db/db.go` — add methods to interface
+- Modify: `internal/db/sqlite.go` — implement
+- Modify: `internal/db/sqlite_test.go` — add tests
+
+**Step 1: Write the failing test**
+
+```go
+// Add to sqlite_test.go
+func TestSQLiteDB_GetMonthlyCost(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	db.RecordDailyCost(context.Background(), "2026-03-01", 10.0)
+	db.RecordDailyCost(context.Background(), "2026-03-02", 5.0)
+
+	cost, err := db.GetMonthlyCost(context.Background(), "2026-03")
+	require.NoError(t, err)
+	assert.InDelta(t, 15.0, cost, 0.01)
+}
+```
+
+**Step 2: Run test to verify it fails**
+
+Run: `go test ./internal/db/ -run TestSQLiteDB_GetMonthlyCost -v`
+Expected: FAIL — GetMonthlyCost not defined
+
+**Step 3: Add methods**
+
+Add to `db.Database` interface:
+
+```go
+GetMonthlyCost(ctx context.Context, yearMonth string) (float64, error)
+ListTasks(ctx context.Context, ticketID string) ([]models.Task, error)
+ListLlmCalls(ctx context.Context, ticketID string) ([]models.LlmCallRecord, error)
+```
+
+Implement in sqlite.go:
+
+```go
+func (s *SQLiteDB) GetMonthlyCost(ctx context.Context, yearMonth string) (float64, error) {
+	var cost float64
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COALESCE(SUM(total_usd), 0) FROM cost_daily WHERE date LIKE ?`,
+		yearMonth+"%",
+	).Scan(&cost)
+	if err == sql.ErrNoRows {
+		return 0, nil
+	}
+	return cost, err
+}
+
+func (s *SQLiteDB) ListTasks(ctx context.Context, ticketID string) ([]models.Task, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, ticket_id, sequence, title, description, status, created_at FROM tasks WHERE ticket_id=? ORDER BY sequence`,
+		ticketID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var tasks []models.Task
+	for rows.Next() {
+		var t models.Task
+		rows.Scan(&t.ID, &t.TicketID, &t.Sequence, &t.Title, &t.Description, &t.Status, &t.CreatedAt)
+		tasks = append(tasks, t)
+	}
+	return tasks, nil
+}
+
+func (s *SQLiteDB) ListLlmCalls(ctx context.Context, ticketID string) ([]models.LlmCallRecord, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, ticket_id, task_id, role, provider, model, attempt, tokens_input, tokens_output, cost_usd, duration_ms, status, created_at
+		 FROM llm_calls WHERE ticket_id=? ORDER BY created_at DESC`,
+		ticketID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var calls []models.LlmCallRecord
+	for rows.Next() {
+		var c models.LlmCallRecord
+		rows.Scan(&c.ID, &c.TicketID, &c.TaskID, &c.Role, &c.Provider, &c.Model, &c.Attempt,
+			&c.TokensInput, &c.TokensOutput, &c.CostUSD, &c.DurationMs, &c.Status, &c.CreatedAt)
+		calls = append(calls, c)
+	}
+	return calls, nil
+}
+```
+
+Also implement in `postgres.go` (Task 14):
+
+```go
+func (p *PostgresDB) GetMonthlyCost(ctx context.Context, yearMonth string) (float64, error) {
+	var cost float64
+	err := p.db.GetContext(ctx, &cost,
+		`SELECT COALESCE(SUM(total_usd), 0) FROM cost_daily WHERE date LIKE $1`,
+		yearMonth+"%")
+	if err == sql.ErrNoRows {
+		return 0, nil
+	}
+	return cost, err
+}
+
+func (p *PostgresDB) ListTasks(ctx context.Context, ticketID string) ([]models.Task, error) {
+	var tasks []models.Task
+	err := p.db.SelectContext(ctx, &tasks,
+		`SELECT id, ticket_id, sequence, title, description, status, created_at FROM tasks WHERE ticket_id=$1 ORDER BY sequence`, ticketID)
+	return tasks, err
+}
+
+func (p *PostgresDB) ListLlmCalls(ctx context.Context, ticketID string) ([]models.LlmCallRecord, error) {
+	var calls []models.LlmCallRecord
+	err := p.db.SelectContext(ctx, &calls,
+		`SELECT id, ticket_id, task_id, role, provider, model, attempt, tokens_input, tokens_output, cost_usd, duration_ms, status, created_at
+		 FROM llm_calls WHERE ticket_id=$1 ORDER BY created_at DESC`, ticketID)
+	return calls, err
+}
+```
+
+**Step 4: Run tests**
+
+Run: `go test ./internal/db/ -v`
+Expected: PASS
+
+**Step 5: Commit**
+
+```bash
+git add internal/db/db.go internal/db/sqlite.go internal/db/sqlite_test.go internal/db/postgres.go
+git commit -m "feat(db): add ListTasks, ListLlmCalls, GetMonthlyCost methods"
+```

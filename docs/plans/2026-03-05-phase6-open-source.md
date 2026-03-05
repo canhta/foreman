@@ -718,3 +718,281 @@ git commit -m "feat: add version injection via ldflags"
 ```
 
 ---
+
+### Task 10: Integration Tests + Fixtures
+
+**Files:**
+- Create: `tests/integration/pipeline_test.go`
+- Create: `tests/integration/llm_mock_test.go`
+- Create: `tests/fixtures/sample_repo/main.go`
+- Create: `tests/fixtures/sample_repo/go.mod`
+- Create: `tests/fixtures/sample_tickets/LOCAL-1.json`
+
+**Step 1: Create fixture sample repo**
+
+```go
+// tests/fixtures/sample_repo/main.go
+package main
+
+import "fmt"
+
+func main() {
+	fmt.Println("Hello from sample repo")
+}
+
+func Add(a, b int) int {
+	return a + b
+}
+```
+
+```
+// tests/fixtures/sample_repo/go.mod
+module sample_repo
+
+go 1.23
+```
+
+**Step 2: Create fixture sample ticket**
+
+```json
+// tests/fixtures/sample_tickets/LOCAL-1.json
+{
+  "external_id": "LOCAL-1",
+  "title": "Add user endpoint",
+  "description": "Create a REST endpoint for user management. GET /users returns a list of users from an in-memory store.",
+  "acceptance_criteria": "GET /users returns 200 with JSON array. POST /users creates a new user.",
+  "labels": ["foreman"],
+  "priority": "medium"
+}
+```
+
+**Step 3: Create integration test skeleton**
+
+```go
+// tests/integration/pipeline_test.go
+package integration
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+func TestFixturesExist(t *testing.T) {
+	fixtures := []string{
+		"../fixtures/sample_repo/main.go",
+		"../fixtures/sample_repo/go.mod",
+		"../fixtures/sample_tickets/LOCAL-1.json",
+	}
+	for _, f := range fixtures {
+		path := filepath.Join(".", f)
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			t.Errorf("fixture missing: %s", f)
+		}
+	}
+}
+```
+
+```go
+// tests/integration/llm_mock_test.go
+package integration
+
+import (
+	"context"
+	"testing"
+
+	"github.com/canhta/foreman/internal/llm"
+)
+
+type MockLlmProvider struct {
+	responses map[string]string
+}
+
+func (m *MockLlmProvider) Complete(_ context.Context, req llm.LlmRequest) (*llm.LlmResponse, error) {
+	content, ok := m.responses[req.Model]
+	if !ok {
+		content = "mock response"
+	}
+	return &llm.LlmResponse{
+		Content:      content,
+		TokensInput:  100,
+		TokensOutput: 50,
+		Model:        req.Model,
+		DurationMs:   100,
+		StopReason:   "end_turn",
+	}, nil
+}
+
+func (m *MockLlmProvider) ProviderName() string              { return "mock" }
+func (m *MockLlmProvider) HealthCheck(_ context.Context) error { return nil }
+
+func TestMockLlmProvider(t *testing.T) {
+	mock := &MockLlmProvider{responses: map[string]string{
+		"test-model": "hello world",
+	}}
+	resp, err := mock.Complete(context.Background(), llm.LlmRequest{Model: "test-model"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Content != "hello world" {
+		t.Errorf("expected hello world, got %s", resp.Content)
+	}
+}
+```
+
+**Step 4: Run tests**
+
+Run: `go test ./tests/integration/ -v`
+Expected: PASS
+
+**Step 5: Commit**
+
+```bash
+git add tests/integration/ tests/fixtures/
+git commit -m "test: add integration test skeleton and fixture files"
+```
+
+---
+
+### Task 11: docker-compose.yml
+
+**Files:**
+- Create: `docker-compose.yml`
+
+**Step 1: Create docker-compose**
+
+```yaml
+# docker-compose.yml
+version: "3.8"
+
+services:
+  foreman:
+    build: .
+    volumes:
+      - foreman-data:/root/.foreman
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    command: ["start"]
+    restart: unless-stopped
+
+  # Optional PostgreSQL backend
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: foreman
+      POSTGRES_USER: foreman
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-foreman}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    profiles:
+      - postgres
+
+volumes:
+  foreman-data:
+  pg-data:
+```
+
+**Step 2: Commit**
+
+```bash
+git add docker-compose.yml
+git commit -m "chore: add docker-compose for local development"
+```
+
+---
+
+### Task 12: Skill Validation in `doctor` Command
+
+**Files:**
+- Modify: `cmd/doctor.go` (created in Phase 4)
+
+**Step 1: Add skill validation to doctor**
+
+In the doctor command's `RunE` function, after provider health checks, add:
+
+```go
+// Validate skill files
+fmt.Print("Skills... ")
+skillDir := filepath.Join(".", "skills")
+if _, err := os.Stat(skillDir); os.IsNotExist(err) {
+	fmt.Println("no skills/ directory (OK)")
+} else {
+	entries, _ := os.ReadDir(skillDir)
+	validCount := 0
+	for _, e := range entries {
+		if filepath.Ext(e.Name()) == ".yml" || filepath.Ext(e.Name()) == ".yaml" {
+			validCount++
+		}
+	}
+	fmt.Printf("%d skill files found (OK)\n", validCount)
+	// Full validation via skills.ValidateAll() when skills engine is wired
+}
+```
+
+**Step 2: Verify build**
+
+Run: `go build ./...`
+Expected: PASS
+
+**Step 3: Commit**
+
+```bash
+git add cmd/doctor.go
+git commit -m "feat(cli): add skill validation to doctor command"
+```
+
+---
+
+### Task 13: Install Script
+
+**Files:**
+- Create: `install.sh`
+
+**Step 1: Create install script**
+
+```bash
+#!/bin/bash
+# install.sh — Install Foreman binary
+set -euo pipefail
+
+REPO="canhta/foreman"
+INSTALL_DIR="/usr/local/bin"
+
+OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+ARCH="$(uname -m)"
+case "$ARCH" in
+  x86_64) ARCH="amd64" ;;
+  aarch64|arm64) ARCH="arm64" ;;
+  *) echo "Unsupported architecture: $ARCH"; exit 1 ;;
+esac
+
+LATEST=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
+URL="https://github.com/${REPO}/releases/download/${LATEST}/foreman-${LATEST#v}-${OS}-${ARCH}.tar.gz"
+
+echo "Installing Foreman ${LATEST} (${OS}/${ARCH})..."
+TMP=$(mktemp -d)
+curl -fsSL "$URL" -o "${TMP}/foreman.tar.gz"
+tar -xzf "${TMP}/foreman.tar.gz" -C "$TMP"
+
+if [ -w "$INSTALL_DIR" ]; then
+  mv "${TMP}/foreman" "$INSTALL_DIR/foreman"
+else
+  sudo mv "${TMP}/foreman" "$INSTALL_DIR/foreman"
+fi
+
+rm -rf "$TMP"
+echo "Foreman installed to ${INSTALL_DIR}/foreman"
+foreman --version
+```
+
+**Step 2: Commit**
+
+```bash
+chmod +x install.sh
+git add install.sh
+git commit -m "docs: add install.sh for one-liner installation"
+```
+
+---
