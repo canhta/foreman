@@ -19,12 +19,40 @@ import (
 // For Anthropic: set URL + AuthToken — configs are passed to the API request.
 // For OpenAI/local: a future Client implementation proxies calls client-side.
 type MCPServerConfig struct {
-	Name         string   `json:"name"`
-	URL          string   `json:"url,omitempty"`        // Anthropic API-side MCP
-	AuthToken    string   `json:"auth_token,omitempty"` // Anthropic API-side MCP
-	AllowedTools []string `json:"allowed_tools,omitempty"`
-	Command      string   `json:"command,omitempty"` // future: stdio transport
-	Args         []string `json:"args,omitempty"`    // future: stdio transport
+	Name             string            `json:"name"`
+	URL              string            `json:"url,omitempty"`                  // Anthropic API-side MCP
+	AuthToken        string            `json:"auth_token,omitempty"`           // Anthropic API-side MCP
+	AllowedTools     []string          `json:"allowed_tools,omitempty"`
+	Command          string            `json:"command,omitempty"`              // stdio transport
+	Args             []string          `json:"args,omitempty"`                 // stdio transport
+	Env              map[string]string `json:"env,omitempty"`
+	RestartPolicy    string            `json:"restart_policy,omitempty"`       // always | never | on-failure
+	MaxRestarts      *int              `json:"max_restarts,omitempty"`         // default 3
+	RestartDelaySecs *int              `json:"restart_delay_secs,omitempty"`   // default 2
+}
+
+// EffectiveRestartPolicy returns the restart policy, defaulting to "on-failure".
+func (c MCPServerConfig) EffectiveRestartPolicy() string {
+	if c.RestartPolicy != "" {
+		return c.RestartPolicy
+	}
+	return "on-failure"
+}
+
+// EffectiveMaxRestarts returns the max restarts, defaulting to 3.
+func (c MCPServerConfig) EffectiveMaxRestarts() int {
+	if c.MaxRestarts != nil {
+		return *c.MaxRestarts
+	}
+	return 3
+}
+
+// EffectiveRestartDelaySecs returns the restart delay in seconds, defaulting to 2.
+func (c MCPServerConfig) EffectiveRestartDelaySecs() int {
+	if c.RestartDelaySecs != nil {
+		return *c.RestartDelaySecs
+	}
+	return 2
 }
 
 // Client is the interface for client-side MCP proxying (OpenAI/local providers).
