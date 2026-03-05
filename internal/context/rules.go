@@ -60,24 +60,35 @@ func LoadDirectoryRules(language string) *DirectoryRules {
 	return &r
 }
 
-var languageDetectors = map[string][]string{
-	"go":     {"go.mod"},
-	"node":   {"package.json"},
-	"rust":   {"Cargo.toml"},
-	"python": {"requirements.txt", "pyproject.toml", "setup.py"},
+// languageDetectorOrder defines the priority order for language detection.
+// Must match the order in repo_analyzer.go's detectLanguage to stay consistent.
+// go → rust → node → python (same priority as repo_analyzer.go).
+var languageDetectorOrder = []struct {
+	lang    string
+	markers []string
+}{
+	{"go", []string{"go.mod"}},
+	{"rust", []string{"Cargo.toml"}},
+	{"node", []string{"package.json"}},
+	{"python", []string{"requirements.txt", "pyproject.toml", "setup.py"}},
 }
 
 // DetectLanguage infers the primary language from a list of file names by
 // matching well-known marker files (e.g. go.mod → go, package.json → node).
+// Priority: go > rust > node > python (matches repo_analyzer.go's detectLanguage).
+// Note: DetectLanguage operates on a pre-collected file list, whereas
+// repo_analyzer.go's detectLanguage walks the filesystem directly. Use this
+// function when you already have a file list (e.g. from git tree); use
+// AnalyzeRepo when you have a working directory to scan.
 func DetectLanguage(files []string) string {
 	fileSet := make(map[string]bool)
 	for _, f := range files {
 		fileSet[f] = true
 	}
-	for lang, markers := range languageDetectors {
-		for _, marker := range markers {
+	for _, entry := range languageDetectorOrder {
+		for _, marker := range entry.markers {
 			if fileSet[marker] {
-				return lang
+				return entry.lang
 			}
 		}
 	}
