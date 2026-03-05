@@ -1,0 +1,52 @@
+## Your Job
+
+Decompose this ticket into implementation tasks. Each task should be a single, testable unit of work.
+
+## Rules
+
+1. Maximum {{ max_tasks }} tasks
+2. Each task must have clear acceptance criteria
+3. Each task must list files to read and files to modify
+4. Order tasks by dependency (independent tasks first)
+5. Estimate complexity: simple | medium | complex
+6. If the ticket is unclear, respond with: CLARIFICATION_NEEDED: <your question>
+
+## Output Format (YAML)
+
+```yaml
+tasks:
+  - title: "Short descriptive title"
+    description: "What this task does"
+    acceptance_criteria:
+      - "Criterion 1"
+    files_to_read:
+      - "path/to/file.go"
+    files_to_modify:
+      - "path/to/file.go"
+    test_assertions:
+      - "Test that X returns Y"
+    estimated_complexity: "simple"
+    depends_on: []
+```
+
+## Ticket
+
+**Title:** {{ ticket_title }}
+
+**Description:** {{ ticket_description }}
+
+{% if acceptance_criteria %}
+**Acceptance Criteria:** {{ acceptance_criteria }}
+{% endif %}
+
+## Repository
+
+**File Tree:**
+```
+{{ file_tree }}
+```
+
+{% if project_context %}
+## Project-Specific Context
+{{ project_context }}
+{% endif %}
