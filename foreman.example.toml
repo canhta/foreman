@@ -134,3 +134,25 @@ github_token = "${GITHUB_TOKEN}"
 model = "gpt-4o"
 default_allowed_tools = ["Read", "Edit", "Glob", "Grep", "Bash"]
 timeout_secs_default = 180
+
+# ─── Custom Agent Roles ────────────────────────────────
+# Define named agents with specific models, tools, and prompts.
+# These can be referenced by skills or used as custom reviewer/checker roles.
+
+# [[agents]]
+# name = "security-reviewer"
+# model = "anthropic:claude-sonnet-4-5-20250929"
+# system_prompt = "You are a security reviewer. Check for OWASP Top 10 issues."
+# allowed_tools = ["Read", "Glob", "Grep", "GetErrors"]
+# max_turns = 8
+# timeout_secs = 120
+# trigger = "post_lint"
+
+# [[agents]]
+# name = "docs-checker"
+# model = "anthropic:claude-haiku-4-5-20251001"
+# system_prompt = "Verify that public functions have documentation."
+# allowed_tools = ["Read", "Glob", "Grep"]
+# max_turns = 5
+# timeout_secs = 60
+# trigger = "pre_pr"

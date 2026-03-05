@@ -16,6 +16,18 @@ type Config struct {
 	Skills    SkillsConfig    `mapstructure:"skills"`
 	Limits    LimitsConfig    `mapstructure:"limits"`
 	RateLimit RateLimitConfig `mapstructure:"rate_limit"`
+	Agents    []AgentRoleConfig `mapstructure:"agents"`
+}
+
+// AgentRoleConfig defines a custom named agent with specific tools, model, and prompt.
+type AgentRoleConfig struct {
+	Name         string   `mapstructure:"name"`
+	Model        string   `mapstructure:"model"`
+	SystemPrompt string   `mapstructure:"system_prompt"`
+	AllowedTools []string `mapstructure:"allowed_tools"`
+	MaxTurns     int      `mapstructure:"max_turns"`
+	TimeoutSecs  int      `mapstructure:"timeout_secs"`
+	Trigger      string   `mapstructure:"trigger"`
 }
 
 // MCPConfig holds configuration for MCP (Model Context Protocol) servers.
