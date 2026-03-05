@@ -4,10 +4,29 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/canhta/foreman/internal/models"
 )
+
+// complexityTier defines token and call budgets for a single task complexity level.
+type complexityTier struct {
+	llmCalls        int
+	avgInputTokens  int
+	avgOutputTokens int
+}
+
+// complexityTiers defines token and call budgets for each task complexity tier.
+// These are calibrated estimates based on typical Foreman pipeline usage:
+//   - simple:  2 LLM calls, ~20k input tokens, ~4k output tokens
+//   - medium:  4 LLM calls, ~40k input tokens, ~8k output tokens
+//   - complex: 6 LLM calls, ~60k input tokens, ~12k output tokens
+var complexityTiers = map[string]complexityTier{
+	"simple":  {llmCalls: 2, avgInputTokens: 20000, avgOutputTokens: 4000},
+	"medium":  {llmCalls: 4, avgInputTokens: 40000, avgOutputTokens: 8000},
+	"complex": {llmCalls: 6, avgInputTokens: 60000, avgOutputTokens: 12000},
+}
 
 // PlanValidation holds the result of validating a planner's output.
 type PlanValidation struct {
@@ -115,33 +134,43 @@ func hasOrderingBetween(tasks []PlannedTask, titles []string) bool {
 
 // EstimateTicketCost estimates the total cost for a set of planned tasks
 // based on complexity tiers and model pricing.
-func EstimateTicketCost(tasks []PlannedTask, pricing map[string]models.PricingConfig, implModel, reviewModel string) float64 {
-	type tier struct {
-		llmCalls        int
-		avgInputTokens  int
-		avgOutputTokens int
-	}
-	tiers := map[string]tier{
-		"simple":  {llmCalls: 2, avgInputTokens: 20000, avgOutputTokens: 4000},
-		"medium":  {llmCalls: 4, avgInputTokens: 40000, avgOutputTokens: 8000},
-		"complex": {llmCalls: 6, avgInputTokens: 60000, avgOutputTokens: 12000},
-	}
+//
+// It returns the total estimated cost and a sorted, deduplicated list of model
+// keys not found in the pricing map. Callers should treat a non-empty list as
+// a misconfiguration warning — cost for those models is counted as 0.
+func EstimateTicketCost(tasks []PlannedTask, pricing map[string]models.PricingConfig, implModel, reviewModel string) (float64, []string) {
+	missingModels := map[string]bool{}
 
 	var totalCost float64
 	for _, task := range tasks {
-		t, ok := tiers[task.EstimatedComplexity]
+		t, ok := complexityTiers[task.EstimatedComplexity]
 		if !ok {
-			t = tiers["medium"]
+			t = complexityTiers["medium"]
 		}
 		implCalls := t.llmCalls / 2
 		if implCalls < 1 {
 			implCalls = 1
 		}
+
+		if _, found := pricing[implModel]; !found {
+			missingModels[implModel] = true
+		}
 		totalCost += float64(implCalls) * estimateCallCost(implModel, t.avgInputTokens, t.avgOutputTokens, pricing)
+
 		reviewCalls := t.llmCalls - implCalls
+		if _, found := pricing[reviewModel]; !found {
+			missingModels[reviewModel] = true
+		}
 		totalCost += float64(reviewCalls) * estimateCallCost(reviewModel, t.avgInputTokens/2, t.avgOutputTokens/4, pricing)
 	}
-	return totalCost
+
+	missing := make([]string, 0, len(missingModels))
+	for k := range missingModels {
+		missing = append(missing, k)
+	}
+	sort.Strings(missing)
+
+	return totalCost, missing
 }
 
 func estimateCallCost(model string, inputTokens, outputTokens int, pricing map[string]models.PricingConfig) float64 {
