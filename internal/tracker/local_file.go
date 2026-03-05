@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
+
+	"github.com/rs/zerolog/log"
 )
 
 // localTicket is the JSON shape of a local ticket file.
@@ -48,12 +51,13 @@ func (t *LocalFileTracker) FetchReadyTickets(ctx context.Context) ([]Ticket, err
 			continue
 		}
 		// Skip comment files
-		if len(entry.Name()) > 14 && entry.Name()[len(entry.Name())-14:] == ".comments.json" {
+		if strings.HasSuffix(entry.Name(), ".comments.json") {
 			continue
 		}
 
 		lt, err := t.readTicketFile(filepath.Join(t.ticketsDir(), entry.Name()))
 		if err != nil {
+			log.Warn().Str("file", entry.Name()).Err(err).Msg("skipping unreadable ticket file")
 			continue
 		}
 		if !containsLabel(lt.Labels, t.pickupLabel) {
@@ -92,7 +96,10 @@ func (t *LocalFileTracker) AddComment(ctx context.Context, externalID, comment s
 		"created_at": time.Now().Format(time.RFC3339),
 	})
 
-	data, _ := json.MarshalIndent(comments, "", "  ")
+	data, err := json.MarshalIndent(comments, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshaling comments: %w", err)
+	}
 	return os.WriteFile(commentsFile, data, 0o644)
 }
 
@@ -149,7 +156,10 @@ func (t *LocalFileTracker) updateField(externalID string, fn func(*localTicket))
 		return err
 	}
 	fn(lt)
-	data, _ := json.MarshalIndent(lt, "", "  ")
+	data, err := json.MarshalIndent(lt, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshaling ticket: %w", err)
+	}
 	return os.WriteFile(path, data, 0o644)
 }
 

@@ -55,6 +55,9 @@ func (s *Scheduler) TryReserve(ctx context.Context, ticketID string, files []str
 }
 
 // Release removes all file reservations for a ticket.
-func (s *Scheduler) Release(ctx context.Context, ticketID string) {
-	s.db.ReleaseFiles(ctx, ticketID) //nolint:errcheck
+func (s *Scheduler) Release(ctx context.Context, ticketID string) error {
+	if err := s.db.ReleaseFiles(ctx, ticketID); err != nil {
+		return fmt.Errorf("releasing files for ticket %s: %w", ticketID, err)
+	}
+	return nil
 }

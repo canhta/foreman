@@ -76,7 +76,7 @@ func TestScheduler_Release(t *testing.T) {
 	sched := NewScheduler(db)
 
 	require.NoError(t, sched.TryReserve(context.Background(), "ticket-1", []string{"src/handler.go"}))
-	sched.Release(context.Background(), "ticket-1")
+	require.NoError(t, sched.Release(context.Background(), "ticket-1"))
 
 	// After release, another ticket can reserve the same file
 	err := sched.TryReserve(context.Background(), "ticket-2", []string{"src/handler.go"})
