@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/canhta/foreman/internal/models"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func setupTestDB(t *testing.T) (Database, func()) {
@@ -92,6 +94,72 @@ func TestSQLiteDB_GetEvents_EmptyTicketID(t *testing.T) {
 	if len(events) != 1 || events[0].TicketID != "t-10" {
 		t.Errorf("expected 1 event for t-10, got %d", len(events))
 	}
+}
+
+func TestSQLiteDB_GetMonthlyCost(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	require.NoError(t, db.RecordDailyCost(ctx, "2026-03-01", 10.0))
+	require.NoError(t, db.RecordDailyCost(ctx, "2026-03-02", 5.0))
+
+	cost, err := db.GetMonthlyCost(ctx, "2026-03")
+	require.NoError(t, err)
+	assert.InDelta(t, 15.0, cost, 0.01)
+}
+
+func TestSQLiteDB_ListTasks(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	// Create ticket first (FK constraint)
+	require.NoError(t, db.CreateTicket(ctx, &models.Ticket{
+		ID: "t-1", ExternalID: "X-1", Title: "t", Description: "d",
+		Status: models.TicketStatusQueued, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}))
+
+	tasks := []models.Task{
+		{ID: "task-1", TicketID: "t-1", Sequence: 1, Title: "Task One", Description: "Do one"},
+		{ID: "task-2", TicketID: "t-1", Sequence: 2, Title: "Task Two", Description: "Do two"},
+	}
+	require.NoError(t, db.CreateTasks(ctx, "t-1", tasks))
+
+	got, err := db.ListTasks(ctx, "t-1")
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	assert.Equal(t, "task-1", got[0].ID)
+	assert.Equal(t, "Task One", got[0].Title)
+	assert.Equal(t, 1, got[0].Sequence)
+	assert.Equal(t, "task-2", got[1].ID)
+}
+
+func TestSQLiteDB_ListLlmCalls(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	// Create ticket first (FK constraint)
+	require.NoError(t, db.CreateTicket(ctx, &models.Ticket{
+		ID: "t-1", ExternalID: "X-1", Title: "t", Description: "d",
+		Status: models.TicketStatusQueued, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}))
+
+	call := &models.LlmCallRecord{
+		ID: "llm-1", TicketID: "t-1", TaskID: "", Role: "planner",
+		Provider: "anthropic", Model: "claude-3", Attempt: 1,
+		TokensInput: 100, TokensOutput: 200, CostUSD: 0.001, DurationMs: 500,
+		Status: "success", CreatedAt: time.Now(),
+	}
+	require.NoError(t, db.RecordLlmCall(ctx, call))
+
+	got, err := db.ListLlmCalls(ctx, "t-1")
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, "llm-1", got[0].ID)
+	assert.Equal(t, "planner", got[0].Role)
+	assert.Equal(t, 100, got[0].TokensInput)
 }
 
 func TestSQLiteDB_RecordEvent(t *testing.T) {

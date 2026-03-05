@@ -135,7 +135,7 @@ func (s *SQLiteDB) CreateTasks(ctx context.Context, ticketID string, tasks []mod
 
 	for _, t := range tasks {
 		_, err := stmt.ExecContext(ctx, t.ID, ticketID, t.Sequence, t.Title, t.Description,
-			"[]", "[]", "[]", t.EstimatedComplexity, "[]",
+			"[]", "[]", "[]", "[]", t.EstimatedComplexity, "[]",
 			string(models.TaskStatusPending), time.Now())
 		if err != nil {
 			return err
@@ -160,11 +160,15 @@ func (s *SQLiteDB) IncrementTaskLlmCalls(ctx context.Context, id string) (int, e
 }
 
 func (s *SQLiteDB) RecordLlmCall(ctx context.Context, call *models.LlmCallRecord) error {
+	var taskID sql.NullString
+	if call.TaskID != "" {
+		taskID = sql.NullString{String: call.TaskID, Valid: true}
+	}
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO llm_calls (id, ticket_id, task_id, role, provider, model, attempt,
 		 tokens_input, tokens_output, cost_usd, duration_ms, prompt_hash, response_summary, status, error_message, created_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		call.ID, call.TicketID, call.TaskID, call.Role, call.Provider, call.Model, call.Attempt,
+		call.ID, call.TicketID, taskID, call.Role, call.Provider, call.Model, call.Attempt,
 		call.TokensInput, call.TokensOutput, call.CostUSD, call.DurationMs,
 		call.PromptHash, call.ResponseSummary, call.Status, call.ErrorMessage, call.CreatedAt,
 	)
@@ -296,6 +300,68 @@ func (s *SQLiteDB) RecordDailyCost(ctx context.Context, date string, amount floa
 		 ON CONFLICT(date) DO UPDATE SET total_usd = total_usd + ?`,
 		date, amount, amount)
 	return err
+}
+
+func (s *SQLiteDB) GetMonthlyCost(ctx context.Context, yearMonth string) (float64, error) {
+	var cost float64
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COALESCE(SUM(total_usd), 0) FROM cost_daily WHERE date LIKE ?`,
+		yearMonth+"%",
+	).Scan(&cost)
+	if err == sql.ErrNoRows {
+		return 0, nil
+	}
+	return cost, err
+}
+
+func (s *SQLiteDB) ListTasks(ctx context.Context, ticketID string) ([]models.Task, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, ticket_id, sequence, title, description, status, created_at
+		 FROM tasks WHERE ticket_id = ? ORDER BY sequence`,
+		ticketID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tasks []models.Task
+	for rows.Next() {
+		var t models.Task
+		var status string
+		if err := rows.Scan(&t.ID, &t.TicketID, &t.Sequence, &t.Title, &t.Description, &status, &t.CreatedAt); err != nil {
+			return nil, err
+		}
+		t.Status = models.TaskStatus(status)
+		tasks = append(tasks, t)
+	}
+	return tasks, rows.Err()
+}
+
+func (s *SQLiteDB) ListLlmCalls(ctx context.Context, ticketID string) ([]models.LlmCallRecord, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, ticket_id, task_id, role, provider, model, attempt,
+		        tokens_input, tokens_output, cost_usd, duration_ms, status, created_at
+		 FROM llm_calls WHERE ticket_id = ? ORDER BY created_at DESC`,
+		ticketID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var calls []models.LlmCallRecord
+	for rows.Next() {
+		var c models.LlmCallRecord
+		var taskID sql.NullString
+		var status string
+		if err := rows.Scan(&c.ID, &c.TicketID, &taskID, &c.Role, &c.Provider, &c.Model, &c.Attempt,
+			&c.TokensInput, &c.TokensOutput, &c.CostUSD, &c.DurationMs, &status, &c.CreatedAt); err != nil {
+			return nil, err
+		}
+		c.TaskID = taskID.String
+		c.Status = status
+		calls = append(calls, c)
+	}
+	return calls, rows.Err()
 }
 
 func (s *SQLiteDB) RecordEvent(ctx context.Context, e *models.EventRecord) error {
