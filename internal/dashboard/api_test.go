@@ -63,6 +63,15 @@ func (m *mockDashboardDB) GetMonthlyCost(_ context.Context, yearMonth string) (f
 	return 250.0, nil
 }
 
+// mockDaemonStatus implements DaemonStatusProvider for tests.
+type mockDaemonStatus struct {
+	running bool
+	paused  bool
+}
+
+func (m *mockDaemonStatus) IsRunning() bool { return m.running }
+func (m *mockDaemonStatus) IsPaused() bool  { return m.paused }
+
 // mockInvalidAuthDB always rejects auth token validation.
 type mockInvalidAuthDB struct {
 	mockDashboardDB
@@ -74,7 +83,7 @@ func (m *mockInvalidAuthDB) ValidateAuthToken(_ context.Context, _ string) (bool
 
 func TestAPIGetStatus(t *testing.T) {
 	db := &mockDashboardDB{}
-	api := NewAPI(db, nil, "1.0.0")
+	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
 
 	req := httptest.NewRequest("GET", "/api/status", nil)
 	rec := httptest.NewRecorder()
@@ -97,7 +106,7 @@ func TestAPIListTickets(t *testing.T) {
 			{ID: "t1", Title: "Add login", Status: models.TicketStatusImplementing, CreatedAt: time.Now()},
 		},
 	}
-	api := NewAPI(db, nil, "1.0.0")
+	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
 
 	req := httptest.NewRequest("GET", "/api/tickets", nil)
 	rec := httptest.NewRecorder()
@@ -118,7 +127,7 @@ func TestAPIGetTicket(t *testing.T) {
 	db := &mockDashboardDB{
 		tickets: []models.Ticket{{ID: "t1", Title: "Test", Status: models.TicketStatusImplementing}},
 	}
-	api := NewAPI(db, nil, "1.0.0")
+	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
 	req := httptest.NewRequest("GET", "/api/tickets/t1", nil)
 	rec := httptest.NewRecorder()
 	api.handleGetTicket(rec, req)
@@ -129,7 +138,7 @@ func TestAPIGetTicket(t *testing.T) {
 
 func TestAPIGetTicketNotFound(t *testing.T) {
 	db := &mockDashboardDB{}
-	api := NewAPI(db, nil, "1.0.0")
+	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
 	req := httptest.NewRequest("GET", "/api/tickets/nonexistent", nil)
 	rec := httptest.NewRecorder()
 	api.handleGetTicket(rec, req)
@@ -144,7 +153,7 @@ func TestAPIGetEvents(t *testing.T) {
 			{ID: "e1", TicketID: "t1", EventType: "task_started"},
 		},
 	}
-	api := NewAPI(db, nil, "1.0.0")
+	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
 	req := httptest.NewRequest("GET", "/api/tickets/t1/events", nil)
 	rec := httptest.NewRecorder()
 	api.handleGetEvents(rec, req)
@@ -155,7 +164,7 @@ func TestAPIGetEvents(t *testing.T) {
 
 func TestAPICostsToday(t *testing.T) {
 	db := &mockDashboardDB{}
-	api := NewAPI(db, nil, "1.0.0")
+	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
 	req := httptest.NewRequest("GET", "/api/costs/today", nil)
 	rec := httptest.NewRecorder()
 	api.handleCostsToday(rec, req)
@@ -166,7 +175,7 @@ func TestAPICostsToday(t *testing.T) {
 
 func TestAPIGetTicketTasks(t *testing.T) {
 	db := &mockDashboardDB{}
-	api := NewAPI(db, nil, "1.0.0")
+	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
 	req := httptest.NewRequest("GET", "/api/tickets/t1/tasks", nil)
 	rec := httptest.NewRecorder()
 	api.handleGetTasks(rec, req)
@@ -177,7 +186,7 @@ func TestAPIGetTicketTasks(t *testing.T) {
 
 func TestAPIGetCostsWeek(t *testing.T) {
 	db := &mockDashboardDB{}
-	api := NewAPI(db, nil, "1.0.0")
+	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
 	req := httptest.NewRequest("GET", "/api/costs/week", nil)
 	rec := httptest.NewRecorder()
 	api.handleCostsWeek(rec, req)
@@ -192,11 +201,59 @@ func TestAPIGetActivePipelines(t *testing.T) {
 			{ID: "t1", Title: "Active", Status: models.TicketStatusImplementing},
 		},
 	}
-	api := NewAPI(db, nil, "1.0.0")
+	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
 	req := httptest.NewRequest("GET", "/api/pipeline/active", nil)
 	rec := httptest.NewRecorder()
 	api.handleActivePipelines(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestAPIGetStatus_DaemonRunning(t *testing.T) {
+	db := &mockDashboardDB{}
+	api := NewAPI(db, nil, &mockDaemonStatus{running: true, paused: false}, models.CostConfig{}, "1.0.0")
+
+	req := httptest.NewRequest("GET", "/api/status", nil)
+	rec := httptest.NewRecorder()
+	api.handleStatus(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var resp map[string]interface{}
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if resp["daemon_state"] != "running" {
+		t.Errorf("expected daemon_state=running, got %v", resp["daemon_state"])
+	}
+}
+
+func TestAPIGetStatus_DaemonPaused(t *testing.T) {
+	db := &mockDashboardDB{}
+	api := NewAPI(db, nil, &mockDaemonStatus{running: true, paused: true}, models.CostConfig{}, "1.0.0")
+
+	req := httptest.NewRequest("GET", "/api/status", nil)
+	rec := httptest.NewRecorder()
+	api.handleStatus(rec, req)
+
+	var resp map[string]interface{}
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if resp["daemon_state"] != "paused" {
+		t.Errorf("expected daemon_state=paused, got %v", resp["daemon_state"])
+	}
+}
+
+func TestAPIGetStatus_NilProvider(t *testing.T) {
+	db := &mockDashboardDB{}
+	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
+
+	req := httptest.NewRequest("GET", "/api/status", nil)
+	rec := httptest.NewRecorder()
+	api.handleStatus(rec, req)
+
+	var resp map[string]interface{}
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if resp["daemon_state"] != "stopped" {
+		t.Errorf("expected daemon_state=stopped, got %v", resp["daemon_state"])
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/canhta/foreman/internal/models"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog/log"
@@ -28,7 +29,7 @@ type Server struct {
 
 // NewServer creates a new dashboard Server and registers all HTTP routes.
 func NewServer(db DashboardDB, emitter EventSubscriber, reg *prometheus.Registry, version, host string, port int) *Server {
-	api := NewAPI(db, emitter, version)
+	api := NewAPI(db, emitter, nil, models.CostConfig{}, version)
 
 	mux := http.NewServeMux()
 

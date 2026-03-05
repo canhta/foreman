@@ -29,29 +29,51 @@ type EventSubscriber interface {
 	Unsubscribe(ch chan *models.EventRecord)
 }
 
+// DaemonStatusProvider is an optional interface for exposing daemon runtime state.
+// Pass nil when running the dashboard without an attached daemon.
+type DaemonStatusProvider interface {
+	IsRunning() bool
+	IsPaused() bool
+}
+
 // API handles REST API requests for the dashboard.
 type API struct {
-	db        DashboardDB
-	emitter   EventSubscriber
-	version   string
-	startedAt time.Time
+	db             DashboardDB
+	emitter        EventSubscriber
+	statusProvider DaemonStatusProvider // nil = standalone (no daemon)
+	costCfg        models.CostConfig
+	version        string
+	startedAt      time.Time
 }
 
 // NewAPI creates a new API instance.
-func NewAPI(db DashboardDB, emitter EventSubscriber, version string) *API {
+func NewAPI(db DashboardDB, emitter EventSubscriber, statusProvider DaemonStatusProvider, costCfg models.CostConfig, version string) *API {
 	return &API{
-		db:        db,
-		emitter:   emitter,
-		version:   version,
-		startedAt: time.Now(),
+		db:             db,
+		emitter:        emitter,
+		statusProvider: statusProvider,
+		costCfg:        costCfg,
+		version:        version,
+		startedAt:      time.Now(),
 	}
 }
 
 func (a *API) handleStatus(w http.ResponseWriter, r *http.Request) {
+	daemonState := "stopped"
+	if a.statusProvider != nil {
+		if a.statusProvider.IsRunning() {
+			if a.statusProvider.IsPaused() {
+				daemonState = "paused"
+			} else {
+				daemonState = "running"
+			}
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"status":  "running",
-		"version": a.version,
-		"uptime":  time.Since(a.startedAt).String(),
+		"status":       "running",
+		"version":      a.version,
+		"uptime":       time.Since(a.startedAt).String(),
+		"daemon_state": daemonState,
 	})
 }
 

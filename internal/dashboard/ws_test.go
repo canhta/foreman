@@ -25,7 +25,7 @@ func TestWebSocketEvents(t *testing.T) {
 	ch := make(chan *models.EventRecord, 10)
 	emitter := &mockEmitter{ch: ch}
 	db := &mockDashboardDB{}
-	api := NewAPI(db, emitter, "1.0.0")
+	api := NewAPI(db, emitter, nil, models.CostConfig{}, "1.0.0")
 
 	srv := httptest.NewServer(http.HandlerFunc(api.handleWebSocket))
 	defer srv.Close()
@@ -58,7 +58,7 @@ func TestWebSocketEvents(t *testing.T) {
 
 func TestWebSocketAuth_MissingToken(t *testing.T) {
 	db := &mockDashboardDB{}
-	api := NewAPI(db, nil, "1.0.0")
+	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
 
 	srv := httptest.NewServer(http.HandlerFunc(api.handleWebSocket))
 	defer srv.Close()
@@ -80,7 +80,7 @@ func TestWebSocketAuth_MissingToken(t *testing.T) {
 
 func TestWebSocketAuth_InvalidToken(t *testing.T) {
 	db := &mockInvalidAuthDB{}
-	api := NewAPI(db, nil, "1.0.0")
+	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
 
 	srv := httptest.NewServer(http.HandlerFunc(api.handleWebSocket))
 	defer srv.Close()
