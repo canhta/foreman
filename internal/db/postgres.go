@@ -349,7 +349,7 @@ func (p *PostgresDB) ListTasks(ctx context.Context, ticketID string) ([]models.T
 	}
 	defer rows.Close()
 
-	var tasks []models.Task
+	tasks := make([]models.Task, 0)
 	for rows.Next() {
 		var t models.Task
 		var status string
@@ -373,7 +373,7 @@ func (p *PostgresDB) ListLlmCalls(ctx context.Context, ticketID string) ([]model
 	}
 	defer rows.Close()
 
-	var calls []models.LlmCallRecord
+	calls := make([]models.LlmCallRecord, 0)
 	for rows.Next() {
 		var c models.LlmCallRecord
 		var taskID sql.NullString

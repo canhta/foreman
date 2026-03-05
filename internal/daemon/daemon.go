@@ -69,8 +69,13 @@ func (d *Daemon) Start(ctx context.Context) {
 	defer d.running.Store(false)
 
 	// On startup, clean up orphaned Docker containers from previous crashes.
-	if d.db != nil && d.config.RunnerMode == "docker" {
-		activeTickets, err := d.db.ListTickets(ctx, models.TicketFilter{
+	d.mu.Lock()
+	database := d.db
+	runnerMode := d.config.RunnerMode
+	d.mu.Unlock()
+
+	if database != nil && runnerMode == "docker" {
+		activeTickets, err := database.ListTickets(ctx, models.TicketFilter{
 			StatusIn: []models.TicketStatus{
 				models.TicketStatusPlanning,
 				models.TicketStatusPlanValidating,

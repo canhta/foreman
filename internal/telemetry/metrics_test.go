@@ -70,7 +70,10 @@ func TestMetrics_AllCountersRegistered(t *testing.T) {
 	// Prime the ProviderOutages CounterVec so it appears in Gather output.
 	m.ProviderOutages.WithLabelValues("test").Inc()
 
-	families, _ := reg.Gather()
+	families, err := reg.Gather()
+	if err != nil {
+		t.Fatalf("failed to gather metrics: %v", err)
+	}
 	names := make(map[string]bool)
 	for _, f := range families {
 		names[f.GetName()] = true
