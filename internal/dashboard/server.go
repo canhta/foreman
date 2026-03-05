@@ -28,8 +28,8 @@ type Server struct {
 }
 
 // NewServer creates a new dashboard Server and registers all HTTP routes.
-func NewServer(db DashboardDB, emitter EventSubscriber, reg *prometheus.Registry, version, host string, port int) *Server {
-	api := NewAPI(db, emitter, nil, models.CostConfig{}, version)
+func NewServer(db DashboardDB, emitter EventSubscriber, statusProvider DaemonStatusProvider, reg *prometheus.Registry, costCfg models.CostConfig, version, host string, port int) *Server {
+	api := NewAPI(db, emitter, statusProvider, costCfg, version)
 
 	mux := http.NewServeMux()
 

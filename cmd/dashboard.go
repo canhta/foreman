@@ -52,7 +52,7 @@ var dashboardCmd = &cobra.Command{
 			host = "127.0.0.1"
 		}
 
-		srv := dashboard.NewServer(database, emitter, reg, "0.1.0", host, port)
+		srv := dashboard.NewServer(database, emitter, nil, reg, cfg.Cost, "0.1.0", host, port)
 
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
