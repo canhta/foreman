@@ -1,0 +1,8 @@
+{
+  "external_id": "LOCAL-1",
+  "title": "Add user endpoint",
+  "description": "Create a REST endpoint for user management. GET /users returns a list of users from an in-memory store.",
+  "acceptance_criteria": "GET /users returns 200 with JSON array. POST /users creates a new user.",
+  "labels": ["foreman"],
+  "priority": "medium"
+}
