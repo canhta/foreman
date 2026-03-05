@@ -262,6 +262,24 @@ func TestAPIGetStatus_NilProvider(t *testing.T) {
 	}
 }
 
+func TestAPIGetStatus_DaemonStopped(t *testing.T) {
+	db := &mockDashboardDB{}
+	api := NewAPI(db, nil, &mockDaemonStatus{running: false, paused: false}, models.CostConfig{}, "1.0.0")
+
+	req := httptest.NewRequest("GET", "/api/status", nil)
+	rec := httptest.NewRecorder()
+	api.handleStatus(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var resp map[string]interface{}
+	json.NewDecoder(rec.Body).Decode(&resp)
+	if resp["daemon_state"] != "stopped" {
+		t.Errorf("expected daemon_state=stopped, got %v", resp["daemon_state"])
+	}
+}
+
 func TestAPIHandleCostsBudgets(t *testing.T) {
 	db := &mockDashboardDB{}
 	api := NewAPI(db, nil, nil, models.CostConfig{
