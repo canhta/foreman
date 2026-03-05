@@ -3,16 +3,19 @@ package pipeline
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/canhta/foreman/internal/models"
 )
 
 type mockImplLLM struct {
-	response string
+	response        string
+	capturedRequest *models.LlmRequest
 }
 
 func (m *mockImplLLM) Complete(_ context.Context, req models.LlmRequest) (*models.LlmResponse, error) {
+	m.capturedRequest = &req
 	return &models.LlmResponse{
 		Content:      m.response,
 		TokensInput:  500,
@@ -89,5 +92,18 @@ func TestImplementer_ExecuteRetry(t *testing.T) {
 	}
 	if result.Response == nil {
 		t.Fatal("expected response")
+	}
+
+	req := llmProvider.capturedRequest
+	if req == nil {
+		t.Fatal("expected LLM request to be captured")
+	}
+
+	// Verify retry section appears in user prompt with correct attempt number and feedback.
+	if !strings.Contains(req.UserPrompt, "RETRY (attempt 2)") {
+		t.Errorf("expected user prompt to contain 'RETRY (attempt 2)', got:\n%s", req.UserPrompt)
+	}
+	if !strings.Contains(req.UserPrompt, "Tests failed: expected 5 got 0") {
+		t.Errorf("expected user prompt to contain feedback text, got:\n%s", req.UserPrompt)
 	}
 }

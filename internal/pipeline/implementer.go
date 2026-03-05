@@ -4,6 +4,7 @@ package pipeline
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	"github.com/canhta/foreman/internal/models"
 )
@@ -73,8 +74,13 @@ func buildImplementerUserPrompt(input ImplementerInput) string {
 
 	if len(input.ContextFiles) > 0 {
 		prompt += "## Codebase Context\n\n"
-		for path, content := range input.ContextFiles {
-			prompt += fmt.Sprintf("### %s\n```\n%s\n```\n\n", path, content)
+		keys := make([]string, 0, len(input.ContextFiles))
+		for k := range input.ContextFiles {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, path := range keys {
+			prompt += fmt.Sprintf("### %s\n```\n%s\n```\n\n", path, input.ContextFiles[path])
 		}
 	}
 
