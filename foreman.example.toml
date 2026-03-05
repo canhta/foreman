@@ -1,0 +1,106 @@
+# Foreman Configuration Example
+# Copy to foreman.toml and customize.
+
+[daemon]
+poll_interval_secs = 60
+idle_poll_interval_secs = 300
+max_parallel_tickets = 3
+work_dir = "~/.foreman/work"
+log_level = "info"   # debug, info, warn, error
+log_format = "json"  # json, pretty
+
+[dashboard]
+enabled = true
+port = 3333
+host = "127.0.0.1"
+auth_token = "${FOREMAN_DASHBOARD_TOKEN}"
+
+[tracker]
+provider = "local_file"  # local_file, jira, github, linear
+pickup_label = "foreman-ready"
+clarification_label = "foreman-needs-info"
+clarification_timeout_hours = 72
+
+[git]
+provider = "github"
+backend = "native"
+clone_url = "https://github.com/your-org/your-repo.git"
+default_branch = "main"
+auto_push = true
+pr_draft = true
+pr_reviewers = []
+branch_prefix = "foreman"
+rebase_before_pr = true
+
+[llm]
+default_provider = "anthropic"
+
+[llm.anthropic]
+api_key = "${ANTHROPIC_API_KEY}"
+
+[llm.outage]
+max_connection_retries = 3
+connection_retry_delay_secs = 30
+fallback_provider = ""
+
+[models]
+planner = "anthropic:claude-sonnet-4-5-20250929"
+implementer = "anthropic:claude-sonnet-4-5-20250929"
+spec_reviewer = "anthropic:claude-haiku-4-5-20251001"
+quality_reviewer = "anthropic:claude-haiku-4-5-20251001"
+final_reviewer = "anthropic:claude-sonnet-4-5-20250929"
+clarifier = "anthropic:claude-haiku-4-5-20251001"
+
+[cost]
+max_cost_per_ticket_usd = 15.0
+max_cost_per_day_usd = 150.0
+max_cost_per_month_usd = 3000.0
+alert_threshold_percent = 80
+max_llm_calls_per_task = 8
+
+[limits]
+max_tasks_per_ticket = 20
+max_implementation_retries = 2
+max_spec_review_cycles = 2
+max_quality_review_cycles = 1
+max_task_duration_secs = 600
+max_total_duration_secs = 7200
+context_token_budget = 80000
+enable_partial_pr = true
+enable_clarification = true
+enable_tdd_verification = true
+search_replace_similarity = 0.92
+search_replace_min_context_lines = 3
+
+[secrets]
+enabled = true
+always_exclude = [".env", ".env.*", "*.pem", "*.key", "*.p12"]
+extra_patterns = []
+
+[rate_limit]
+requests_per_minute = 50
+burst_size = 10
+backoff_base_ms = 1000
+backoff_max_ms = 60000
+jitter_percent = 25
+
+[runner]
+mode = "local"  # local, docker
+
+[runner.local]
+allowed_commands = ["npm", "yarn", "pnpm", "cargo", "go", "pytest", "make", "bun"]
+forbidden_paths = []
+
+[database]
+driver = "sqlite"  # sqlite, postgres
+
+[database.sqlite]
+path = "~/.foreman/foreman.db"
+busy_timeout_ms = 5000
+wal_mode = true
+event_flush_interval_ms = 100
+
+[pipeline.hooks]
+post_lint = []
+pre_pr = []
+post_pr = []
