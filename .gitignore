@@ -1,0 +1,35 @@
+# Binary
+foreman
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+
+# Config (contains secrets)
+foreman.toml
+*.toml
+!foreman.example.toml
+
+# Work directory
+.foreman/
+
+# Go
+vendor/
+*.test
+*.out
+coverage.html
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Worktrees
+.worktrees/
+worktrees/
