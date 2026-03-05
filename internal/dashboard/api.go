@@ -208,7 +208,8 @@ func (a *API) handleCostsMonth(w http.ResponseWriter, r *http.Request) {
 
 func (a *API) handleCostsBudgets(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"note": "Budget status requires config — wire during integration",
+		"max_daily_usd":       a.costCfg.MaxCostPerDayUSD,
+		"alert_threshold_pct": a.costCfg.AlertThresholdPct,
 	})
 }
 

@@ -261,3 +261,29 @@ func TestAPIGetStatus_NilProvider(t *testing.T) {
 		t.Errorf("expected daemon_state=stopped, got %v", resp["daemon_state"])
 	}
 }
+
+func TestAPIHandleCostsBudgets(t *testing.T) {
+	db := &mockDashboardDB{}
+	api := NewAPI(db, nil, nil, models.CostConfig{
+		MaxCostPerDayUSD:  150.0,
+		AlertThresholdPct: 80,
+	}, "1.0.0")
+
+	req := httptest.NewRequest("GET", "/api/costs/budgets", nil)
+	rec := httptest.NewRecorder()
+	api.handleCostsBudgets(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var resp map[string]interface{}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp["max_daily_usd"] != 150.0 {
+		t.Errorf("expected max_daily_usd=150, got %v", resp["max_daily_usd"])
+	}
+	if resp["alert_threshold_pct"] != float64(80) {
+		t.Errorf("expected alert_threshold_pct=80, got %v", resp["alert_threshold_pct"])
+	}
+}
