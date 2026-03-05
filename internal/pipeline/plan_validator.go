@@ -25,9 +25,24 @@ func (v *PlanValidation) addWarning(format string, args ...interface{}) {
 	v.Warnings = append(v.Warnings, fmt.Sprintf(format, args...))
 }
 
+// isNewFile reports whether a file path carries the "(new)" marker.
+func isNewFile(path string) bool {
+	return strings.HasSuffix(path, " (new)") || strings.HasSuffix(path, "(new)")
+}
+
+// stripNewSuffix removes the "(new)" marker from a file path.
+func stripNewSuffix(path string) string {
+	path = strings.TrimSuffix(path, " (new)")
+	return strings.TrimSuffix(path, "(new)")
+}
+
 // ValidatePlan checks a planner result for issues before execution.
 func ValidatePlan(plan *PlannerResult, workDir string, config *models.LimitsConfig) *PlanValidation {
 	v := &PlanValidation{Valid: true}
+	if config == nil {
+		v.addError("config must not be nil")
+		return v
+	}
 
 	// 1. Check task count limit
 	if len(plan.Tasks) > config.MaxTasksPerTicket {
@@ -42,7 +57,7 @@ func ValidatePlan(plan *PlannerResult, workDir string, config *models.LimitsConf
 			}
 		}
 		for _, path := range task.FilesToModify {
-			if strings.HasSuffix(path, "(new)") {
+			if isNewFile(path) {
 				continue // New files don't need to exist
 			}
 			if !fileExistsAt(workDir, path) {
@@ -56,11 +71,24 @@ func ValidatePlan(plan *PlannerResult, workDir string, config *models.LimitsConf
 		v.addError("Task dependencies contain a cycle")
 	}
 
-	// 4. Warn about shared files without explicit ordering
+	// 4. Validate dependency references exist
+	taskTitles := map[string]bool{}
+	for _, t := range plan.Tasks {
+		taskTitles[t.Title] = true
+	}
+	for _, t := range plan.Tasks {
+		for _, dep := range t.DependsOn {
+			if !taskTitles[dep] {
+				v.addError("Task '%s' depends on unknown task: '%s'", t.Title, dep)
+			}
+		}
+	}
+
+	// 5. Warn about shared files without explicit ordering
 	fileOwners := map[string][]string{}
 	for _, task := range plan.Tasks {
 		for _, path := range task.FilesToModify {
-			cleanPath := strings.TrimSuffix(path, " (new)")
+			cleanPath := stripNewSuffix(path)
 			fileOwners[cleanPath] = append(fileOwners[cleanPath], task.Title)
 		}
 	}
@@ -77,7 +105,7 @@ func ValidatePlan(plan *PlannerResult, workDir string, config *models.LimitsConf
 
 func fileExistsAt(workDir, path string) bool {
 	_, err := os.Stat(filepath.Join(workDir, path))
-	return err == nil
+	return err == nil || !os.IsNotExist(err)
 }
 
 func hasDependencyCycle(tasks []PlannedTask) bool {
