@@ -17,6 +17,14 @@ type SpecReviewInput struct {
 	TestOutput         string
 }
 
+// SpecReviewRunner is the interface for spec compliance checking.
+type SpecReviewRunner interface {
+	Review(ctx context.Context, input SpecReviewInput) (*ReviewResult, error)
+}
+
+// Compile-time check.
+var _ SpecReviewRunner = (*SpecReviewer)(nil)
+
 // SpecReviewer checks if implementation meets acceptance criteria.
 type SpecReviewer struct {
 	llm llm.LlmProvider
@@ -29,6 +37,11 @@ func NewSpecReviewer(provider llm.LlmProvider) *SpecReviewer {
 
 // Review runs a spec review and returns the parsed result.
 func (r *SpecReviewer) Review(ctx context.Context, input SpecReviewInput) (*ReviewResult, error) {
+	if len(input.AcceptanceCriteria) == 0 {
+		return nil, fmt.Errorf("spec review requires at least one acceptance criterion")
+	}
+
+	// TODO: move to prompts/spec_reviewer.md.j2 when template engine is wired (Phase 3 final)
 	system := `You verify that the implementation satisfies every acceptance criterion. Nothing more.
 
 ## Rules

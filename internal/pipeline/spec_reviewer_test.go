@@ -51,6 +51,18 @@ EXTRAS:
 	assert.True(t, result.Approved)
 }
 
+func TestSpecReviewer_EmptyCriteria(t *testing.T) {
+	reviewer := NewSpecReviewer(&specMock{})
+	_, err := reviewer.Review(context.Background(), SpecReviewInput{
+		TaskTitle:          "Add user handler",
+		AcceptanceCriteria: []string{},
+		Diff:               "diff",
+		TestOutput:         "PASS",
+	})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "acceptance criterion")
+}
+
 func TestSpecReviewer_Rejected(t *testing.T) {
 	mock := &specMock{response: `STATUS: REJECTED
 
