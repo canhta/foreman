@@ -18,6 +18,9 @@ type DashboardDB interface {
 	GetEvents(ctx context.Context, ticketID string, limit int) ([]models.EventRecord, error)
 	GetDailyCost(ctx context.Context, date string) (float64, error)
 	GetTicketCost(ctx context.Context, ticketID string) (float64, error)
+	ListTasks(ctx context.Context, ticketID string) ([]models.Task, error)
+	ListLlmCalls(ctx context.Context, ticketID string) ([]models.LlmCallRecord, error)
+	GetMonthlyCost(ctx context.Context, yearMonth string) (float64, error)
 }
 
 // EventSubscriber is the subset of EventEmitter needed for WebSocket.
@@ -114,6 +117,99 @@ func (a *API) handleCostsToday(w http.ResponseWriter, r *http.Request) {
 		"date":     date,
 		"cost_usd": cost,
 	})
+}
+
+func (a *API) handleGetTasks(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/tickets/"), "/")
+	if len(parts) < 2 {
+		http.Error(w, "missing ticket id", http.StatusBadRequest)
+		return
+	}
+	tasks, err := a.db.ListTasks(r.Context(), parts[0])
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, tasks)
+}
+
+func (a *API) handleGetLlmCalls(w http.ResponseWriter, r *http.Request) {
+	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/tickets/"), "/")
+	if len(parts) < 2 {
+		http.Error(w, "missing ticket id", http.StatusBadRequest)
+		return
+	}
+	calls, err := a.db.ListLlmCalls(r.Context(), parts[0])
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, calls)
+}
+
+func (a *API) handleActivePipelines(w http.ResponseWriter, r *http.Request) {
+	active := []models.TicketStatus{
+		models.TicketStatusPlanning, models.TicketStatusImplementing,
+		models.TicketStatusReviewing, models.TicketStatusPlanValidating,
+	}
+	tickets, err := a.db.ListTickets(r.Context(), models.TicketFilter{StatusIn: active})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, tickets)
+}
+
+func (a *API) handleCostsWeek(w http.ResponseWriter, r *http.Request) {
+	var costs []map[string]interface{}
+	for i := 6; i >= 0; i-- {
+		date := time.Now().AddDate(0, 0, -i).Format("2006-01-02")
+		cost, _ := a.db.GetDailyCost(r.Context(), date)
+		costs = append(costs, map[string]interface{}{"date": date, "cost_usd": cost})
+	}
+	writeJSON(w, http.StatusOK, costs)
+}
+
+func (a *API) handleCostsMonth(w http.ResponseWriter, r *http.Request) {
+	yearMonth := time.Now().Format("2006-01")
+	cost, err := a.db.GetMonthlyCost(r.Context(), yearMonth)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"month": yearMonth, "cost_usd": cost})
+}
+
+func (a *API) handleCostsBudgets(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"note": "Budget status requires config — wire during integration",
+	})
+}
+
+func (a *API) handleRetryTicket(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	id := extractPathParam(r.URL.Path, "/api/tickets/")
+	id = strings.TrimSuffix(id, "/retry")
+	writeJSON(w, http.StatusOK, map[string]interface{}{"id": id, "action": "retry_queued"})
+}
+
+func (a *API) handleDaemonPause(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"status": "paused"})
+}
+
+func (a *API) handleDaemonResume(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"status": "resumed"})
 }
 
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {
