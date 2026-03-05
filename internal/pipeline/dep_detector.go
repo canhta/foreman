@@ -39,11 +39,13 @@ func DetectDepChange(modifiedFiles []string) DepChangeResult {
 	for _, path := range modifiedFiles {
 		base := filepath.Base(path)
 		if mapping, ok := depFileMapping[base]; ok {
+			args := make([]string, len(mapping.Args))
+			copy(args, mapping.Args)
 			return DepChangeResult{
 				Changed: true,
 				File:    base,
 				Command: mapping.Command,
-				Args:    mapping.Args,
+				Args:    args,
 			}
 		}
 	}
