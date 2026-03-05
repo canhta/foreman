@@ -115,5 +115,5 @@ type EventRecord struct {
 
 type TicketFilter struct {
 	Status   string
-	StatusIn []string
+	StatusIn []TicketStatus
 }
