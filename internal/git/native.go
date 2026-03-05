@@ -142,6 +142,11 @@ func (g *NativeGitProvider) Log(ctx context.Context, workDir string, count int) 
 	return entries, nil
 }
 
+func (g *NativeGitProvider) StageAll(ctx context.Context, workDir string) error {
+	_, err := g.run(ctx, workDir, "git", "add", "-A")
+	return err
+}
+
 func (g *NativeGitProvider) run(ctx context.Context, workDir string, name string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = workDir

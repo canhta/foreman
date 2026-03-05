@@ -190,6 +190,21 @@ func TestNativeGitProvider_Log(t *testing.T) {
 	assert.Equal(t, "initial", commits[0].Message)
 }
 
+func TestNativeGitProvider_StageAll(t *testing.T) {
+	dir := initTestRepo(t)
+	git := NewNativeGitProvider()
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "new.go"), []byte("package main"), 0o644))
+	require.NoError(t, git.StageAll(context.Background(), dir))
+
+	// Verify the file is staged
+	cmd := exec.Command("git", "status", "--porcelain")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	require.NoError(t, err)
+	assert.Contains(t, string(out), "new.go")
+}
+
 func trimNewline(s string) string {
 	return strings.TrimRight(s, "\r\n")
 }

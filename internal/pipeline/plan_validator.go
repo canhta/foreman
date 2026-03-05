@@ -92,7 +92,7 @@ func ValidatePlan(plan *PlannerResult, workDir string, config *models.LimitsConf
 
 func fileExistsAt(workDir, path string) bool {
 	_, err := os.Stat(filepath.Join(workDir, path))
-	return err == nil || !os.IsNotExist(err)
+	return err == nil
 }
 
 func hasOrderingBetween(tasks []PlannedTask, titles []string) bool {

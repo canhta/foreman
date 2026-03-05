@@ -20,7 +20,6 @@ type PipelineConfig struct {
 	EnableTDDVerification    bool
 	EnableClarification      bool
 	EnablePartialPR          bool
-	ContextTokenBudget       int
 }
 
 // Pipeline orchestrates the execution of a ticket through the full pipeline.
