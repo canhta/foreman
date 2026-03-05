@@ -7,8 +7,11 @@ import (
 	"time"
 
 	"github.com/canhta/foreman/internal/db"
+	"github.com/canhta/foreman/internal/git"
 	"github.com/canhta/foreman/internal/models"
 	"github.com/canhta/foreman/internal/runner"
+	"github.com/canhta/foreman/internal/skills"
+	"github.com/canhta/foreman/internal/tracker"
 	"github.com/rs/zerolog/log"
 )
 
@@ -19,7 +22,8 @@ type DaemonConfig struct {
 	IdlePollIntervalSecs int
 	MaxParallelTickets   int
 	MaxParallelTasks     int
-	TaskTimeoutMinutes   int
+	TaskTimeoutMinutes     int
+	MergeCheckIntervalSecs int
 }
 
 // DefaultDaemonConfig returns sensible defaults.
@@ -29,7 +33,8 @@ func DefaultDaemonConfig() DaemonConfig {
 		IdlePollIntervalSecs: 300,
 		MaxParallelTickets:   3,
 		MaxParallelTasks:     3,
-		TaskTimeoutMinutes:   15,
+		TaskTimeoutMinutes:     15,
+		MergeCheckIntervalSecs: 300,
 	}
 }
 
@@ -43,13 +48,16 @@ type DaemonStatus struct {
 
 // Daemon is the main 24/7 event loop.
 type Daemon struct {
-	startedAt time.Time
-	db        db.Database
-	config    DaemonConfig
-	mu        sync.Mutex
-	running   atomic.Bool
-	paused    atomic.Bool
-	active    atomic.Int32
+	startedAt  time.Time
+	db         db.Database
+	prChecker  git.PRChecker
+	hookRunner *skills.HookRunner
+	tracker    tracker.IssueTracker
+	config     DaemonConfig
+	mu         sync.Mutex
+	running    atomic.Bool
+	paused     atomic.Bool
+	active     atomic.Int32
 }
 
 // NewDaemon creates a new daemon.
@@ -62,6 +70,27 @@ func (d *Daemon) SetDB(database db.Database) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.db = database
+}
+
+// SetPRChecker attaches a PR checker for merge monitoring.
+func (d *Daemon) SetPRChecker(checker git.PRChecker) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.prChecker = checker
+}
+
+// SetHookRunner attaches a hook runner for post_merge hooks.
+func (d *Daemon) SetHookRunner(runner *skills.HookRunner) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.hookRunner = runner
+}
+
+// SetTracker attaches a tracker for parent ticket completion.
+func (d *Daemon) SetTracker(tr tracker.IssueTracker) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.tracker = tr
 }
 
 // Start begins the daemon's poll loop. Blocks until ctx is cancelled.
@@ -99,6 +128,13 @@ func (d *Daemon) Start(ctx context.Context) {
 				log.Warn().Err(err).Msg("Failed to cleanup orphan containers on startup")
 			}
 		}
+	}
+
+	// Start merge checker goroutine
+	if d.prChecker != nil && database != nil {
+		mc := NewMergeChecker(database, d.prChecker, d.hookRunner, d.tracker, log.Logger)
+		interval := time.Duration(d.config.MergeCheckIntervalSecs) * time.Second
+		go mc.Start(ctx, interval)
 	}
 
 	pollInterval := time.Duration(d.config.PollIntervalSecs) * time.Second
