@@ -41,9 +41,12 @@ type SkillStep struct {
 	MaxTurns       int                `yaml:"max_turns,omitempty"`
 	OutputKey      string             `yaml:"output_key,omitempty"`
 	TimeoutSecs    int                `yaml:"timeout_secs,omitempty"`
-	OutputSchema   map[string]interface{} `yaml:"output_schema,omitempty"`  // JSON Schema for structured output
-	Thinking       *SkillStepThinking `yaml:"thinking,omitempty"`        // Extended thinking config
-	FallbackModel  string             `yaml:"fallback_model,omitempty"`  // e.g. "openrouter:claude-sonnet-4-5-20250929"
+	OutputSchema   map[string]interface{} `yaml:"output_schema,omitempty"`   // JSON Schema for structured output
+	Thinking       *SkillStepThinking     `yaml:"thinking,omitempty"`         // Extended thinking config
+	FallbackModel  string                 `yaml:"fallback_model,omitempty"`   // e.g. "openrouter:claude-sonnet-4-5-20250929"
+	SkillRef       string                 `yaml:"skill_ref,omitempty"`        // for subskill step type
+	Input          map[string]string      `yaml:"input,omitempty"`            // template vars for subskill
+	OutputFormat   string                 `yaml:"output_format,omitempty"`    // markdown|json|diff|checklist
 }
 
 // StepResult holds the output of an executed skill step.
@@ -66,6 +69,7 @@ var validStepTypes = map[string]bool{
 	"file_write":  true,
 	"git_diff":    true,
 	"agentsdk":    true,
+	"subskill":    true,
 }
 
 // LoadSkill loads and validates a single skill file.
