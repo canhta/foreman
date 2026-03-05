@@ -23,7 +23,14 @@ type RepoInfo struct {
 
 // AnalyzeRepo detects the language, framework, and commands for a repository.
 // Priority 1: .foreman-context.md overrides commands; Priority 2: config file detection.
+// Returns an error if workDir does not exist or is not a directory.
 func AnalyzeRepo(workDir string) (*RepoInfo, error) {
+	if fi, err := os.Stat(workDir); err != nil {
+		return nil, fmt.Errorf("AnalyzeRepo: workDir does not exist: %w", err)
+	} else if !fi.IsDir() {
+		return nil, fmt.Errorf("AnalyzeRepo: workDir is not a directory: %s", workDir)
+	}
+
 	info := &RepoInfo{Language: "unknown"}
 
 	// Priority 1: Read .foreman-context.md

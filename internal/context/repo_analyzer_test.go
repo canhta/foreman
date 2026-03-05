@@ -60,6 +60,8 @@ func TestAnalyzeRepo_ForemanContext(t *testing.T) {
 	assert.Equal(t, "npm run test:unit", info.TestCmd)
 	assert.Equal(t, "npm run lint", info.LintCmd)
 	assert.Equal(t, "npm run build", info.BuildCmd)
+	// No language-indicating files in temp dir, so language should be "unknown"
+	assert.Equal(t, "unknown", info.Language)
 }
 
 func TestAnalyzeRepo_EmptyDir(t *testing.T) {
