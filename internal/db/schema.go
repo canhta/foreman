@@ -15,6 +15,8 @@ CREATE TABLE IF NOT EXISTS tickets (
     branch_name TEXT,
     pr_url TEXT,
     pr_number INTEGER,
+    parent_ticket_id TEXT DEFAULT '',
+    decompose_depth INTEGER DEFAULT 0,
     is_partial BOOLEAN DEFAULT FALSE,
     cost_usd REAL DEFAULT 0.0,
     tokens_input INTEGER DEFAULT 0,
@@ -137,4 +139,5 @@ CREATE INDEX IF NOT EXISTS idx_llm_calls_ticket_id ON llm_calls(ticket_id);
 CREATE INDEX IF NOT EXISTS idx_events_ticket_id ON events(ticket_id);
 CREATE INDEX IF NOT EXISTS idx_events_created_at ON events(created_at);
 CREATE INDEX IF NOT EXISTS idx_file_reservations_ticket ON file_reservations(ticket_id);
+CREATE INDEX IF NOT EXISTS idx_tickets_parent ON tickets(parent_ticket_id);
 `

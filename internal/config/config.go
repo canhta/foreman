@@ -44,6 +44,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("daemon.max_parallel_tickets", 3)
 	v.SetDefault("daemon.max_parallel_tasks", 3)
 	v.SetDefault("daemon.task_timeout_minutes", 15)
+	v.SetDefault("daemon.merge_check_interval_secs", 300)
 	v.SetDefault("daemon.work_dir", "~/.foreman/work")
 	v.SetDefault("daemon.log_level", "info")
 	v.SetDefault("daemon.log_format", "json")
@@ -103,6 +104,12 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("rate_limit.backoff_base_ms", 1000)
 	v.SetDefault("rate_limit.backoff_max_ms", 60000)
 	v.SetDefault("rate_limit.jitter_percent", 25)
+
+	v.SetDefault("decompose.enabled", false)
+	v.SetDefault("decompose.max_ticket_words", 150)
+	v.SetDefault("decompose.max_scope_keywords", 2)
+	v.SetDefault("decompose.approval_label", "foreman-ready")
+	v.SetDefault("decompose.parent_label", "foreman-decomposed")
 
 	v.SetDefault("runner.mode", "local")
 	v.SetDefault("runner.local.allowed_commands", []string{"npm", "yarn", "pnpm", "cargo", "go", "pytest", "make", "bun"})
