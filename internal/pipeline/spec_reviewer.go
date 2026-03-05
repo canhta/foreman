@@ -63,11 +63,11 @@ EXTRAS:
 - <anything not requested>`
 
 	var user strings.Builder
-	user.WriteString(fmt.Sprintf("## Task\n%s\n\nCriteria:\n", input.TaskTitle))
+	fmt.Fprintf(&user, "## Task\n%s\n\nCriteria:\n", input.TaskTitle)
 	for _, c := range input.AcceptanceCriteria {
-		user.WriteString(fmt.Sprintf("- %s\n", c))
+		fmt.Fprintf(&user, "- %s\n", c)
 	}
-	user.WriteString(fmt.Sprintf("\n## Diff\n```diff\n%s\n```\n\n## Test Output\n```\n%s\n```\n", input.Diff, input.TestOutput))
+	fmt.Fprintf(&user, "\n## Diff\n```diff\n%s\n```\n\n## Test Output\n```\n%s\n```\n", input.Diff, input.TestOutput)
 
 	resp, err := r.llm.Complete(ctx, models.LlmRequest{
 		SystemPrompt: system,

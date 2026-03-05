@@ -26,7 +26,7 @@ func initTestRepo(t *testing.T) string {
 
 func run(t *testing.T, dir string, name string, args ...string) {
 	t.Helper()
-	cmd := exec.Command(name, args...)
+	cmd := exec.CommandContext(context.Background(), name, args...)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	require.NoError(t, err, "command failed: %s %v\noutput: %s", name, args, out)
@@ -40,7 +40,7 @@ func TestNativeGitProvider_CreateBranch(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify we're on the new branch
-	cmd := exec.Command("git", "branch", "--show-current")
+	cmd := exec.CommandContext(context.Background(), "git", "branch", "--show-current")
 	cmd.Dir = dir
 	out, err := cmd.Output()
 	require.NoError(t, err)
@@ -106,7 +106,7 @@ func TestNativeGitProvider_Diff(t *testing.T) {
 	ctx := context.Background()
 
 	// Capture SHA of the initial commit.
-	cmd := exec.Command("git", "rev-parse", "HEAD")
+	cmd := exec.CommandContext(context.Background(), "git", "rev-parse", "HEAD")
 	cmd.Dir = dir
 	out, err := cmd.Output()
 	require.NoError(t, err)
@@ -129,7 +129,7 @@ func TestNativeGitProvider_RebaseOnto(t *testing.T) {
 	ctx := context.Background()
 
 	// Detect the current default branch name (could be "main" or "master").
-	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+	cmd := exec.CommandContext(context.Background(), "git", "rev-parse", "--abbrev-ref", "HEAD")
 	cmd.Dir = dir
 	branchOut, err := cmd.Output()
 	require.NoError(t, err)
@@ -152,7 +152,7 @@ func TestNativeGitProvider_RebaseOnto(t *testing.T) {
 
 	// Ensure we abort any mid-rebase state on exit so TempDir cleanup succeeds.
 	defer func() {
-		abortCmd := exec.Command("git", "rebase", "--abort")
+		abortCmd := exec.CommandContext(context.Background(), "git", "rebase", "--abort")
 		abortCmd.Dir = dir
 		_ = abortCmd.Run() // ignore error if no rebase in progress
 	}()
@@ -198,7 +198,7 @@ func TestNativeGitProvider_StageAll(t *testing.T) {
 	require.NoError(t, git.StageAll(context.Background(), dir))
 
 	// Verify the file is staged
-	cmd := exec.Command("git", "status", "--porcelain")
+	cmd := exec.CommandContext(context.Background(), "git", "status", "--porcelain")
 	cmd.Dir = dir
 	out, err := cmd.Output()
 	require.NoError(t, err)

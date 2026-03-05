@@ -41,8 +41,8 @@ type jiraSearchResponse struct {
 }
 
 type jiraIssue struct {
-	Fields jiraFields `json:"fields"`
 	Key    string     `json:"key"`
+	Fields jiraFields `json:"fields"`
 }
 
 type jiraFields struct {

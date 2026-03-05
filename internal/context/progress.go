@@ -54,7 +54,7 @@ func FormatPatternsForPrompt(patterns []models.ProgressPattern) string {
 	var sb strings.Builder
 	sb.WriteString("## Discovered Patterns\n\n")
 	for _, p := range patterns {
-		sb.WriteString(fmt.Sprintf("- **%s**: %s\n", p.PatternKey, p.PatternValue))
+		fmt.Fprintf(&sb, "- **%s**: %s\n", p.PatternKey, p.PatternValue)
 	}
 	return sb.String()
 }

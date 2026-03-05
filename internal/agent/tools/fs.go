@@ -40,14 +40,14 @@ func (t *readTool) Execute(_ context.Context, workDir string, input json.RawMess
 		EndLine   int    `json:"end_line"`
 	}
 	if err := json.Unmarshal(input, &args); err != nil {
-		return "", fmt.Errorf("Read: %w", err)
+		return "", fmt.Errorf("read: %w", err)
 	}
 	if err := ValidatePath(workDir, args.Path); err != nil {
-		return "", fmt.Errorf("Read: %w", err)
+		return "", fmt.Errorf("read: %w", err)
 	}
 	content, err := os.ReadFile(AbsPath(workDir, args.Path))
 	if err != nil {
-		return "", fmt.Errorf("Read: %w", err)
+		return "", fmt.Errorf("read: %w", err)
 	}
 	if args.StartLine == 0 && args.EndLine == 0 {
 		return string(content), nil
@@ -79,20 +79,20 @@ func (t *writeTool) Execute(_ context.Context, workDir string, input json.RawMes
 		Content string `json:"content"`
 	}
 	if err := json.Unmarshal(input, &args); err != nil {
-		return "", fmt.Errorf("Write: %w", err)
+		return "", fmt.Errorf("write: %w", err)
 	}
 	if err := ValidatePath(workDir, args.Path); err != nil {
-		return "", fmt.Errorf("Write: %w", err)
+		return "", fmt.Errorf("write: %w", err)
 	}
 	if err := CheckSecrets(args.Path, args.Content); err != nil {
-		return "", fmt.Errorf("Write: %w", err)
+		return "", fmt.Errorf("write: %w", err)
 	}
 	abs := AbsPath(workDir, args.Path)
 	if err := os.MkdirAll(filepath.Dir(abs), 0755); err != nil {
-		return "", fmt.Errorf("Write: %w", err)
+		return "", fmt.Errorf("write: %w", err)
 	}
 	if err := os.WriteFile(abs, []byte(args.Content), 0644); err != nil {
-		return "", fmt.Errorf("Write: %w", err)
+		return "", fmt.Errorf("write: %w", err)
 	}
 	return "OK", nil
 }
@@ -115,25 +115,25 @@ func (t *editTool) Execute(_ context.Context, workDir string, input json.RawMess
 		NewString string `json:"new_string"`
 	}
 	if err := json.Unmarshal(input, &args); err != nil {
-		return "", fmt.Errorf("Edit: %w", err)
+		return "", fmt.Errorf("edit: %w", err)
 	}
 	if err := ValidatePath(workDir, args.Path); err != nil {
-		return "", fmt.Errorf("Edit: %w", err)
+		return "", fmt.Errorf("edit: %w", err)
 	}
 	if err := CheckSecrets(args.Path, args.NewString); err != nil {
-		return "", fmt.Errorf("Edit: %w", err)
+		return "", fmt.Errorf("edit: %w", err)
 	}
 	abs := AbsPath(workDir, args.Path)
 	content, err := os.ReadFile(abs)
 	if err != nil {
-		return "", fmt.Errorf("Edit: %w", err)
+		return "", fmt.Errorf("edit: %w", err)
 	}
 	if !strings.Contains(string(content), args.OldString) {
-		return "", fmt.Errorf("Edit: old_string not found in %s", args.Path)
+		return "", fmt.Errorf("edit: old_string not found in %s", args.Path)
 	}
 	updated := strings.Replace(string(content), args.OldString, args.NewString, 1)
 	if err := os.WriteFile(abs, []byte(updated), 0644); err != nil {
-		return "", fmt.Errorf("Edit: %w", err)
+		return "", fmt.Errorf("edit: %w", err)
 	}
 	return "OK", nil
 }
@@ -250,18 +250,18 @@ func (t *globTool) Execute(_ context.Context, workDir string, input json.RawMess
 		Base    string `json:"base"`
 	}
 	if err := json.Unmarshal(input, &args); err != nil {
-		return "", fmt.Errorf("Glob: %w", err)
+		return "", fmt.Errorf("glob: %w", err)
 	}
 	baseDir := workDir
 	if args.Base != "" {
 		if err := ValidatePath(workDir, args.Base); err != nil {
-			return "", fmt.Errorf("Glob: %w", err)
+			return "", fmt.Errorf("glob: %w", err)
 		}
 		baseDir = AbsPath(workDir, args.Base)
 	}
 	matches, err := globMatch(baseDir, args.Pattern)
 	if err != nil {
-		return "", fmt.Errorf("Glob: %w", err)
+		return "", fmt.Errorf("glob: %w", err)
 	}
 	var rels []string
 	for _, m := range matches {
@@ -345,10 +345,10 @@ func (t *grepTool) Execute(_ context.Context, workDir string, input json.RawMess
 		FilePattern   string `json:"file_pattern"`
 	}
 	if err := json.Unmarshal(input, &args); err != nil {
-		return "", fmt.Errorf("Grep: %w", err)
+		return "", fmt.Errorf("grep: %w", err)
 	}
 	if err := ValidatePath(workDir, args.Path); err != nil {
-		return "", fmt.Errorf("Grep: %w", err)
+		return "", fmt.Errorf("grep: %w", err)
 	}
 
 	caseSensitive := true
@@ -361,7 +361,7 @@ func (t *grepTool) Execute(_ context.Context, workDir string, input json.RawMess
 	}
 	re, err := regexp.Compile(rePattern)
 	if err != nil {
-		return "", fmt.Errorf("Grep: invalid pattern: %w", err)
+		return "", fmt.Errorf("grep: invalid pattern: %w", err)
 	}
 
 	absPath := AbsPath(workDir, args.Path)

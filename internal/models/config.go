@@ -1,17 +1,17 @@
 package models
 
 type Config struct {
-	Cost      CostConfig      `mapstructure:"cost"`
-	LLM       LLMConfig       `mapstructure:"llm"`
 	Models    ModelsConfig    `mapstructure:"models"`
-	Daemon    DaemonConfig    `mapstructure:"daemon"`
-	Dashboard DashboardConfig `mapstructure:"dashboard"`
 	Runner    RunnerConfig    `mapstructure:"runner"`
-	Git       GitConfig       `mapstructure:"git"`
-	Database  DatabaseConfig  `mapstructure:"database"`
 	Pipeline  PipelineConfig  `mapstructure:"pipeline"`
-	Secrets   SecretsConfig   `mapstructure:"secrets"`
 	Tracker   TrackerConfig   `mapstructure:"tracker"`
+	LLM       LLMConfig       `mapstructure:"llm"`
+	Git       GitConfig       `mapstructure:"git"`
+	Secrets   SecretsConfig   `mapstructure:"secrets"`
+	Dashboard DashboardConfig `mapstructure:"dashboard"`
+	Database  DatabaseConfig  `mapstructure:"database"`
+	Daemon    DaemonConfig    `mapstructure:"daemon"`
+	Cost      CostConfig      `mapstructure:"cost"`
 	Skills    SkillsConfig    `mapstructure:"skills"`
 	Limits    LimitsConfig    `mapstructure:"limits"`
 	RateLimit RateLimitConfig `mapstructure:"rate_limit"`
@@ -177,10 +177,10 @@ type SkillsConfig struct {
 }
 
 type AgentRunnerConfig struct {
-	ClaudeCode          ClaudeCodeRunnerConfig `mapstructure:"claudecode"`
 	Provider            string                 `mapstructure:"provider"`
 	Builtin             BuiltinRunnerConfig    `mapstructure:"builtin"`
 	Copilot             CopilotRunnerConfig    `mapstructure:"copilot"`
+	ClaudeCode          ClaudeCodeRunnerConfig `mapstructure:"claudecode"`
 	MaxCostPerTicketUSD float64                `mapstructure:"max_cost_per_ticket_usd"`
 	MaxTurnsDefault     int                    `mapstructure:"max_turns_default"`
 	TimeoutSecsDefault  int                    `mapstructure:"timeout_secs_default"`

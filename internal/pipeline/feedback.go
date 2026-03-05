@@ -90,7 +90,7 @@ func (f *FeedbackAccumulator) Render() string {
 	}
 	var sb strings.Builder
 	for _, e := range f.entries {
-		sb.WriteString(fmt.Sprintf("## %s\n%s\n\n", e.category, e.content))
+		fmt.Fprintf(&sb, "## %s\n%s\n\n", e.category, e.content)
 	}
 	return strings.TrimSpace(sb.String())
 }

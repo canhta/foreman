@@ -21,6 +21,10 @@ linters:
       - linters:
           - errcheck
         path: _test\.go
+      - linters:
+          - govet
+        text: unusedwrite|fieldalignment
+        path: _test\.go
     paths:
       - third_party$
       - builtin$

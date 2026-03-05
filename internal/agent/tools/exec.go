@@ -50,18 +50,18 @@ func (t *bashTool) Execute(ctx context.Context, workDir string, input json.RawMe
 	}
 	parts := strings.Fields(args.Command)
 	if len(parts) == 0 {
-		return "", fmt.Errorf("Bash: empty command")
+		return "", fmt.Errorf("bash: empty command")
 	}
 	out, err := t.cmd.Run(ctx, workDir, parts[0], parts[1:], timeout)
 	if err != nil {
-		return "", fmt.Errorf("Bash: %w", err)
+		return "", fmt.Errorf("bash: %w", err)
 	}
 	result := out.Stdout
 	if out.Stderr != "" {
 		result += "\nSTDERR: " + out.Stderr
 	}
 	if out.TimedOut {
-		return result, fmt.Errorf("Bash: command timed out after %ds", timeout)
+		return result, fmt.Errorf("bash: command timed out after %ds", timeout)
 	}
 	return result, nil
 }
@@ -150,7 +150,7 @@ func (t *subagentTool) Schema() json.RawMessage {
 func (t *subagentTool) Execute(ctx context.Context, workDir string, input json.RawMessage) (string, error) {
 	runFn := t.registry.GetRunFn()
 	if runFn == nil {
-		return "", fmt.Errorf("Subagent: runner not initialized (SetRunFn not called)")
+		return "", fmt.Errorf("subagent: runner not initialized (SetRunFn not called)")
 	}
 	var in struct {
 		Task     string   `json:"task"`
@@ -158,7 +158,7 @@ func (t *subagentTool) Execute(ctx context.Context, workDir string, input json.R
 		MaxTurns int      `json:"max_turns"`
 	}
 	if err := json.Unmarshal(input, &in); err != nil {
-		return "", fmt.Errorf("Subagent: %w", err)
+		return "", fmt.Errorf("subagent: %w", err)
 	}
 	maxTurns := in.MaxTurns
 	if maxTurns <= 0 {
@@ -169,7 +169,7 @@ func (t *subagentTool) Execute(ctx context.Context, workDir string, input json.R
 	}
 	result, err := runFn(ctx, in.Task, workDir, in.Tools, maxTurns)
 	if err != nil {
-		return "", fmt.Errorf("Subagent: %w", err)
+		return "", fmt.Errorf("subagent: %w", err)
 	}
 	return result, nil
 }

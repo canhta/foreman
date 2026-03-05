@@ -38,12 +38,12 @@ type DaemonStatusProvider interface {
 
 // API handles REST API requests for the dashboard.
 type API struct {
-	costCfg        models.CostConfig
 	startedAt      time.Time
 	db             DashboardDB
 	emitter        EventSubscriber
 	statusProvider DaemonStatusProvider
 	version        string
+	costCfg        models.CostConfig
 }
 
 // NewAPI creates a new API instance.

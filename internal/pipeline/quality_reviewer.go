@@ -63,7 +63,7 @@ STRENGTHS:
 - <what was done well>`
 
 	var user strings.Builder
-	user.WriteString(fmt.Sprintf("## Codebase Patterns\n%s\n\n## Diff\n```diff\n%s\n```\n", input.CodebasePatterns, input.Diff))
+	fmt.Fprintf(&user, "## Codebase Patterns\n%s\n\n## Diff\n```diff\n%s\n```\n", input.CodebasePatterns, input.Diff)
 
 	resp, err := r.llm.Complete(ctx, models.LlmRequest{
 		SystemPrompt: system,

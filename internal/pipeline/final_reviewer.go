@@ -61,13 +61,13 @@ CONCERNS: <issues if any>
 REVIEW_NOTES: <notes for human reviewer>`
 
 	var prompt strings.Builder
-	prompt.WriteString(fmt.Sprintf("## Ticket\n%s\n%s\n\n", input.TicketTitle, input.TicketDescription))
-	prompt.WriteString(fmt.Sprintf("## Full Diff\n```diff\n%s\n```\n\n", input.FullDiff))
+	fmt.Fprintf(&prompt, "## Ticket\n%s\n%s\n\n", input.TicketTitle, input.TicketDescription)
+	fmt.Fprintf(&prompt, "## Full Diff\n```diff\n%s\n```\n\n", input.FullDiff)
 	prompt.WriteString("## Tasks\n")
 	for i, t := range input.TaskSummaries {
-		prompt.WriteString(fmt.Sprintf("%d. %s — %s\n", i+1, t.Title, t.Status))
+		fmt.Fprintf(&prompt, "%d. %s — %s\n", i+1, t.Title, t.Status)
 	}
-	prompt.WriteString(fmt.Sprintf("\n## Tests\n```\n%s\n```\n", input.TestOutput))
+	fmt.Fprintf(&prompt, "\n## Tests\n```\n%s\n```\n", input.TestOutput)
 
 	resp, err := r.llm.Complete(ctx, models.LlmRequest{
 		SystemPrompt: system,

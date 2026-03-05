@@ -154,35 +154,35 @@ IMPORTANT:
 
 	// Feedback section for retries
 	if feedback != nil {
-		user.WriteString(fmt.Sprintf("## RETRY (attempt %d/%d)\n", feedback.Attempt, feedback.MaxAttempts))
+		fmt.Fprintf(&user, "## RETRY (attempt %d/%d)\n", feedback.Attempt, feedback.MaxAttempts)
 		if feedback.PreviousError != "" {
-			user.WriteString(fmt.Sprintf("Previous error:\n```\n%s\n```\n\n", feedback.PreviousError))
+			fmt.Fprintf(&user, "Previous error:\n```\n%s\n```\n\n", feedback.PreviousError)
 		}
 		if feedback.SpecFeedback != "" {
-			user.WriteString(fmt.Sprintf("## SPEC REVIEWER FOUND ISSUES\n%s\n\n", feedback.SpecFeedback))
+			fmt.Fprintf(&user, "## SPEC REVIEWER FOUND ISSUES\n%s\n\n", feedback.SpecFeedback)
 		}
 		if feedback.QualityFeedback != "" {
-			user.WriteString(fmt.Sprintf("## QUALITY REVIEWER FOUND ISSUES\n%s\n\n", feedback.QualityFeedback))
+			fmt.Fprintf(&user, "## QUALITY REVIEWER FOUND ISSUES\n%s\n\n", feedback.QualityFeedback)
 		}
 		if feedback.TDDFeedback != "" {
-			user.WriteString(fmt.Sprintf("## TDD VERIFICATION FAILED\n%s\n\n", feedback.TDDFeedback))
+			fmt.Fprintf(&user, "## TDD VERIFICATION FAILED\n%s\n\n", feedback.TDDFeedback)
 		}
 	}
 
 	// Task section
-	user.WriteString(fmt.Sprintf("## Task\nTitle: %s\nDescription:\n%s\n\n", task.Title, task.Description))
+	fmt.Fprintf(&user, "## Task\nTitle: %s\nDescription:\n%s\n\n", task.Title, task.Description)
 	user.WriteString("Acceptance Criteria:\n")
 	for _, c := range task.AcceptanceCriteria {
-		user.WriteString(fmt.Sprintf("- %s\n", c))
+		fmt.Fprintf(&user, "- %s\n", c)
 	}
 	user.WriteString("\nTest Assertions:\n")
 	for _, a := range task.TestAssertions {
-		user.WriteString(fmt.Sprintf("- %s\n", a))
+		fmt.Fprintf(&user, "- %s\n", a)
 	}
 
 	// Commands
-	user.WriteString(fmt.Sprintf("\n## Commands\nBuild: `%s`  Test: `%s`  Lint: `%s`\n\n",
-		repoInfo.BuildCmd, repoInfo.TestCmd, repoInfo.LintCmd))
+	fmt.Fprintf(&user, "\n## Commands\nBuild: `%s`  Test: `%s`  Lint: `%s`\n\n",
+		repoInfo.BuildCmd, repoInfo.TestCmd, repoInfo.LintCmd)
 
 	// File contents — enforce remaining token budget (second half)
 	fileBudget := NewTokenBudget(tokenBudget / 2)
@@ -198,7 +198,7 @@ IMPORTANT:
 		}
 		fileBudget.Add(tokens)
 		ext := strings.TrimPrefix(filepath.Ext(f.Path), ".")
-		user.WriteString(fmt.Sprintf("### %s\n```%s\n%s\n```\n\n", f.Path, ext, string(content)))
+		fmt.Fprintf(&user, "### %s\n```%s\n%s\n```\n\n", f.Path, ext, string(content))
 	}
 
 	return &AssembledContext{
@@ -227,11 +227,11 @@ EXTRAS:
 - <anything not requested>`
 
 	var user strings.Builder
-	user.WriteString(fmt.Sprintf("## Task\n%s\n\nCriteria:\n", taskTitle))
+	fmt.Fprintf(&user, "## Task\n%s\n\nCriteria:\n", taskTitle)
 	for _, c := range criteria {
-		user.WriteString(fmt.Sprintf("- %s\n", c))
+		fmt.Fprintf(&user, "- %s\n", c)
 	}
-	user.WriteString(fmt.Sprintf("\n## Diff\n```diff\n%s\n```\n\n## Test Output\n```\n%s\n```\n", diff, testOutput))
+	fmt.Fprintf(&user, "\n## Diff\n```diff\n%s\n```\n\n## Test Output\n```\n%s\n```\n", diff, testOutput)
 
 	return &AssembledContext{
 		SystemPrompt: system,
@@ -266,7 +266,7 @@ STRENGTHS:
 - <what was done well>`
 
 	var user strings.Builder
-	user.WriteString(fmt.Sprintf("## Codebase Patterns\n%s\n\n## Diff\n```diff\n%s\n```\n", codebasePatterns, diff))
+	fmt.Fprintf(&user, "## Codebase Patterns\n%s\n\n## Diff\n```diff\n%s\n```\n", codebasePatterns, diff)
 
 	return &AssembledContext{
 		SystemPrompt: system,
