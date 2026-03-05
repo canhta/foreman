@@ -66,25 +66,12 @@ func ValidatePlan(plan *PlannerResult, workDir string, config *models.LimitsConf
 		}
 	}
 
-	// 3. Check for dependency cycles
-	if hasDependencyCycle(plan.Tasks) {
-		v.addError("Task dependencies contain a cycle")
+	// 3. Check for dependency cycles and unknown dependency references
+	if _, err := TopologicalSort(plan.Tasks); err != nil {
+		v.addError("%s", err.Error())
 	}
 
-	// 4. Validate dependency references exist
-	taskTitles := map[string]bool{}
-	for _, t := range plan.Tasks {
-		taskTitles[t.Title] = true
-	}
-	for _, t := range plan.Tasks {
-		for _, dep := range t.DependsOn {
-			if !taskTitles[dep] {
-				v.addError("Task '%s' depends on unknown task: '%s'", t.Title, dep)
-			}
-		}
-	}
-
-	// 5. Warn about shared files without explicit ordering
+	// 4. Warn about shared files without explicit ordering
 	fileOwners := map[string][]string{}
 	for _, task := range plan.Tasks {
 		for _, path := range task.FilesToModify {
@@ -106,43 +93,6 @@ func ValidatePlan(plan *PlannerResult, workDir string, config *models.LimitsConf
 func fileExistsAt(workDir, path string) bool {
 	_, err := os.Stat(filepath.Join(workDir, path))
 	return err == nil || !os.IsNotExist(err)
-}
-
-func hasDependencyCycle(tasks []PlannedTask) bool {
-	// Build adjacency map by title
-	graph := map[string][]string{}
-	for _, t := range tasks {
-		graph[t.Title] = t.DependsOn
-	}
-
-	visited := map[string]bool{}
-	inStack := map[string]bool{}
-
-	var dfs func(node string) bool
-	dfs = func(node string) bool {
-		visited[node] = true
-		inStack[node] = true
-		for _, dep := range graph[node] {
-			if !visited[dep] {
-				if dfs(dep) {
-					return true
-				}
-			} else if inStack[dep] {
-				return true
-			}
-		}
-		inStack[node] = false
-		return false
-	}
-
-	for _, t := range tasks {
-		if !visited[t.Title] {
-			if dfs(t.Title) {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 func hasOrderingBetween(tasks []PlannedTask, titles []string) bool {

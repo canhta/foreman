@@ -119,3 +119,12 @@ func TestPipeline_TopologicalSort_Cycle(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "cycle")
 }
+
+func TestPipeline_TopologicalSort_UnknownDep(t *testing.T) {
+	tasks := []PlannedTask{
+		{Title: "A", DependsOn: []string{"NonExistent"}},
+	}
+	_, err := TopologicalSort(tasks)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown task")
+}

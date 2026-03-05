@@ -7,6 +7,10 @@ import (
 	"github.com/canhta/foreman/internal/models"
 )
 
+// minDescriptionLength is the minimum character count for a ticket description
+// to be considered adequately detailed without acceptance criteria.
+const minDescriptionLength = 50
+
 // PipelineConfig holds pipeline-specific configuration.
 type PipelineConfig struct {
 	MaxImplementationRetries int
@@ -36,7 +40,7 @@ func (p *Pipeline) CheckTicketClarity(ticket *models.Ticket) (bool, error) {
 	}
 
 	// Heuristic checks (no LLM needed)
-	if len(ticket.Description) < 50 && ticket.AcceptanceCriteria == "" {
+	if len(ticket.Description) < minDescriptionLength && ticket.AcceptanceCriteria == "" {
 		return false, nil
 	}
 
@@ -49,6 +53,15 @@ func TopologicalSort(tasks []PlannedTask) ([]PlannedTask, error) {
 	taskMap := map[string]*PlannedTask{}
 	for i := range tasks {
 		taskMap[tasks[i].Title] = &tasks[i]
+	}
+
+	// Validate all dependency references exist
+	for _, t := range tasks {
+		for _, dep := range t.DependsOn {
+			if _, ok := taskMap[dep]; !ok {
+				return nil, fmt.Errorf("task %q depends on unknown task %q", t.Title, dep)
+			}
+		}
 	}
 
 	// Kahn's algorithm
