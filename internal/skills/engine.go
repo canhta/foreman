@@ -203,7 +203,7 @@ func (e *Engine) executeAgentSDK(ctx context.Context, step SkillStep) (*StepResu
 		}
 	}
 
-	// Pre-assemble .foreman-context.md into SystemPrompt for all runners
+	// Pre-assemble AGENTS.md into SystemPrompt for all runners
 	if fc := loadForemanContextFromDir(e.workDir); fc != "" {
 		req.SystemPrompt = fc
 	}
@@ -263,11 +263,12 @@ func (e *Engine) executeSubSkill(ctx context.Context, step SkillStep, sCtx *Skil
 	return &StepResult{Output: lastOutput}, nil
 }
 
-// loadForemanContextFromDir reads .foreman-context.md from workDir or a parent .foreman/ directory.
+// loadForemanContextFromDir reads project context from workDir.
+// AGENTS.md is the standard cross-tool convention; .foreman/context.md is for Foreman-specific cached content.
 func loadForemanContextFromDir(workDir string) string {
 	candidates := []string{
+		filepath.Join(workDir, "AGENTS.md"),
 		filepath.Join(workDir, ".foreman", "context.md"),
-		filepath.Join(workDir, ".foreman-context.md"),
 	}
 	for _, path := range candidates {
 		if content, err := os.ReadFile(path); err == nil {

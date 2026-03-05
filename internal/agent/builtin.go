@@ -75,7 +75,7 @@ func (r *BuiltinRunner) RunnerName() string { return "builtin" }
 func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult, error) {
 	systemPrompt := "You are a focused task executor. Complete the task and return only the result."
 
-	// Layer 1: inject .foreman-context.md if present
+	// Layer 1: inject AGENTS.md or .foreman/context.md if present
 	if fc := loadForemanContext(req.WorkDir); fc != "" {
 		systemPrompt = fc + "\n\n" + systemPrompt
 	}
@@ -208,11 +208,12 @@ func (r *BuiltinRunner) HealthCheck(ctx context.Context) error {
 
 func (r *BuiltinRunner) Close() error { return nil }
 
-// loadForemanContext reads .foreman-context.md from workDir or a parent .foreman/ directory.
+// loadForemanContext reads project context from workDir.
+// AGENTS.md is the standard cross-tool convention; .foreman/context.md is for Foreman-specific cached content.
 func loadForemanContext(workDir string) string {
 	candidates := []string{
+		filepath.Join(workDir, "AGENTS.md"),
 		filepath.Join(workDir, ".foreman", "context.md"),
-		filepath.Join(workDir, ".foreman-context.md"),
 	}
 	for _, path := range candidates {
 		if content, err := os.ReadFile(path); err == nil {
