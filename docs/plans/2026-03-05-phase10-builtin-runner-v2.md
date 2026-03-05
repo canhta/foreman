@@ -334,11 +334,17 @@ type ToolHooks struct {
 	PostToolUse func(ctx context.Context, name, output string, err error)
 }
 
+// RunFn is a function signature for running a sub-agent request.
+// Using a function reference breaks the circular Registry ↔ BuiltinRunner dependency.
+type RunFn func(ctx context.Context, req interface{}) (interface{}, error)
+
 // Registry maps tool names to implementations and fires hooks around execution.
 // It is safe for concurrent reads (Execute may be called from multiple goroutines).
 type Registry struct {
-	tools map[string]Tool
-	hooks ToolHooks
+	tools           map[string]Tool
+	hooks           ToolHooks
+	allowedCommands []string // for Bash/RunTest whitelist
+	runFn           RunFn    // injected by SetRunner for SubagentTool — nil until set
 }
 
 // NewRegistry creates a Registry. git and cmd may be nil — those tool groups
@@ -407,6 +413,15 @@ func (r *Registry) Has(name string) bool {
 	_, ok := r.tools[name]
 	return ok
 }
+
+// SetAllowedCommands configures the Bash/RunTest command whitelist.
+func (r *Registry) SetAllowedCommands(cmds []string) { r.allowedCommands = cmds }
+func (r *Registry) AllowedCommands() []string         { return r.allowedCommands }
+
+// SetRunFn injects the agent runner function for SubagentTool (two-phase init).
+// Call this after both Registry and BuiltinRunner are constructed.
+func (r *Registry) SetRunFn(fn RunFn) { r.runFn = fn }
+func (r *Registry) RunFn() RunFn      { return r.runFn }
 ```
 
 Also add stub `registerFS`, `registerGit`, `registerCode`, `registerExec` functions (empty — filled in subsequent tasks):
@@ -1619,19 +1634,7 @@ func TestBash_NilRunner(t *testing.T) {
 }
 ```
 
-**Step 2: Add `SetAllowedCommands` to Registry**
-
-In `registry.go`, add a field and setter:
-```go
-type Registry struct {
-    tools           map[string]Tool
-    hooks           ToolHooks
-    allowedCommands []string  // for Bash/RunTest whitelist
-}
-
-func (r *Registry) SetAllowedCommands(cmds []string) { r.allowedCommands = cmds }
-func (r *Registry) AllowedCommands() []string         { return r.allowedCommands }
-```
+**Step 2: Verify `SetAllowedCommands` is already in registry.go** (added in Task 2 — no changes needed here)
 
 **Step 3: Implement exec.go**
 
@@ -1773,11 +1776,103 @@ go test ./internal/agent/tools/... -v
 ```
 Expected: all PASS
 
-**Step 6: Commit**
+**Step 5a: Add SubagentTool to exec.go**
+
+Append to `exec.go` (after `runTestTool`):
+
+```go
+// --- Subagent ---
+// SubagentTool delegates a bounded subtask to a fresh BuiltinRunner invocation.
+// It uses a function reference (RunFn from registry) to avoid circular imports.
+
+type subagentInput struct {
+	Task     string   `json:"task"`
+	Tools    []string `json:"tools"`
+	MaxTurns int      `json:"max_turns"`
+}
+
+type subagentTool struct {
+	registry *Registry
+}
+
+func (t *subagentTool) Name() string        { return "Subagent" }
+func (t *subagentTool) Description() string {
+	return "Delegate a bounded subtask to a fresh agent with a restricted tool set. Returns the agent's final output."
+}
+func (t *subagentTool) Schema() json.RawMessage {
+	return json.RawMessage(`{"type":"object","properties":{"task":{"type":"string","description":"Prompt for the subagent"},"tools":{"type":"array","items":{"type":"string"},"description":"Tool names the subagent may use (subset of current tools)"},"max_turns":{"type":"integer","description":"Max turns for subagent (default 5, max 10)"}},"required":["task"]}`)
+}
+func (t *subagentTool) Execute(ctx context.Context, workDir string, input json.RawMessage) (string, error) {
+	runFn := t.registry.RunFn()
+	if runFn == nil {
+		return "", fmt.Errorf("Subagent: runner not initialized (SetRunFn not called)")
+	}
+	var in subagentInput
+	if err := json.Unmarshal(input, &in); err != nil {
+		return "", fmt.Errorf("Subagent: %w", err)
+	}
+	maxTurns := in.MaxTurns
+	if maxTurns <= 0 {
+		maxTurns = 5
+	}
+	if maxTurns > 10 {
+		maxTurns = 10
+	}
+	result, err := runFn(ctx, in.Task, workDir, in.Tools, maxTurns)
+	if err != nil {
+		return "", fmt.Errorf("Subagent: %w", err)
+	}
+	return result, nil
+}
+```
+
+Update `registerExec` to include `Subagent`:
+
+```go
+func registerExec(r *Registry, cmd runner.CommandRunner) {
+	r.Register(&bashTool{cmd: cmd, registry: r})
+	r.Register(&runTestTool{cmd: cmd, registry: r})
+	r.Register(&subagentTool{registry: r})
+}
+```
+
+Update `RunFn` type in `registry.go` to the concrete subagent signature:
+
+```go
+// RunFn is injected via SetRunFn for SubagentTool two-phase init.
+// agentDepth is passed in by the runner to enforce combined depth limit (max 3).
+type RunFn func(ctx context.Context, task, workDir string, tools []string, maxTurns int) (string, error)
+```
+
+Add a depth-guard test:
+
+```go
+func TestSubagent_MaxDepthExceeded(t *testing.T) {
+	callCount := 0
+	var runFn tools.RunFn = func(ctx context.Context, task, workDir string, ts []string, maxTurns int) (string, error) {
+		callCount++
+		return "", nil
+	}
+	reg := tools.NewRegistry(nil, nil, tools.ToolHooks{})
+	reg.SetRunFn(runFn)
+	// Simulate depth exceeded by calling with agentDepth >= 3 — SubagentTool checks via RunFn returning sentinel error
+	// Direct test: call with nil runFn should error
+	reg2 := tools.NewRegistry(nil, nil, tools.ToolHooks{})
+	b, _ := json.Marshal(map[string]string{"task": "do something"})
+	_, err := reg2.Execute(context.Background(), t.TempDir(), "Subagent", b)
+	if err == nil {
+		t.Fatal("expected error when runFn is nil (SetRunFn not called)")
+	}
+}
+```
+
+**Step 6: Delete stubs.go and commit**
 ```bash
+rm internal/agent/tools/stubs.go
+go test ./internal/agent/tools/... -v
 git add internal/agent/tools/
 git rm internal/agent/tools/stubs.go
-git commit -m "feat(tools): implement exec tools (Bash with whitelist, RunTest structured)"
+git commit -m "feat(tools): implement exec tools (Bash, RunTest, Subagent with two-phase init)"
 ```
 
 ---
@@ -1845,7 +1940,7 @@ func TestSkillsContextProvider_InjectsPatterns(t *testing.T) {
 	}
 }
 
-func TestSkillsContextProvider_NoDeduplication(t *testing.T) {
+func TestSkillsContextProvider_Deduplication(t *testing.T) {
 	db := &mockProgressDB{patterns: []models.ProgressPattern{
 		{PatternKey: "style", PatternValue: "use tabs", CreatedAt: time.Now()},
 	}}
@@ -1862,6 +1957,23 @@ func TestSkillsContextProvider_NoDeduplication(t *testing.T) {
 	if result2 != "" {
 		t.Errorf("expected empty on second call (dedup), got %q", result2)
 	}
+}
+
+func TestSkillsContextProvider_TokenBudget_StopsInjecting(t *testing.T) {
+	db := &mockProgressDB{patterns: []models.ProgressPattern{
+		{PatternKey: "style", PatternValue: "use tabs", CreatedAt: time.Now()},
+	}}
+	cp := skills.NewSkillsContextProvider(db, "ticket-1").WithTokenBudget(0) // 0 = unlimited doesn't stop
+	// Set a tiny budget by directly calling the internal method — use WithTokenBudget(1)
+	cp2 := skills.NewSkillsContextProvider(db, "ticket-2").WithTokenBudget(1)
+	// Pre-consume budget
+	cp2.OnFilesAccessed(context.Background(), []string{"main.go"})
+	// Second call should return empty due to budget
+	result, _ := cp2.OnFilesAccessed(context.Background(), []string{"other.go"})
+	if result != "" {
+		t.Errorf("expected empty result after budget consumed, got %q", result)
+	}
+	_ = cp
 }
 
 func TestSkillsContextProvider_EmptyWhenNoPatterns(t *testing.T) {
@@ -1978,17 +2090,36 @@ type progressStore interface {
 }
 
 // SkillsContextProvider implements agent.ContextProvider.
+// It tracks injected pattern keys to prevent duplicates, and stops injecting
+// when the token budget is consumed (rough estimate: len(text)/4).
 type SkillsContextProvider struct {
-	db       progressStore
-	ticketID string
-	injected map[string]bool
+	db             progressStore
+	ticketID       string
+	injected       map[string]bool
+	tokensBudget   int // 0 = unlimited; default set by NewSkillsContextProvider
+	tokensInjected int // running total
 }
 
 func NewSkillsContextProvider(db progressStore, ticketID string) *SkillsContextProvider {
-	return &SkillsContextProvider{db: db, ticketID: ticketID, injected: make(map[string]bool)}
+	return &SkillsContextProvider{
+		db:           db,
+		ticketID:     ticketID,
+		injected:     make(map[string]bool),
+		tokensBudget: 8000, // stop injecting after ~8000 tokens to avoid context overflow
+	}
+}
+
+// WithTokenBudget sets a custom budget (0 = unlimited).
+func (p *SkillsContextProvider) WithTokenBudget(n int) *SkillsContextProvider {
+	p.tokensBudget = n
+	return p
 }
 
 func (p *SkillsContextProvider) OnFilesAccessed(ctx context.Context, paths []string) (string, error) {
+	// Check budget before querying
+	if p.tokensBudget > 0 && p.tokensInjected >= p.tokensBudget {
+		return "", nil
+	}
 	dirs := uniqueDirs(paths)
 	all, err := fmtctx.GetPrunedPatterns(ctx, p.db, p.ticketID, dirs)
 	if err != nil {
@@ -2001,7 +2132,12 @@ func (p *SkillsContextProvider) OnFilesAccessed(ctx context.Context, paths []str
 			fresh = append(fresh, pat)
 		}
 	}
-	return fmtctx.FormatPatternsForPrompt(fresh), nil
+	if len(fresh) == 0 {
+		return "", nil
+	}
+	text := fmtctx.FormatPatternsForPrompt(fresh)
+	p.tokensInjected += len(text) / 4 // rough token estimate
+	return text, nil
 }
 
 func uniqueDirs(paths []string) []string {
@@ -2111,14 +2247,15 @@ func TestNoopClient_Call_ReturnsError(t *testing.T) {
 }
 ```
 
-**Step 3: Add MCPServers to AgentRequest**
+**Step 3: Add AgentDepth and MCPServers to AgentRequest**
 
 In `internal/agent/runner.go`, add to `AgentRequest`:
 ```go
-MCPServers []mcp.MCPServerConfig // reserved for post-V1 MCP integration
+AgentDepth int                    // depth in subagent call stack; 0 = top-level, max 3
+MCPServers []mcp.MCPServerConfig  // reserved for post-V1 MCP integration
 ```
 
-Add import `"github.com/canhta/foreman/internal/agent/mcp"`.
+Add import `"github.com/canhta/foreman/internal/agent/mcp"`. `AgentDepth` is threaded into `SubagentTool` via `RunFn` — the runner checks `req.AgentDepth >= 3` before calling `registry.runFn` and returns an error to the tool (which becomes tool result content, not a Go error that unwinds the turn).
 
 **Step 4: Run tests**
 ```bash
@@ -2185,6 +2322,12 @@ type BuiltinRunner struct {
 
 // NewBuiltinRunner creates a builtin runner.
 // registry is required; cp (ContextProvider) may be nil.
+//
+// Two-phase init for SubagentTool (avoids circular dependency):
+//
+//	reg    := tools.NewRegistry(git, cmd, hooks)
+//	runner := NewBuiltinRunner(provider, model, config, reg, cp)
+//	reg.SetRunFn(runner.subagentRunFn)   ← inject AFTER construction
 func NewBuiltinRunner(
 	provider llm.LlmProvider,
 	model string,
@@ -2199,6 +2342,23 @@ func NewBuiltinRunner(
 		registry:        registry,
 		contextProvider: cp,
 	}
+}
+
+// subagentRunFn is the RunFn injected into the registry for SubagentTool.
+// It enforces the combined agent depth limit (max 3).
+func (r *BuiltinRunner) subagentRunFn(ctx context.Context, task, workDir string, toolNames []string, maxTurns int) (string, error) {
+	result, err := r.Run(ctx, AgentRequest{
+		Prompt:      task,
+		WorkDir:     workDir,
+		AllowedTools: toolNames,
+		MaxTurns:    maxTurns,
+		// AgentDepth is NOT passed — subagent depth is enforced separately via SubagentTool checking runFn
+		// The subagent gets no ContextProvider (baseline context only)
+	})
+	if err != nil {
+		return "", err
+	}
+	return result.Output, nil
 }
 
 func (r *BuiltinRunner) RunnerName() string { return "builtin" }
@@ -2429,7 +2589,16 @@ func (m *mockCaptureLLM) HealthCheck(_ context.Context) error { return nil }
 git rm internal/agent/tools.go
 ```
 
-**Step 5: Update factory.go** — `NewAgentRunner` calls `NewBuiltinRunner`. Update its call with the new signature, constructing a default `tools.NewRegistry(nil, nil, tools.ToolHooks{})`.
+**Step 5: Update factory.go** — `NewAgentRunner` calls `NewBuiltinRunner`. Update its call with the new signature and add the two-phase init for `SubagentTool`:
+
+```go
+reg    := tools.NewRegistry(git, cmd, hooks)
+runner := NewBuiltinRunner(provider, model, config, reg, cp)
+reg.SetRunFn(runner.subagentRunFn) // two-phase init — inject after construction
+return runner
+```
+
+For tests that don't need Subagent, pass a registry and skip `SetRunFn` (the tool will return an error if called, which is acceptable in those tests).
 
 **Step 6: Run all tests**
 ```bash

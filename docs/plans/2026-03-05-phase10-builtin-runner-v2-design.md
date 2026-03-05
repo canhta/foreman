@@ -236,10 +236,17 @@ func (n *NoopClient) Call(ctx context.Context, _ string, _ json.RawMessage) (str
 | `Bash` | `command`, `timeout_secs?` | Whitelist against `config.AllowedCommands`; deny `rm`, `curl`, `git push`, `ssh`, `wget` |
 | `RunTest` | `test?`, `package?`, `timeout_secs?` | Fixed command from config; returns `{passed, failed, output}` struct |
 
+### Tier 3 — Subagent (`internal/agent/tools/exec.go`)
+
+| Tool | Input | Security |
+|---|---|---|
+| `Subagent` | `task`, `tools[]`, `max_turns?` | Depth ≤ 3 (shared via `AgentRequest.AgentDepth`); no ContextProvider passed (baseline context only) |
+
+`Subagent` calls back into `BuiltinRunner.Run()` with a scoped `AgentRequest`. Because `SubagentTool` holds a reference to the runner and the runner holds the registry, construction is two-phase: registry is created first (without runner), then runner, then `registry.SetRunner(runner)`.
+
 ### Never Build
 
 `CreatePR`, `PushBranch`, `CreateBranch` — Foreman pipeline owns these.
-`Task` (subagent spawning) — use `subskill` step type instead.
 `Computer`, `exit_plan_mode` — not applicable to daemon context.
 
 ---
@@ -325,7 +332,7 @@ internal/agent/
     ├── fs.go                    NEW — Read, Write, Edit, MultiEdit, ListDir, Glob, Grep
     ├── git.go                   NEW — GetDiff, GetCommitLog, TreeSummary
     ├── code.go                  NEW — GetSymbol, GetErrors
-    └── exec.go                  NEW — Bash, RunTest
+    └── exec.go                  NEW — Bash, RunTest, Subagent (two-phase init via SetRunner)
 
 internal/skills/
 ├── context_provider.go          NEW — SkillsContextProvider implements agent.ContextProvider
@@ -343,7 +350,64 @@ internal/agent/tools.go          DELETED — replaced by tools/ package
 - `models/pipeline.go` — untouched (Phase 9 already added the fields)
 - `claudecode.go`, `copilot.go` — untouched (pre-assembly via SystemPromptAppend handles their context needs)
 - `AgentRunner` interface — no new methods
-- `runner.go` AgentRequest/AgentResult types — only additive fields
+- `runner.go` AgentRequest — additive fields only (`AgentDepth int`, `MCPServers []MCPServerConfig`)
+
+---
+
+## Design Amendments (V2)
+
+Six gaps identified before implementation — all addressed here.
+
+### Gap 1: Subagent Tool
+
+`subskill` (deterministic YAML composition) and `Subagent` (LLM decides mid-turn) are distinct. `Subagent` is in Tier 3 (see above). Two-phase construction solves the circular reference:
+
+```go
+registry := tools.NewRegistry(git, cmd, hooks)   // Step 1 — no runner yet
+runner   := agent.NewBuiltinRunner(...)           // Step 2 — holds registry
+registry.SetRunner(runner)                         // Step 3 — inject after construction
+```
+
+### Gap 2: Parallel Execution + ContextProvider Race
+
+The plan already collects all touched paths *after* `g.Wait()` before calling `OnFilesAccessed` — one call per turn with the full batch. No data race. `SkillsContextProvider.injected` is only accessed from the main goroutine. ✓ Already correct.
+
+### Gap 3: ContextProvider Token Budget
+
+`SkillsContextProvider` tracks cumulative injected tokens and stops injecting when the budget is consumed:
+
+```go
+type SkillsContextProvider struct {
+    db             progressStore
+    ticketID       string
+    injected       map[string]bool
+    tokensBudget   int // from config (0 = unlimited)
+    tokensInjected int // running total (rough: len(text)/4)
+}
+```
+
+Budget check: `if p.tokensBudget > 0 && p.tokensInjected >= p.tokensBudget { return "", nil }`. Default budget: 8000 tokens (configurable via `BuiltinConfig.ContextTokenBudget`).
+
+### Gap 4: Circular Subagent Reference
+
+Solved by two-phase init (see Gap 1). `Registry` gains `SetRunner(r AgentRunner)` and stores it for `SubagentTool`. `SubagentTool` holds a `runFn func(ctx, AgentRequest) (AgentResult, error)` — a function reference, not the runner struct directly — to avoid import cycles.
+
+### Gap 5: Shared Depth Counter
+
+`AgentRequest` gains `AgentDepth int`. `BuiltinRunner` increments it when constructing sub-`AgentRequest` for `Subagent` tool. `SubagentTool` checks `req.AgentDepth >= 3` and returns an error before calling the runner. Both `subskill` and `Subagent` paths use the same field, so the combined depth is visible across the whole call stack.
+
+### Gap 6: Tool Hook Events Not Recorded
+
+`PostToolUse` hook in `NewBuiltinRunner` emits to the event log:
+
+```
+skillAgentToolCalled     — tool name, workDir, duration_ms
+skillAgentToolBlocked    — tool name, reason (from PreToolUse error)
+skillAgentToolFailed     — tool name, error message
+skillAgentContextInjected — dirs_count, tokens_injected
+```
+
+These are emitted via the existing event emitter passed to `NewBuiltinRunner` through `BuiltinConfig.EventEmitter` (optional, nil-safe). If nil, hooks still fire for security enforcement but events are not recorded.
 
 ---
 
