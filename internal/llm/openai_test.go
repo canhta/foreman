@@ -81,3 +81,104 @@ func TestOpenAIProvider_RateLimit(t *testing.T) {
 		t.Errorf("expected RateLimitError, got %T: %v", err, err)
 	}
 }
+
+func TestOpenAIProvider_AuthError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(401)
+		w.Write([]byte(`{"error":{"message":"invalid api key"}}`))
+	}))
+	defer srv.Close()
+	provider := NewOpenAIProvider("bad-key", srv.URL)
+	_, err := provider.Complete(context.Background(), models.LlmRequest{Model: "gpt-4o", UserPrompt: "hi", MaxTokens: 10})
+	if _, ok := err.(*AuthError); !ok {
+		t.Errorf("expected AuthError, got %T: %v", err, err)
+	}
+}
+
+func TestOpenAIProvider_ConnectionError(t *testing.T) {
+	provider := NewOpenAIProvider("key", "http://localhost:19999") // nothing listening
+	_, err := provider.Complete(context.Background(), models.LlmRequest{Model: "gpt-4o", UserPrompt: "hi", MaxTokens: 10})
+	if _, ok := err.(*ConnectionError); !ok {
+		t.Errorf("expected ConnectionError, got %T: %v", err, err)
+	}
+}
+
+func TestOpenAIProvider_HealthCheck_UsesDefaultModel(t *testing.T) {
+	var requestedModel string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&body)
+		requestedModel, _ = body["model"].(string)
+		resp := map[string]interface{}{
+			"id":    "chatcmpl-123",
+			"model": requestedModel,
+			"choices": []map[string]interface{}{
+				{"message": map[string]string{"role": "assistant", "content": "ok"}, "finish_reason": "stop"},
+			},
+			"usage": map[string]int{"prompt_tokens": 1, "completion_tokens": 1},
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	provider := NewOpenAIProvider("key", srv.URL)
+	if err := provider.HealthCheck(context.Background()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if requestedModel != "gpt-4o-mini" {
+		t.Errorf("expected gpt-4o-mini, got %s", requestedModel)
+	}
+}
+
+func TestLocalProvider_HealthCheck_UsesDefaultModel(t *testing.T) {
+	var requestedModel string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&body)
+		requestedModel, _ = body["model"].(string)
+		resp := map[string]interface{}{
+			"id":    "chatcmpl-123",
+			"model": requestedModel,
+			"choices": []map[string]interface{}{
+				{"message": map[string]string{"role": "assistant", "content": "ok"}, "finish_reason": "stop"},
+			},
+			"usage": map[string]int{"prompt_tokens": 1, "completion_tokens": 1},
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	provider := NewLocalProvider(srv.URL)
+	if err := provider.HealthCheck(context.Background()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if requestedModel != "llama3" {
+		t.Errorf("expected llama3, got %s", requestedModel)
+	}
+}
+
+func TestOpenAIProvider_TemperatureZeroNotOmitted(t *testing.T) {
+	var requestBody map[string]interface{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewDecoder(r.Body).Decode(&requestBody)
+		resp := map[string]interface{}{
+			"id":    "chatcmpl-123",
+			"model": "gpt-4o",
+			"choices": []map[string]interface{}{
+				{"message": map[string]string{"role": "assistant", "content": "ok"}, "finish_reason": "stop"},
+			},
+			"usage": map[string]int{"prompt_tokens": 1, "completion_tokens": 1},
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	provider := NewOpenAIProvider("key", srv.URL)
+	_, err := provider.Complete(context.Background(), models.LlmRequest{Model: "gpt-4o", UserPrompt: "hi", MaxTokens: 10, Temperature: 0.0})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, ok := requestBody["temperature"]; !ok {
+		t.Error("temperature field was omitted from request body, expected it to be present with value 0")
+	}
+}

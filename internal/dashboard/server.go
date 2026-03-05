@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -68,8 +69,11 @@ func NewServer(db DashboardDB, emitter EventSubscriber, reg *prometheus.Registry
 		db:  db,
 		reg: reg,
 		server: &http.Server{
-			Addr:    addr,
-			Handler: mux,
+			Addr:         addr,
+			Handler:      mux,
+			ReadTimeout:  10 * time.Second,
+			WriteTimeout: 60 * time.Second,
+			IdleTimeout:  120 * time.Second,
 		},
 	}
 }

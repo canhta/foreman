@@ -51,6 +51,15 @@ func (m *mockDashboardDB) GetTicketCost(_ context.Context, _ string) (float64, e
 	return 3.25, nil
 }
 
+// mockInvalidAuthDB always rejects auth token validation.
+type mockInvalidAuthDB struct {
+	mockDashboardDB
+}
+
+func (m *mockInvalidAuthDB) ValidateAuthToken(_ context.Context, _ string) (bool, error) {
+	return false, nil
+}
+
 func TestAPIGetStatus(t *testing.T) {
 	db := &mockDashboardDB{}
 	api := NewAPI(db, nil, "1.0.0")
@@ -90,5 +99,55 @@ func TestAPIListTickets(t *testing.T) {
 	json.NewDecoder(rec.Body).Decode(&tickets)
 	if len(tickets) != 1 {
 		t.Fatalf("expected 1 ticket, got %d", len(tickets))
+	}
+}
+
+func TestAPIGetTicket(t *testing.T) {
+	db := &mockDashboardDB{
+		tickets: []models.Ticket{{ID: "t1", Title: "Test", Status: models.TicketStatusImplementing}},
+	}
+	api := NewAPI(db, nil, "1.0.0")
+	req := httptest.NewRequest("GET", "/api/tickets/t1", nil)
+	rec := httptest.NewRecorder()
+	api.handleGetTicket(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestAPIGetTicketNotFound(t *testing.T) {
+	db := &mockDashboardDB{}
+	api := NewAPI(db, nil, "1.0.0")
+	req := httptest.NewRequest("GET", "/api/tickets/nonexistent", nil)
+	rec := httptest.NewRecorder()
+	api.handleGetTicket(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestAPIGetEvents(t *testing.T) {
+	db := &mockDashboardDB{
+		events: []models.EventRecord{
+			{ID: "e1", TicketID: "t1", EventType: "task_started"},
+		},
+	}
+	api := NewAPI(db, nil, "1.0.0")
+	req := httptest.NewRequest("GET", "/api/tickets/t1/events", nil)
+	rec := httptest.NewRecorder()
+	api.handleGetEvents(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestAPICostsToday(t *testing.T) {
+	db := &mockDashboardDB{}
+	api := NewAPI(db, nil, "1.0.0")
+	req := httptest.NewRequest("GET", "/api/costs/today", nil)
+	rec := httptest.NewRecorder()
+	api.handleCostsToday(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
 	}
 }

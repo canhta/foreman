@@ -14,9 +14,10 @@ import (
 )
 
 type OpenAIProvider struct {
-	apiKey  string
-	baseURL string
-	client  *http.Client
+	apiKey       string
+	baseURL      string
+	client       *http.Client
+	defaultModel string
 }
 
 func NewOpenAIProvider(apiKey, baseURL string) *OpenAIProvider {
@@ -24,9 +25,10 @@ func NewOpenAIProvider(apiKey, baseURL string) *OpenAIProvider {
 		baseURL = "https://api.openai.com"
 	}
 	return &OpenAIProvider{
-		apiKey:  apiKey,
-		baseURL: baseURL,
-		client:  &http.Client{Timeout: 5 * time.Minute},
+		apiKey:       apiKey,
+		baseURL:      baseURL,
+		client:       &http.Client{Timeout: 5 * time.Minute},
+		defaultModel: "gpt-4o-mini",
 	}
 }
 
@@ -36,7 +38,7 @@ type openaiRequest struct {
 	Model       string          `json:"model"`
 	Messages    []openaiMessage `json:"messages"`
 	MaxTokens   int             `json:"max_tokens,omitempty"`
-	Temperature float64         `json:"temperature,omitempty"`
+	Temperature float64         `json:"temperature"`
 	Stop        []string        `json:"stop,omitempty"`
 }
 
@@ -141,7 +143,7 @@ func (p *OpenAIProvider) Complete(ctx context.Context, req models.LlmRequest) (*
 
 func (p *OpenAIProvider) HealthCheck(ctx context.Context) error {
 	_, err := p.Complete(ctx, models.LlmRequest{
-		Model:      "gpt-4o-mini",
+		Model:      p.defaultModel,
 		UserPrompt: "ping",
 		MaxTokens:  5,
 	})
