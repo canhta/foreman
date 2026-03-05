@@ -4,7 +4,7 @@
 [![Go Version](https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-Foreman polls your issue tracker, decomposes tickets into granular tasks, writes code via LLM with TDD discipline, runs deterministic checks and reviews, and opens pull requests with minimal human intervention.
+Foreman polls your issue tracker, breaks tickets into granular tasks, writes code with LLM-guided TDD, runs deterministic quality checks, and opens pull requests with minimal human intervention.
 
 ## Why Foreman
 
@@ -15,29 +15,17 @@ Foreman polls your issue tracker, decomposes tickets into granular tasks, writes
 
 ## How It Works
 
-```
-Ticket → Clarification Check → Planning → Plan Validation →
-  Per-Task: [Implement (TDD) → Lint → Spec Review → Quality Review → Commit] →
-Final Review → PR Creation
-```
-
-## Status
-
-Phase 1 complete. Core foundations already implemented:
-
-| Package | Status |
-|---------|--------|
-| `internal/models` | Domain models (Ticket, Task, pipeline states, config) |
-| `internal/llm` | LLM provider interface + Anthropic implementation |
-| `internal/runner` | Command runner (local) |
-| `internal/pipeline` | Output parser with fuzzy search/replace |
-| `internal/context` | Secrets scanner + token budget |
-| `internal/db` | SQLite database with full schema |
-| `internal/config` | Config loading via Viper |
+1. **Pick up a ticket** from Jira, GitHub Issues, or Linear.
+2. **Check for clarity** and request clarification when requirements are ambiguous.
+3. **Plan the work** into small, ordered tasks.
+4. **Validate the plan** before execution (files, dependencies, and limits).
+5. **Implement each task with TDD** and run lint/test checks.
+6. **Run spec and quality reviews** before committing.
+7. **Run final review** and create a PR synced back to the issue tracker.
 
 ## Quick Start
 
-**Requirements:** Go 1.26+, CGO (for SQLite)
+**Requirements:** Go 1.26+ and a C toolchain (CGO is required for SQLite).
 
 ```bash
 # Build
@@ -48,7 +36,7 @@ make test
 
 # Configure
 cp foreman.example.toml foreman.toml
-# Edit foreman.toml and set required tokens and provider settings
+# Edit foreman.toml and set required tokens/provider settings
 
 # Run
 ./foreman --help
@@ -61,7 +49,7 @@ cp foreman.example.toml foreman.toml
 docker compose up --build
 ```
 
-Default dashboard port mapping: `3333:3333`.
+Default dashboard port mapping is `3333:3333`.
 
 Set required environment variables before startup (for example `ANTHROPIC_API_KEY` and `FOREMAN_DASHBOARD_TOKEN`).
 
@@ -81,6 +69,8 @@ clone_url = "https://github.com/your-org/your-repo.git"
 [tracker]
 provider = "github"  # github, jira, linear, local_file
 ```
+
+For local runs, use `foreman.toml`. For Docker Compose in this repo, `foreman.example.toml` is mounted as `/app/foreman.toml` by default.
 
 ## Tech Stack
 
@@ -102,7 +92,7 @@ provider = "github"  # github, jira, linear, local_file
 ### Testing
 
 - **Testify** (`github.com/stretchr/testify`) - assertions and test helpers
-- **Go test** - built-in test runner
+- **go test** - built-in test runner
 
 ### Tooling and Ops
 
