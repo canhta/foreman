@@ -4,8 +4,6 @@
 [![Go Version](https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-An autonomous software development daemon that turns issue tracker tickets into tested, reviewed pull requests.
-
 Foreman polls your issue tracker, decomposes tickets into granular tasks, writes code via LLM with TDD discipline, runs deterministic checks and reviews, and opens pull requests with minimal human intervention.
 
 If Foreman is useful to your team, support the project by starring the repository.
@@ -38,8 +36,6 @@ Phase 1 complete. Core foundations already implemented:
 | `internal/context` | Secrets scanner + token budget |
 | `internal/db` | SQLite database with full schema |
 | `internal/config` | Config loading via Viper |
-
-See `docs/spec.md` for the complete architecture and implementation roadmap.
 
 ## Quick Start
 
@@ -88,14 +84,33 @@ clone_url = "https://github.com/your-org/your-repo.git"
 provider = "github"  # github, jira, linear, local_file
 ```
 
-For full settings and behavior, refer to `docs/spec.md`.
-
 ## Tech Stack
 
-- **Go 1.26+** — runtime
-- **SQLite** (`go-sqlite3`) — persistence
-- **Cobra/Viper** — CLI and config
-- **Anthropic API** — default LLM provider
+### Core
+
+- **Go 1.26+** - language/runtime
+- **Go stdlib** - process execution, file I/O, HTTP, and concurrency primitives
+
+### CLI and Configuration
+
+- **Cobra** (`github.com/spf13/cobra`) - CLI framework
+- **Viper** (`github.com/spf13/viper`) - configuration loading
+
+### Storage
+
+- **SQLite** (`github.com/mattn/go-sqlite3`) - local persistence backend
+- **CGO** - required by `go-sqlite3`
+
+### Testing
+
+- **Testify** (`github.com/stretchr/testify`) - assertions and test helpers
+- **Go test** - built-in test runner
+
+### Tooling and Ops
+
+- **Makefile** - common developer commands (`build`, `test`, `lint`)
+- **Docker** - containerized runtime
+- **Docker Compose** - local orchestration
 
 ## Star History
 
