@@ -3,6 +3,8 @@ package agent
 import (
 	"context"
 	"encoding/json"
+
+	"github.com/canhta/foreman/internal/agent/mcp"
 )
 
 // AgentRunner abstracts any external agent SDK or CLI that can execute
@@ -27,8 +29,10 @@ type AgentRequest struct {
 	AllowedTools  []string        // Enforced per-runner; empty = runner default
 	MaxTurns      int             // 0 = runner default
 	TimeoutSecs   int             // 0 = runner default
-	OutputSchema  json.RawMessage // Optional: JSON Schema for structured output
-	FallbackModel string          // e.g. "openrouter:claude-sonnet-4-5-20250929" — used on overload errors
+	OutputSchema  json.RawMessage    // Optional: JSON Schema for structured output
+	FallbackModel string             // e.g. "openrouter:claude-sonnet-4-5-20250929" — used on overload errors
+	AgentDepth    int                // Depth in subagent call stack; 0 = top-level, max 3
+	MCPServers    []mcp.MCPServerConfig // Reserved for post-V1 MCP integration
 }
 
 // AgentResult holds the output of an agent task.
