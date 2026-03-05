@@ -1,0 +1,20 @@
+version: "3.9"
+
+services:
+  foreman:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: foreman
+    restart: unless-stopped
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      FOREMAN_DASHBOARD_TOKEN: ${FOREMAN_DASHBOARD_TOKEN:-}
+    volumes:
+      - ./.foreman:/root/.foreman
+      - ./foreman.example.toml:/app/foreman.toml:ro
+    command: ["start"]
+    ports:
+      - "3333:3333"

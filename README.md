@@ -45,6 +45,17 @@ cp foreman.example.toml foreman.toml
 ./foreman --help
 ```
 
+## Docker
+
+```bash
+# Build and run with Docker Compose
+docker compose up --build
+```
+
+Default dashboard port mapping: `3333:3333`.
+
+Set required environment variables before startup (for example `ANTHROPIC_API_KEY` and `FOREMAN_DASHBOARD_TOKEN`).
+
 ## Configuration
 
 Copy `foreman.example.toml` to `foreman.toml` and set:
@@ -71,4 +82,4 @@ See `foreman.example.toml` for all options with defaults.
 
 ## License
 
-MIT
+MIT (`LICENSE`)

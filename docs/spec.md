@@ -219,10 +219,8 @@ foreman/
 ├── go.sum
 ├── main.go                            # Entry point
 ├── README.md
-├── LICENSE-MIT
-├── LICENSE-APACHE
+├── LICENSE
 ├── CONTRIBUTING.md
-├── CHANGELOG.md
 ├── Makefile                           # Build, test, lint, release targets
 ├── Dockerfile                         # Multi-stage build
 ├── docker-compose.yml
@@ -2959,7 +2957,7 @@ func (d *Daemon) cleanupOrphanContainers() {
 
 ### 16.1 License
 
-MIT + Apache 2.0 dual license (Go ecosystem standard).
+MIT license.
 
 ### 16.2 Release Artifacts
 
