@@ -4,6 +4,6 @@ trigger: post_lint
 steps:
   - id: behavior-check
     type: run_command
-    command: "{{ .Rules.TestCommand }}"
+    command: "go test ./..."
     args: []
     allow_failure: false
