@@ -65,6 +65,18 @@ func TestFeedbackAccumulator_MultipleFeedback(t *testing.T) {
 	assert.Contains(t, rendered, "Spec review")
 }
 
+func TestFeedbackAccumulator_Reset(t *testing.T) {
+	fb := NewFeedbackAccumulator()
+	fb.AddLintError("some error")
+	fb.AddTestError("test failure")
+	assert.True(t, fb.HasFeedback())
+	assert.Equal(t, 2, fb.Attempt())
+	fb.Reset()
+	assert.False(t, fb.HasFeedback())
+	assert.Equal(t, 0, fb.Attempt())
+	assert.Empty(t, fb.Render())
+}
+
 func TestFeedbackAccumulator_Truncation(t *testing.T) {
 	fb := NewFeedbackAccumulator()
 	longError := make([]byte, 5000)
