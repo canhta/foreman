@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
+
+	fcontext "github.com/canhta/foreman/internal/context"
 )
 
 var initAnalyze bool
@@ -61,8 +63,15 @@ path = "~/.foreman/foreman.db"
 
 		if initAnalyze {
 			fmt.Println("Analyzing repository...")
-			// TODO: Wire to context.AnalyzeRepo() when available
-			fmt.Println("Note: --analyze will generate .foreman-context.md in a future release")
+			gen := fcontext.NewGenerator(nil, "")
+			content, err := gen.Generate(cmd.Context(), ".", fcontext.GenerateOptions{Offline: true})
+			if err != nil {
+				return fmt.Errorf("analyze: %w", err)
+			}
+			if err := os.WriteFile("AGENTS.md", []byte(content+"\n"), 0o644); err != nil {
+				return fmt.Errorf("write AGENTS.md: %w", err)
+			}
+			fmt.Println("Generated AGENTS.md")
 		}
 
 		return nil
