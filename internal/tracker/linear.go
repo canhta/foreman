@@ -60,7 +60,7 @@ type linearIssue struct {
 
 func (l *LinearTracker) FetchReadyTickets(ctx context.Context) ([]Ticket, error) {
 	query := fmt.Sprintf(`{
-		issues(filter: { labels: { name: { eq: "%s" } }, state: { type: { neq: "completed" } } }) {
+		issues(filter: { labels: { name: { eq: %q } }, state: { type: { neq: "completed" } } }) {
 			nodes {
 				identifier title description priority
 				labels { nodes { name } }
@@ -100,7 +100,7 @@ func (l *LinearTracker) FetchReadyTickets(ctx context.Context) ([]Ticket, error)
 
 func (l *LinearTracker) GetTicket(ctx context.Context, externalID string) (*Ticket, error) {
 	query := fmt.Sprintf(`{
-		issue(id: "%s") {
+		issue(id: %q) {
 			identifier title description priority
 			labels { nodes { name } }
 			assignee { name }
@@ -144,7 +144,7 @@ func (l *LinearTracker) UpdateStatus(ctx context.Context, externalID, status str
 }
 
 func (l *LinearTracker) AddComment(ctx context.Context, externalID, comment string) error {
-	mutation := fmt.Sprintf(`mutation { commentCreate(input: { issueId: "%s", body: %q }) { success } }`,
+	mutation := fmt.Sprintf(`mutation { commentCreate(input: { issueId: %q, body: %q }) { success } }`,
 		externalID, comment)
 	_, err := l.graphql(ctx, mutation)
 	return err
@@ -199,6 +199,15 @@ func (l *LinearTracker) graphql(ctx context.Context, query string) ([]byte, erro
 	}
 	if resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("linear API error (status %d): %s", resp.StatusCode, string(body))
+	}
+	// Check GraphQL-level errors (returned as HTTP 200 with errors field)
+	var gqlResp struct {
+		Errors []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+	if err := json.Unmarshal(body, &gqlResp); err == nil && len(gqlResp.Errors) > 0 {
+		return nil, fmt.Errorf("linear GraphQL error: %s", gqlResp.Errors[0].Message)
 	}
 	return body, nil
 }
