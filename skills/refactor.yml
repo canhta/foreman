@@ -1,0 +1,9 @@
+id: refactor
+description: "Refactoring workflow — ensures behavior preservation"
+trigger: post_lint
+steps:
+  - id: behavior-check
+    type: run_command
+    command: "{{ .Rules.TestCommand }}"
+    args: []
+    allow_failure: false
