@@ -20,9 +20,11 @@ type Database interface {
 	CreateTasks(ctx context.Context, ticketID string, tasks []models.Task) error
 	UpdateTaskStatus(ctx context.Context, id string, status models.TaskStatus) error
 	IncrementTaskLlmCalls(ctx context.Context, id string) (int, error)
+	ListTasks(ctx context.Context, ticketID string) ([]models.Task, error)
 
 	// LLM calls
 	RecordLlmCall(ctx context.Context, call *models.LlmCallRecord) error
+	ListLlmCalls(ctx context.Context, ticketID string) ([]models.LlmCallRecord, error)
 
 	// Handoffs
 	SetHandoff(ctx context.Context, h *models.HandoffRecord) error
@@ -40,6 +42,7 @@ type Database interface {
 	// Cost
 	GetTicketCost(ctx context.Context, ticketID string) (float64, error)
 	GetDailyCost(ctx context.Context, date string) (float64, error)
+	GetMonthlyCost(ctx context.Context, yearMonth string) (float64, error)
 	RecordDailyCost(ctx context.Context, date string, amount float64) error
 
 	// Events
