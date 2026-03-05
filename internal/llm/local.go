@@ -15,8 +15,10 @@ func NewLocalProvider(baseURL string) *LocalProvider {
 	if baseURL == "" {
 		baseURL = "http://localhost:11434"
 	}
+	inner := NewOpenAIProvider("", baseURL)
+	inner.defaultModel = "llama3"
 	return &LocalProvider{
-		inner: NewOpenAIProvider("", baseURL),
+		inner: inner,
 	}
 }
 

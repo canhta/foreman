@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/canhta/foreman/internal/models"
+	"github.com/rs/zerolog/log"
 )
 
 // EventStore is a subset of db.Database for event recording.
@@ -56,7 +57,9 @@ func (e *EventEmitter) Emit(ctx context.Context, ticketID, taskID, eventType str
 		CreatedAt: time.Now(),
 	}
 
-	_ = e.store.RecordEvent(ctx, evt)
+	if err := e.store.RecordEvent(ctx, evt); err != nil {
+		log.Error().Err(err).Str("ticket_id", ticketID).Str("event_type", eventType).Msg("failed to record event")
+	}
 
 	e.mu.RLock()
 	defer e.mu.RUnlock()

@@ -13,6 +13,18 @@ var upgrader = websocket.Upgrader{
 }
 
 func (a *API) handleWebSocket(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	hash := hashToken(token)
+	valid, err := a.db.ValidateAuthToken(r.Context(), hash)
+	if err != nil || !valid {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Error().Err(err).Msg("WebSocket upgrade failed")
