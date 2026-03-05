@@ -166,12 +166,9 @@ func (p *PostgresDB) UpdateTaskStatus(ctx context.Context, id string, status mod
 }
 
 func (p *PostgresDB) IncrementTaskLlmCalls(ctx context.Context, id string) (int, error) {
-	_, err := p.db.ExecContext(ctx, `UPDATE tasks SET total_llm_calls = total_llm_calls + 1 WHERE id = $1`, id)
-	if err != nil {
-		return 0, err
-	}
 	var count int
-	err = p.db.QueryRowContext(ctx, `SELECT total_llm_calls FROM tasks WHERE id = $1`, id).Scan(&count)
+	err := p.db.QueryRowContext(ctx,
+		`UPDATE tasks SET total_llm_calls = total_llm_calls + 1 WHERE id = $1 RETURNING total_llm_calls`, id).Scan(&count)
 	return count, err
 }
 
@@ -264,7 +261,8 @@ func (p *PostgresDB) ReserveFiles(ctx context.Context, ticketID string, paths []
 
 	for i, path := range paths {
 		_, err := tx.ExecContext(ctx,
-			`INSERT INTO file_reservations (file_path, ticket_id, reserved_at) VALUES ($1, $2, $3)`,
+			`INSERT INTO file_reservations (file_path, ticket_id, reserved_at) VALUES ($1, $2, $3)
+			 ON CONFLICT (file_path, ticket_id) DO NOTHING`,
 			path, ticketID, time.Now())
 		if err != nil {
 			return fmt.Errorf("reserve file %d (%s): %w", i, path, err)
@@ -303,7 +301,8 @@ func (p *PostgresDB) GetReservedFiles(ctx context.Context) (map[string]string, e
 
 func (p *PostgresDB) GetTicketCost(ctx context.Context, ticketID string) (float64, error) {
 	var cost float64
-	err := p.db.QueryRowContext(ctx, `SELECT cost_usd FROM tickets WHERE id = $1`, ticketID).Scan(&cost)
+	err := p.db.QueryRowContext(ctx,
+		`SELECT COALESCE(SUM(cost_usd), 0) FROM llm_calls WHERE ticket_id = $1`, ticketID).Scan(&cost)
 	return cost, err
 }
 
@@ -319,8 +318,8 @@ func (p *PostgresDB) GetDailyCost(ctx context.Context, date string) (float64, er
 func (p *PostgresDB) RecordDailyCost(ctx context.Context, date string, amount float64) error {
 	_, err := p.db.ExecContext(ctx,
 		`INSERT INTO cost_daily (date, total_usd) VALUES ($1, $2)
-		 ON CONFLICT(date) DO UPDATE SET total_usd = cost_daily.total_usd + $3`,
-		date, amount, amount)
+		 ON CONFLICT (date) DO UPDATE SET total_usd = cost_daily.total_usd + EXCLUDED.total_usd`,
+		date, amount)
 	return err
 }
 
