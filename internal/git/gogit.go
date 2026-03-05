@@ -86,6 +86,8 @@ func (g *GoGitProvider) Push(ctx context.Context, workDir, branchName string) er
 	if err != nil {
 		return fmt.Errorf("go-git open: %w", err)
 	}
+	// PushOptions with no RemoteURL or Auth will only work for repos with a
+	// preconfigured remote. For full push support, use the native git provider.
 	return repo.Push(&gogit.PushOptions{})
 }
 
