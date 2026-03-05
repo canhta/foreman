@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/canhta/foreman/internal/llm"
 	"github.com/canhta/foreman/internal/models"
 )
 
@@ -36,7 +37,7 @@ type mockToolUseLLM struct {
 
 func (m *mockToolUseLLM) Complete(_ context.Context, req models.LlmRequest) (*models.LlmResponse, error) {
 	m.calls++
-	if m.calls == 1 && len(req.Tools) > 0 {
+	if m.calls == 1 {
 		return &models.LlmResponse{
 			StopReason:   models.StopReasonToolUse,
 			TokensInput:  500,
@@ -82,6 +83,7 @@ func TestBuiltinRunner_SingleShot(t *testing.T) {
 		&mockSingleShotLLM{response: "simple answer"},
 		"test-model",
 		BuiltinConfig{MaxTurnsDefault: 10},
+		nil, nil,
 	)
 
 	result, err := runner.Run(context.Background(), AgentRequest{
@@ -107,7 +109,7 @@ func TestBuiltinRunner_MultiTurnToolUse(t *testing.T) {
 	runner := NewBuiltinRunner(mockLLM, "test-model", BuiltinConfig{
 		MaxTurnsDefault:     10,
 		DefaultAllowedTools: []string{"Read", "Glob", "Grep"},
-	})
+	}, nil, nil)
 
 	result, err := runner.Run(context.Background(), AgentRequest{
 		Prompt:  "What is in main.go?",
@@ -137,7 +139,7 @@ func TestBuiltinRunner_MaxTurnsExceeded(t *testing.T) {
 	runner := NewBuiltinRunner(&alwaysToolUseLLM{}, "test-model", BuiltinConfig{
 		MaxTurnsDefault:     3,
 		DefaultAllowedTools: []string{"Read"},
-	})
+	}, nil, nil)
 
 	_, err := runner.Run(context.Background(), AgentRequest{
 		Prompt:  "Read everything",
@@ -154,7 +156,7 @@ func TestBuiltinRunner_UnknownTool(t *testing.T) {
 	runner := NewBuiltinRunner(unknownToolLLM, "test-model", BuiltinConfig{
 		MaxTurnsDefault:     10,
 		DefaultAllowedTools: []string{"Read"},
-	})
+	}, nil, nil)
 
 	result, err := runner.Run(context.Background(), AgentRequest{
 		Prompt:  "Do something",
@@ -193,22 +195,65 @@ func (m *mockToolUseLLMWithUnknown) ProviderName() string                { retur
 func (m *mockToolUseLLMWithUnknown) HealthCheck(_ context.Context) error { return nil }
 
 func TestBuiltinRunner_RunnerName(t *testing.T) {
-	runner := NewBuiltinRunner(nil, "", BuiltinConfig{})
+	runner := NewBuiltinRunner(nil, "", BuiltinConfig{}, nil, nil)
 	if runner.RunnerName() != "builtin" {
 		t.Fatalf("expected 'builtin', got %q", runner.RunnerName())
 	}
 }
 
 func TestBuiltinRunner_Close(t *testing.T) {
-	runner := NewBuiltinRunner(nil, "", BuiltinConfig{})
+	runner := NewBuiltinRunner(nil, "", BuiltinConfig{}, nil, nil)
 	if err := runner.Close(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
 func TestBuiltinRunner_HealthCheck(t *testing.T) {
-	runner := NewBuiltinRunner(&mockSingleShotLLM{response: "ok"}, "test-model", BuiltinConfig{})
+	runner := NewBuiltinRunner(&mockSingleShotLLM{response: "ok"}, "test-model", BuiltinConfig{}, nil, nil)
 	if err := runner.HealthCheck(context.Background()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestBuiltinRunner_Fallback(t *testing.T) {
+	fallbackLLM := &mockFallbackLLM{}
+	runner := NewBuiltinRunner(fallbackLLM, "primary-model", BuiltinConfig{MaxTurnsDefault: 5}, nil, nil)
+
+	result, err := runner.Run(context.Background(), AgentRequest{
+		Prompt:        "Do something",
+		WorkDir:       t.TempDir(),
+		FallbackModel: "fallback-model",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Output != "fallback response" {
+		t.Fatalf("expected fallback response, got %q", result.Output)
+	}
+	// Verify the fallback model was used for the second call
+	if fallbackLLM.lastModel != "fallback-model" {
+		t.Errorf("expected fallback model, got %q", fallbackLLM.lastModel)
+	}
+}
+
+// mockFallbackLLM returns rate limit error on first call, success on second.
+type mockFallbackLLM struct {
+	calls     int
+	lastModel string
+}
+
+func (m *mockFallbackLLM) Complete(_ context.Context, req models.LlmRequest) (*models.LlmResponse, error) {
+	m.calls++
+	m.lastModel = req.Model
+	if m.calls == 1 {
+		// Simulate rate limit / overload on primary model
+		return nil, &llm.RateLimitError{RetryAfterSecs: 30}
+	}
+	return &models.LlmResponse{
+		Content:    "fallback response",
+		StopReason: models.StopReasonEndTurn,
+		Model:      req.Model,
+	}, nil
+}
+func (m *mockFallbackLLM) ProviderName() string                { return "mock" }
+func (m *mockFallbackLLM) HealthCheck(_ context.Context) error { return nil }

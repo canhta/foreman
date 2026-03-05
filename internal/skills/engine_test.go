@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/canhta/foreman/internal/agent"
+	"github.com/canhta/foreman/internal/git"
 	"github.com/canhta/foreman/internal/models"
 	"github.com/canhta/foreman/internal/runner"
 	"github.com/stretchr/testify/assert"
@@ -186,11 +187,13 @@ func TestEngine_StepFailureStopsExecution(t *testing.T) {
 // --- agentsdk step type tests ---
 
 type mockAgentRunner struct {
-	output string
-	err    error
+	output  string
+	err     error
+	lastReq agent.AgentRequest
 }
 
 func (m *mockAgentRunner) Run(_ context.Context, req agent.AgentRequest) (agent.AgentResult, error) {
+	m.lastReq = req
 	if m.err != nil {
 		return agent.AgentResult{}, m.err
 	}
@@ -206,6 +209,37 @@ func (m *mockAgentRunner) Run(_ context.Context, req agent.AgentRequest) (agent.
 func (m *mockAgentRunner) HealthCheck(_ context.Context) error { return nil }
 func (m *mockAgentRunner) RunnerName() string                  { return "mock" }
 func (m *mockAgentRunner) Close() error                        { return nil }
+
+// mockGitForEngine satisfies git.GitProvider for engine tests.
+type mockGitForEngine struct {
+	diff string
+	err  error
+}
+
+func (m *mockGitForEngine) EnsureRepo(_ context.Context, _ string) error  { return nil }
+func (m *mockGitForEngine) CreateBranch(_ context.Context, _, _ string) error { return nil }
+func (m *mockGitForEngine) Commit(_ context.Context, _, _ string) (string, error) { return "", nil }
+func (m *mockGitForEngine) Diff(_ context.Context, _, _, _ string) (string, error) { return "", nil }
+func (m *mockGitForEngine) DiffWorking(_ context.Context, _ string) (string, error) {
+	return m.diff, m.err
+}
+func (m *mockGitForEngine) Push(_ context.Context, _, _ string) error { return nil }
+func (m *mockGitForEngine) RebaseOnto(_ context.Context, _, _ string) (*git.RebaseResult, error) {
+	return nil, nil
+}
+func (m *mockGitForEngine) CreatePR(_ context.Context, _ git.PrRequest) (*git.PrResponse, error) {
+	return nil, nil
+}
+func (m *mockGitForEngine) StageAll(_ context.Context, _ string) error               { return nil }
+func (m *mockGitForEngine) FileTree(_ context.Context, _ string) ([]git.FileEntry, error) {
+	return nil, nil
+}
+func (m *mockGitForEngine) Log(_ context.Context, _ string, _ int) ([]git.CommitEntry, error) {
+	return nil, nil
+}
+func (m *mockGitForEngine) CheckFileOverlap(_ context.Context, _, _ string, _ []string) ([]string, error) {
+	return nil, nil
+}
 
 func TestEngine_ExecuteAgentSDK(t *testing.T) {
 	workDir := t.TempDir()
@@ -274,4 +308,107 @@ func TestEngine_ExecuteAgentSDK_AllowFailure(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEmpty(t, sCtx.Steps["agent"].Error)
 	assert.NotNil(t, sCtx.Steps["after"])
+}
+
+// --- Phase 9 field wiring tests ---
+
+func TestEngine_ExecuteAgentSDK_WiresPhase9Fields(t *testing.T) {
+	mock := &mockAgentRunner{}
+	e := NewEngine(nil, nil, t.TempDir(), "main")
+	e.SetAgentRunner(mock)
+
+	schema := map[string]interface{}{"type": "object"}
+	step := SkillStep{
+		ID:            "s1",
+		Type:          "agentsdk",
+		Content:       "do thing",
+		FallbackModel: "openrouter:claude-sonnet",
+		OutputSchema:  schema,
+	}
+	_, err := e.executeStep(context.Background(), step, NewSkillContext())
+	require.NoError(t, err)
+	assert.Equal(t, "openrouter:claude-sonnet", mock.lastReq.FallbackModel)
+	assert.NotNil(t, mock.lastReq.OutputSchema)
+}
+
+// --- git_diff tests ---
+
+func TestEngine_GitDiff_Implemented(t *testing.T) {
+	mockGit := &mockGitForEngine{diff: "diff content"}
+	e := NewEngine(nil, nil, t.TempDir(), "main")
+	e.SetGitProvider(mockGit)
+
+	result, err := e.executeGitDiff(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, "diff content", result.Output)
+}
+
+func TestEngine_GitDiff_NoProvider(t *testing.T) {
+	e := NewEngine(nil, nil, t.TempDir(), "main")
+	_, err := e.executeGitDiff(context.Background())
+	assert.Error(t, err)
+}
+
+// --- subskill tests ---
+
+func TestEngine_SubSkill(t *testing.T) {
+	mock := &mockAgentRunner{output: "sub result"}
+	e := NewEngine(nil, nil, t.TempDir(), "main")
+	e.SetAgentRunner(mock)
+
+	sub := &Skill{
+		ID:      "child",
+		Trigger: "post_lint",
+		Steps:   []SkillStep{{ID: "s1", Type: "agentsdk", Content: "child task"}},
+	}
+	parent := &Skill{
+		ID:      "parent",
+		Trigger: "post_lint",
+		Steps:   []SkillStep{{ID: "call-child", Type: "subskill", SkillRef: "child"}},
+	}
+	e.RegisterSkills([]*Skill{sub, parent})
+
+	sCtx := NewSkillContext()
+	err := e.Execute(context.Background(), parent, sCtx)
+	require.NoError(t, err)
+	assert.Equal(t, "sub result", sCtx.Steps["call-child"].Output)
+}
+
+func TestEngine_SubSkill_MissingRef(t *testing.T) {
+	e := NewEngine(nil, nil, t.TempDir(), "main")
+	e.RegisterSkills(nil)
+	step := SkillStep{ID: "s1", Type: "subskill", SkillRef: "does-not-exist"}
+	_, err := e.executeStep(context.Background(), step, NewSkillContext())
+	assert.Error(t, err)
+}
+
+// --- output_format tests ---
+
+func TestEngine_OutputFormat_JSON_Valid(t *testing.T) {
+	mock := &mockAgentRunner{output: `{"key":"value"}`}
+	e := NewEngine(nil, nil, t.TempDir(), "main")
+	e.SetAgentRunner(mock)
+	step := SkillStep{ID: "s1", Type: "agentsdk", Content: "x", OutputFormat: "json"}
+	result, err := e.executeStep(context.Background(), step, NewSkillContext())
+	require.NoError(t, err)
+	assert.Equal(t, `{"key":"value"}`, result.Output)
+}
+
+func TestEngine_OutputFormat_JSON_Invalid(t *testing.T) {
+	mock := &mockAgentRunner{output: "not json"}
+	e := NewEngine(nil, nil, t.TempDir(), "main")
+	e.SetAgentRunner(mock)
+	step := SkillStep{ID: "s1", Type: "agentsdk", Content: "x", OutputFormat: "json"}
+	_, err := e.executeStep(context.Background(), step, NewSkillContext())
+	assert.Error(t, err)
+}
+
+func TestEngine_OutputFormat_Checklist(t *testing.T) {
+	mock := &mockAgentRunner{output: "- [x] item 1\n- [ ] item 2\n- [x] item 3"}
+	e := NewEngine(nil, nil, t.TempDir(), "main")
+	e.SetAgentRunner(mock)
+	step := SkillStep{ID: "s1", Type: "agentsdk", Content: "x", OutputFormat: "checklist"}
+	result, err := e.executeStep(context.Background(), step, NewSkillContext())
+	require.NoError(t, err)
+	assert.Equal(t, 1, result.ExitCode, "expected 1 failed checklist item")
 }
