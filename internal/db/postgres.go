@@ -339,9 +339,10 @@ func (p *PostgresDB) RecordEvent(ctx context.Context, e *models.EventRecord) err
 }
 
 func (p *PostgresDB) GetEvents(ctx context.Context, ticketID string, limit int) ([]models.EventRecord, error) {
+	// An empty ticketID means "all events" — omit the WHERE filter.
 	rows, err := p.db.QueryContext(ctx,
 		`SELECT id, ticket_id, task_id, event_type, severity, message, details, created_at
-		 FROM events WHERE ticket_id = $1 ORDER BY created_at DESC LIMIT $2`,
+		 FROM events WHERE ($1 = '' OR ticket_id = $1) ORDER BY created_at DESC LIMIT $2`,
 		ticketID, limit)
 	if err != nil {
 		return nil, err

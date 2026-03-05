@@ -58,6 +58,42 @@ func TestSQLiteDB_CreateAndGetTicket(t *testing.T) {
 	}
 }
 
+func TestSQLiteDB_GetEvents_EmptyTicketID(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	// Create two tickets with one event each.
+	for _, id := range []string{"t-10", "t-11"} {
+		db.CreateTicket(ctx, &models.Ticket{
+			ID: id, ExternalID: id, Title: "t", Description: "d",
+			Status: models.TicketStatusQueued, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+		})
+		db.RecordEvent(ctx, &models.EventRecord{
+			ID: "e-" + id, TicketID: id, EventType: "ping", Severity: "info",
+			Message: "msg", CreatedAt: time.Now(),
+		})
+	}
+
+	// Empty ticketID must return all events.
+	events, err := db.GetEvents(ctx, "", 100)
+	if err != nil {
+		t.Fatalf("GetEvents empty ticketID: %v", err)
+	}
+	if len(events) != 2 {
+		t.Errorf("expected 2 events for empty ticketID, got %d", len(events))
+	}
+
+	// Non-empty ticketID must still filter correctly.
+	events, err = db.GetEvents(ctx, "t-10", 100)
+	if err != nil {
+		t.Fatalf("GetEvents specific ticketID: %v", err)
+	}
+	if len(events) != 1 || events[0].TicketID != "t-10" {
+		t.Errorf("expected 1 event for t-10, got %d", len(events))
+	}
+}
+
 func TestSQLiteDB_RecordEvent(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()

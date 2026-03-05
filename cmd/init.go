@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,8 +16,12 @@ var initCmd = &cobra.Command{
 	Short: "Initialize foreman.toml in the current directory",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		configPath := filepath.Join(".", "foreman.toml")
-		if _, err := os.Stat(configPath); err == nil {
+		_, statErr := os.Stat(configPath)
+		if statErr == nil {
 			return fmt.Errorf("foreman.toml already exists")
+		}
+		if !errors.Is(statErr, os.ErrNotExist) {
+			return fmt.Errorf("check config: %w", statErr)
 		}
 
 		template := `# Foreman configuration — see foreman.example.toml for all options

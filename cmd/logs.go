@@ -2,12 +2,25 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/canhta/foreman/internal/config"
 	"github.com/canhta/foreman/internal/db"
 	"github.com/spf13/cobra"
 )
+
+// expandHomePath replaces a leading "~/" with the user's home directory.
+func expandHomePath(p string) string {
+	if strings.HasPrefix(p, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, p[2:])
+		}
+	}
+	return p
+}
 
 var logsFollow bool
 
@@ -24,7 +37,7 @@ var logsCmd = &cobra.Command{
 			}
 		}
 
-		database, err := db.NewSQLiteDB(cfg.Database.SQLite.Path)
+		database, err := db.NewSQLiteDB(expandHomePath(cfg.Database.SQLite.Path))
 		if err != nil {
 			return err
 		}

@@ -312,10 +312,11 @@ func (s *SQLiteDB) RecordEvent(ctx context.Context, e *models.EventRecord) error
 }
 
 func (s *SQLiteDB) GetEvents(ctx context.Context, ticketID string, limit int) ([]models.EventRecord, error) {
+	// An empty ticketID means "all events" — omit the WHERE filter.
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, ticket_id, task_id, event_type, severity, message, details, created_at
-		 FROM events WHERE ticket_id = ? ORDER BY created_at DESC LIMIT ?`,
-		ticketID, limit)
+		 FROM events WHERE (? = '' OR ticket_id = ?) ORDER BY created_at DESC LIMIT ?`,
+		ticketID, ticketID, limit)
 	if err != nil {
 		return nil, err
 	}
