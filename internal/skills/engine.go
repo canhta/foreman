@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/canhta/foreman/internal/agent"
 	"github.com/canhta/foreman/internal/llm"
 	"github.com/canhta/foreman/internal/models"
 	"github.com/canhta/foreman/internal/runner"
@@ -32,8 +33,14 @@ func NewSkillContext() *SkillContext {
 type Engine struct {
 	llm           llm.LlmProvider
 	runner        runner.CommandRunner
+	agentRunner   agent.AgentRunner
 	workDir       string
 	defaultBranch string
+}
+
+// SetAgentRunner configures the agent runner for agentsdk step types.
+func (e *Engine) SetAgentRunner(ar agent.AgentRunner) {
+	e.agentRunner = ar
 }
 
 // NewEngine creates a skill engine.
@@ -76,6 +83,8 @@ func (e *Engine) executeStep(ctx context.Context, step SkillStep, sCtx *SkillCon
 		return e.executeFileWrite(step, sCtx)
 	case "git_diff":
 		return e.executeGitDiff(ctx)
+	case "agentsdk":
+		return e.executeAgentSDK(ctx, step)
 	default:
 		return nil, fmt.Errorf("unknown step type: %s", step.Type)
 	}
@@ -142,4 +151,25 @@ func (e *Engine) executeFileWrite(step SkillStep, _ *SkillContext) (*StepResult,
 
 func (e *Engine) executeGitDiff(_ context.Context) (*StepResult, error) {
 	return nil, fmt.Errorf("git_diff step type not yet implemented")
+}
+
+func (e *Engine) executeAgentSDK(ctx context.Context, step SkillStep) (*StepResult, error) {
+	if e.agentRunner == nil {
+		return nil, fmt.Errorf("agentsdk step '%s': no agent runner configured", step.ID)
+	}
+
+	req := agent.AgentRequest{
+		Prompt:       step.Content,
+		WorkDir:      e.workDir,
+		AllowedTools: step.AllowedTools,
+		MaxTurns:     step.MaxTurns,
+		TimeoutSecs:  step.TimeoutSecs,
+	}
+
+	result, err := e.agentRunner.Run(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("agentsdk step '%s': %w", step.ID, err)
+	}
+
+	return &StepResult{Output: result.Output}, nil
 }

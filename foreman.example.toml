@@ -104,3 +104,33 @@ event_flush_interval_ms = 100
 post_lint = []
 pre_pr = []
 post_pr = []
+
+# ─── Skills Agent Runner ────────────────────────────────
+# Which runner backs the "agentsdk" step type in YAML skills.
+# Options: builtin (default) | claudecode | copilot
+
+[skills.agent_runner]
+provider = "builtin"
+
+# Separate cost cap for skill agent calls — does NOT draw from the core pipeline budget.
+max_cost_per_ticket_usd = 2.00
+max_turns_default = 10
+timeout_secs_default = 120
+
+[skills.agent_runner.builtin]
+default_allowed_tools = ["Read", "Glob", "Grep"]
+
+[skills.agent_runner.claudecode]
+bin = "claude"                  # resolved via $PATH if relative
+default_allowed_tools = ["Read", "Edit", "Glob", "Grep", "Bash"]
+max_turns_default = 10
+timeout_secs_default = 180
+max_budget_usd = 2.00
+# model = "sonnet"             # optional: override default model
+
+[skills.agent_runner.copilot]
+cli_path = "copilot"
+github_token = "${GITHUB_TOKEN}"
+model = "gpt-4o"
+default_allowed_tools = ["Read", "Edit", "Glob", "Grep", "Bash"]
+timeout_secs_default = 180
