@@ -24,6 +24,44 @@ func TestLoadConfig_Defaults(t *testing.T) {
 	if cfg.Database.Driver != "sqlite" {
 		t.Errorf("expected default driver=sqlite, got %q", cfg.Database.Driver)
 	}
+	if cfg.Daemon.MaxParallelTasks != 3 {
+		t.Errorf("expected default max_parallel_tasks=3, got %d", cfg.Daemon.MaxParallelTasks)
+	}
+	if cfg.Daemon.TaskTimeoutMinutes != 15 {
+		t.Errorf("expected default task_timeout_minutes=15, got %d", cfg.Daemon.TaskTimeoutMinutes)
+	}
+}
+
+func TestValidateConfig_MaxParallelTasksZero(t *testing.T) {
+	cfg, _ := LoadDefaults()
+	cfg.Daemon.MaxParallelTasks = 0
+
+	errs := Validate(cfg)
+	found := false
+	for _, e := range errs {
+		if e != nil && e.Error() != "" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected validation error for max_parallel_tasks < 1")
+	}
+}
+
+func TestValidateConfig_TaskTimeoutMinutesZero(t *testing.T) {
+	cfg, _ := LoadDefaults()
+	cfg.Daemon.TaskTimeoutMinutes = 0
+
+	errs := Validate(cfg)
+	found := false
+	for _, e := range errs {
+		if e != nil && e.Error() != "" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected validation error for task_timeout_minutes < 1")
+	}
 }
 
 func TestLoadConfig_FromFile(t *testing.T) {

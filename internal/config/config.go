@@ -42,6 +42,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("daemon.poll_interval_secs", 60)
 	v.SetDefault("daemon.idle_poll_interval_secs", 300)
 	v.SetDefault("daemon.max_parallel_tickets", 3)
+	v.SetDefault("daemon.max_parallel_tasks", 3)
+	v.SetDefault("daemon.task_timeout_minutes", 15)
 	v.SetDefault("daemon.work_dir", "~/.foreman/work")
 	v.SetDefault("daemon.log_level", "info")
 	v.SetDefault("daemon.log_format", "json")
@@ -146,6 +148,13 @@ func expandEnv(s string) string {
 
 func Validate(cfg *models.Config) []error {
 	var errs []error
+
+	if cfg.Daemon.MaxParallelTasks < 1 {
+		errs = append(errs, fmt.Errorf("max_parallel_tasks must be at least 1 (got %d)", cfg.Daemon.MaxParallelTasks))
+	}
+	if cfg.Daemon.TaskTimeoutMinutes < 1 {
+		errs = append(errs, fmt.Errorf("task_timeout_minutes must be at least 1 (got %d)", cfg.Daemon.TaskTimeoutMinutes))
+	}
 
 	if cfg.Database.Driver == "sqlite" && cfg.Daemon.MaxParallelTickets > 3 {
 		errs = append(errs, fmt.Errorf("max_parallel_tickets cannot exceed 3 with SQLite (got %d), use PostgreSQL for higher concurrency", cfg.Daemon.MaxParallelTickets))

@@ -18,6 +18,8 @@ type DaemonConfig struct {
 	PollIntervalSecs     int
 	IdlePollIntervalSecs int
 	MaxParallelTickets   int
+	MaxParallelTasks     int
+	TaskTimeoutMinutes   int
 }
 
 // DefaultDaemonConfig returns sensible defaults.
@@ -26,6 +28,8 @@ func DefaultDaemonConfig() DaemonConfig {
 		PollIntervalSecs:     60,
 		IdlePollIntervalSecs: 300,
 		MaxParallelTickets:   3,
+		MaxParallelTasks:     3,
+		TaskTimeoutMinutes:  15,
 	}
 }
 

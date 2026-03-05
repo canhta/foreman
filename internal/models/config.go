@@ -24,6 +24,8 @@ type DaemonConfig struct {
 	PollIntervalSecs     int    `mapstructure:"poll_interval_secs"`
 	IdlePollIntervalSecs int    `mapstructure:"idle_poll_interval_secs"`
 	MaxParallelTickets   int    `mapstructure:"max_parallel_tickets"`
+	MaxParallelTasks     int    `mapstructure:"max_parallel_tasks"`
+	TaskTimeoutMinutes   int    `mapstructure:"task_timeout_minutes"`
 }
 
 type DashboardConfig struct {
