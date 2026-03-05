@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/canhta/foreman/internal/models"
+	"github.com/rs/zerolog"
 )
 
 type mockClarificationDB struct {
@@ -69,7 +70,7 @@ func TestCheckClarificationTimeouts(t *testing.T) {
 		removedLabels: make(map[string][]string),
 	}
 
-	checkClarificationTimeouts(context.Background(), db, tracker, 24, "foreman:clarification")
+	checkClarificationTimeouts(context.Background(), zerolog.Nop(), db, tracker, 24, "foreman:clarification")
 
 	if db.updatedStatus["t1"] != models.TicketStatusBlocked {
 		t.Errorf("expected blocked, got %s", db.updatedStatus["t1"])
@@ -79,6 +80,9 @@ func TestCheckClarificationTimeouts(t *testing.T) {
 	}
 	if len(tracker.removedLabels["PROJ-1"]) == 0 {
 		t.Error("expected clarification label removed")
+	}
+	if len(db.events) == 0 {
+		t.Error("expected RecordEvent to be called after successful status update")
 	}
 }
 
@@ -100,9 +104,15 @@ func TestCheckClarificationTimeouts_NotExpired(t *testing.T) {
 		removedLabels: make(map[string][]string),
 	}
 
-	checkClarificationTimeouts(context.Background(), db, tracker, 24, "foreman:clarification")
+	checkClarificationTimeouts(context.Background(), zerolog.Nop(), db, tracker, 24, "foreman:clarification")
 
 	if _, ok := db.updatedStatus["t2"]; ok {
 		t.Error("should not update non-expired ticket")
+	}
+	if len(tracker.comments) != 0 {
+		t.Error("should not call AddComment on non-expired ticket")
+	}
+	if len(tracker.removedLabels) != 0 {
+		t.Error("should not call RemoveLabel on non-expired ticket")
 	}
 }
