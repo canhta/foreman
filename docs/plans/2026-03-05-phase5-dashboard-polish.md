@@ -1733,6 +1733,23 @@ func TestDockerRunner_CommandExists(t *testing.T) {
 		t.Error("expected CommandExists to return true for Docker runner")
 	}
 }
+
+// Note: Run() requires SetTicketID() to be called first for proper container labeling.
+func TestDockerRunner_SetTicketID(t *testing.T) {
+	r := NewDockerRunner("node:22-slim", false, "none", "2.0", "4g", false)
+	r.SetTicketID("ticket-123")
+	args := r.formatRunArgs("/work", r.currentTicketID)
+	found := false
+	for i, a := range args {
+		if a == "--label" && i+1 < len(args) && args[i+1] == "foreman-ticket=ticket-123" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected foreman-ticket label with ticket ID")
+	}
+}
 ```
 
 **Step 2: Run test to verify it fails**
@@ -1752,6 +1769,8 @@ import (
 	"fmt"
 	"os/exec"
 	"time"
+
+	"github.com/rs/zerolog/log"
 )
 
 type DockerRunner struct {
@@ -1761,6 +1780,7 @@ type DockerRunner struct {
 	cpuLimit         string
 	memoryLimit      string
 	autoReinstall    bool
+	currentTicketID  string
 }
 
 func NewDockerRunner(image string, persistPerTicket bool, network, cpuLimit, memoryLimit string, autoReinstall bool) *DockerRunner {
@@ -1772,6 +1792,12 @@ func NewDockerRunner(image string, persistPerTicket bool, network, cpuLimit, mem
 		memoryLimit:      memoryLimit,
 		autoReinstall:    autoReinstall,
 	}
+}
+
+// SetTicketID sets the current ticket ID on the runner. One runner instance is
+// created per ticket in the daemon; this allows orphan tracking via Docker labels.
+func (r *DockerRunner) SetTicketID(id string) {
+	r.currentTicketID = id
 }
 
 func (r *DockerRunner) formatRunArgs(workDir, ticketID string) []string {
@@ -1792,6 +1818,10 @@ func (r *DockerRunner) formatRunArgs(workDir, ticketID string) []string {
 }
 
 func (r *DockerRunner) Run(ctx context.Context, workDir, command string, args []string, timeoutSecs int) (*CommandOutput, error) {
+	if r.currentTicketID == "" {
+		log.Warn().Msg("DockerRunner.Run called without a ticket ID set — container will not be labeled correctly")
+	}
+
 	if timeoutSecs > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, time.Duration(timeoutSecs)*time.Second)
@@ -1799,7 +1829,7 @@ func (r *DockerRunner) Run(ctx context.Context, workDir, command string, args []
 	}
 
 	// Build docker run command: docker run ... image command args...
-	dockerArgs := r.formatRunArgs(workDir, "")
+	dockerArgs := r.formatRunArgs(workDir, r.currentTicketID)
 	dockerArgs = append(dockerArgs, command)
 	dockerArgs = append(dockerArgs, args...)
 
@@ -1841,25 +1871,40 @@ func (r *DockerRunner) CommandExists(_ context.Context, _ string) bool {
 	return true
 }
 
-// CleanupOrphanContainers removes Docker containers labeled with foreman-ticket
-// that don't match any active ticket ID.
-func CleanupOrphanContainers(activeTicketIDs map[string]bool) error {
-	cmd := exec.Command("docker", "ps", "-a", "--filter", "label=foreman-ticket", "--format", "{{.ID}}\t{{.Label \"foreman-ticket\"}}")
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to list containers: %w", err)
-	}
-
-	for _, line := range bytes.Split(out.Bytes(), []byte("\n")) {
+// parseContainerList parses the output of `docker ps` with tab-separated
+// containerID and ticketID fields and returns a map of containerID -> ticketID.
+func parseContainerList(output []byte) map[string]string {
+	result := make(map[string]string)
+	for _, line := range bytes.Split(output, []byte("\n")) {
 		parts := bytes.SplitN(line, []byte("\t"), 2)
 		if len(parts) != 2 {
 			continue
 		}
 		containerID := string(parts[0])
 		ticketID := string(parts[1])
+		if containerID == "" {
+			continue
+		}
+		result[containerID] = ticketID
+	}
+	return result
+}
+
+// CleanupOrphanContainers removes Docker containers labeled with foreman-ticket
+// that don't match any active ticket ID.
+func (r *DockerRunner) CleanupOrphanContainers(ctx context.Context, activeTicketIDs map[string]bool) error {
+	cmd := exec.CommandContext(ctx, "docker", "ps", "-a", "--filter", "label=foreman-ticket", "--format", "{{.ID}}\t{{index .Labels \"foreman-ticket\"}}")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to list containers: %w", err)
+	}
+
+	for containerID, ticketID := range parseContainerList(out.Bytes()) {
 		if !activeTicketIDs[ticketID] {
-			exec.Command("docker", "rm", "-f", containerID).Run()
+			if err := exec.CommandContext(ctx, "docker", "rm", "-f", containerID).Run(); err != nil {
+				log.Warn().Err(err).Str("container_id", containerID).Msg("failed to remove orphan container")
+			}
 		}
 	}
 	return nil
@@ -2028,6 +2073,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/canhta/foreman/internal/config"
 	"github.com/canhta/foreman/internal/dashboard"
@@ -2044,7 +2090,8 @@ var dashboardCmd = &cobra.Command{
 	Use:   "dashboard",
 	Short: "Start the web dashboard",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := config.Load("")
+		// Try loading from default config path; fall back to defaults if not found.
+		cfg, err := config.LoadDefaults()
 		if err != nil {
 			return err
 		}
@@ -2068,14 +2115,21 @@ var dashboardCmd = &cobra.Command{
 			port = 8080
 		}
 
-		srv := dashboard.NewServer(database, emitter, reg, "0.1.0", cfg.Dashboard.Host, port)
+		host := cfg.Dashboard.Host
+		if host == "" {
+			host = "127.0.0.1"
+		}
+
+		srv := dashboard.NewServer(database, emitter, reg, "0.1.0", host, port)
 
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
 
 		go func() {
 			<-ctx.Done()
-			srv.Shutdown(context.Background())
+			shutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			srv.Shutdown(shutCtx)
 		}()
 
 		log.Info().Int("port", port).Msg("Starting dashboard")
@@ -2117,7 +2171,7 @@ var tokenGenerateCmd = &cobra.Command{
 	Use:   "generate",
 	Short: "Generate a new dashboard auth token",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg, err := config.Load("")
+		cfg, err := config.LoadDefaults()
 		if err != nil {
 			return err
 		}
@@ -2415,8 +2469,12 @@ func (a *API) handleCostsWeek(w http.ResponseWriter, r *http.Request) {
 	var costs []map[string]interface{}
 	for i := 6; i >= 0; i-- {
 		date := time.Now().AddDate(0, 0, -i).Format("2006-01-02")
-		cost, _ := a.db.GetDailyCost(r.Context(), date)
-		costs = append(costs, map[string]interface{}{"date": date, "cost_usd": cost})
+		cost, err := a.db.GetDailyCost(r.Context(), date)
+		entry := map[string]interface{}{"date": date, "cost_usd": cost}
+		if err != nil {
+			entry["error"] = "unavailable"
+		}
+		costs = append(costs, entry)
 	}
 	writeJSON(w, http.StatusOK, costs)
 }
@@ -2443,11 +2501,7 @@ func (a *API) handleRetryTicket(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	id := extractPathParam(r.URL.Path, "/api/tickets/")
-	id = strings.TrimSuffix(id, "/retry")
-	// Reset ticket status to queued for re-processing
-	// Actual implementation requires db.UpdateTicketStatus
-	writeJSON(w, http.StatusOK, map[string]interface{}{"id": id, "action": "retry_queued"})
+	http.Error(w, "retry not yet wired to pipeline state machine", http.StatusNotImplemented)
 }
 
 func (a *API) handleDaemonPause(w http.ResponseWriter, r *http.Request) {
@@ -2455,8 +2509,7 @@ func (a *API) handleDaemonPause(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	// Signal daemon to pause — requires daemon reference (wire during integration)
-	writeJSON(w, http.StatusOK, map[string]interface{}{"status": "paused"})
+	http.Error(w, "daemon pause not yet wired", http.StatusNotImplemented)
 }
 
 func (a *API) handleDaemonResume(w http.ResponseWriter, r *http.Request) {
@@ -2464,7 +2517,7 @@ func (a *API) handleDaemonResume(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"status": "resumed"})
+	http.Error(w, "daemon resume not yet wired", http.StatusNotImplemented)
 }
 ```
 
@@ -2493,8 +2546,6 @@ mux.Handle("/api/tickets/", auth(http.HandlerFunc(func(w http.ResponseWriter, r 
 		api.handleGetLlmCalls(w, r)
 	case strings.HasSuffix(path, "/retry"):
 		api.handleRetryTicket(w, r)
-	case strings.HasSuffix(path, "/cancel"):
-		api.handleRetryTicket(w, r) // Same pattern, different action
 	default:
 		api.handleGetTicket(w, r)
 	}
@@ -2619,27 +2670,38 @@ git commit -m "feat(telemetry): add remaining Prometheus counters from spec §18
 
 **Files:**
 - Modify: `internal/daemon/daemon.go`
-- Modify: `internal/runner/docker.go`
 
 **Step 1: Add cleanup call to daemon startup**
 
 In the daemon `Start()` function (Task 7), add at the beginning:
 
 ```go
-// On startup, clean up orphaned Docker containers from previous crashes
-if d.config.Runner.Mode == "docker" {
-	activeTickets, _ := d.db.ListTickets(ctx, models.TicketFilter{
+// On startup, clean up orphaned Docker containers from previous crashes.
+d.mu.Lock()
+database := d.db
+runnerMode := d.config.RunnerMode
+d.mu.Unlock()
+
+if database != nil && runnerMode == "docker" {
+	activeTickets, err := database.ListTickets(ctx, models.TicketFilter{
 		StatusIn: []models.TicketStatus{
-			models.TicketStatusPlanning, models.TicketStatusImplementing,
+			models.TicketStatusPlanning,
+			models.TicketStatusPlanValidating,
+			models.TicketStatusImplementing,
 			models.TicketStatusReviewing,
 		},
 	})
-	activeIDs := make(map[string]bool)
-	for _, t := range activeTickets {
-		activeIDs[t.ID] = true
-	}
-	if err := runner.CleanupOrphanContainers(activeIDs); err != nil {
-		log.Warn().Err(err).Msg("Failed to cleanup orphan containers")
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to list active tickets for Docker orphan cleanup")
+	} else {
+		activeIDs := make(map[string]bool, len(activeTickets))
+		for _, t := range activeTickets {
+			activeIDs[t.ID] = true
+		}
+		dockerRunner := runner.NewDockerRunner("", false, "", "", "", false)
+		if err := dockerRunner.CleanupOrphanContainers(ctx, activeIDs); err != nil {
+			log.Warn().Err(err).Msg("Failed to cleanup orphan containers on startup")
+		}
 	}
 }
 ```
