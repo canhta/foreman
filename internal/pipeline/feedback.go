@@ -29,7 +29,11 @@ func (f *FeedbackAccumulator) HasFeedback() bool {
 	return len(f.entries) > 0
 }
 
-// Attempt returns the number of feedback entries (correlates to retry count).
+// Attempt returns the number of feedback items added. Each pipeline stage that
+// adds feedback represents one piece of actionable feedback for the implementer.
+// Note: multiple feedback items may be added in a single retry cycle (e.g., both
+// a lint error and a test failure), so this count reflects distinct feedback items,
+// not the number of retry cycles performed.
 func (f *FeedbackAccumulator) Attempt() int {
 	return len(f.entries)
 }
@@ -74,6 +78,11 @@ func (f *FeedbackAccumulator) AddTDDFeedback(feedback string) {
 	})
 }
 
+// Reset clears all accumulated feedback for reuse across retry rounds.
+func (f *FeedbackAccumulator) Reset() {
+	f.entries = f.entries[:0]
+}
+
 // Render produces the combined feedback string for inclusion in retry prompts.
 func (f *FeedbackAccumulator) Render() string {
 	if len(f.entries) == 0 {
@@ -87,8 +96,9 @@ func (f *FeedbackAccumulator) Render() string {
 }
 
 func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
+	runes := []rune(s)
+	if len(runes) <= maxLen {
 		return s
 	}
-	return s[:maxLen] + "\n... (truncated)"
+	return string(runes[:maxLen]) + "\n... (truncated)"
 }
