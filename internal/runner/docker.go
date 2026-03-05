@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os/exec"
 	"time"
+
+	"github.com/rs/zerolog/log"
 )
 
 type DockerRunner struct {
@@ -15,6 +17,7 @@ type DockerRunner struct {
 	cpuLimit         string
 	memoryLimit      string
 	autoReinstall    bool
+	currentTicketID  string
 }
 
 func NewDockerRunner(image string, persistPerTicket bool, network, cpuLimit, memoryLimit string, autoReinstall bool) *DockerRunner {
@@ -26,6 +29,12 @@ func NewDockerRunner(image string, persistPerTicket bool, network, cpuLimit, mem
 		memoryLimit:      memoryLimit,
 		autoReinstall:    autoReinstall,
 	}
+}
+
+// SetTicketID sets the current ticket ID on the runner. One runner instance is
+// created per ticket in the daemon; this allows orphan tracking via Docker labels.
+func (r *DockerRunner) SetTicketID(id string) {
+	r.currentTicketID = id
 }
 
 func (r *DockerRunner) formatRunArgs(workDir, ticketID string) []string {
@@ -53,7 +62,7 @@ func (r *DockerRunner) Run(ctx context.Context, workDir, command string, args []
 	}
 
 	// Build docker run command: docker run ... image command args...
-	dockerArgs := r.formatRunArgs(workDir, "")
+	dockerArgs := r.formatRunArgs(workDir, r.currentTicketID)
 	dockerArgs = append(dockerArgs, command)
 	dockerArgs = append(dockerArgs, args...)
 
@@ -97,8 +106,8 @@ func (r *DockerRunner) CommandExists(_ context.Context, _ string) bool {
 
 // CleanupOrphanContainers removes Docker containers labeled with foreman-ticket
 // that don't match any active ticket ID.
-func CleanupOrphanContainers(activeTicketIDs map[string]bool) error {
-	cmd := exec.Command("docker", "ps", "-a", "--filter", "label=foreman-ticket", "--format", "{{.ID}}\t{{.Label \"foreman-ticket\"}}")
+func (r *DockerRunner) CleanupOrphanContainers(ctx context.Context, activeTicketIDs map[string]bool) error {
+	cmd := exec.CommandContext(ctx, "docker", "ps", "-a", "--filter", "label=foreman-ticket", "--format", "{{.ID}}\t{{index .Labels \"foreman-ticket\"}}")
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	if err := cmd.Run(); err != nil {
@@ -113,7 +122,9 @@ func CleanupOrphanContainers(activeTicketIDs map[string]bool) error {
 		containerID := string(parts[0])
 		ticketID := string(parts[1])
 		if !activeTicketIDs[ticketID] {
-			exec.Command("docker", "rm", "-f", containerID).Run() //nolint:errcheck
+			if err := exec.CommandContext(ctx, "docker", "rm", "-f", containerID).Run(); err != nil {
+				log.Warn().Err(err).Str("container_id", containerID).Msg("failed to remove orphan container")
+			}
 		}
 	}
 	return nil
