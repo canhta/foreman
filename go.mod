@@ -3,6 +3,7 @@ module github.com/canhta/foreman
 go 1.26.0
 
 require (
+	github.com/flosch/pongo2/v6 v6.0.0
 	github.com/mattn/go-sqlite3 v1.14.22
 	github.com/spf13/cobra v1.8.0
 	github.com/spf13/viper v1.21.0
@@ -12,7 +13,6 @@ require (
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/flosch/pongo2/v6 v6.0.0 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
@@ -28,5 +28,4 @@ require (
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/sys v0.34.0 // indirect
 	golang.org/x/text v0.28.0 // indirect
-	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 )
