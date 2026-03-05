@@ -2,6 +2,7 @@ package runner
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -39,7 +40,7 @@ type LintIssue struct {
 var (
 	goPassRe    = regexp.MustCompile(`--- PASS: (\S+)`)
 	goFailRe    = regexp.MustCompile(`--- FAIL: (\S+)`)
-	goFailMsgRe = regexp.MustCompile(`\s+(\S+\.go:\d+): (.+)`)
+	goFailMsgRe = regexp.MustCompile(`^\s+(\S+\.go):(\d+): (.+)$`)
 	lintIssueRe = regexp.MustCompile(`^(\S+\.go):(\d+):\d+: (.+)$`)
 )
 
@@ -48,27 +49,30 @@ func ParseTestOutput(output, lang string) TestResult {
 	result := TestResult{RawOutput: output}
 
 	lines := strings.Split(output, "\n")
+
+	// Stateful parser: track the current active failure block index (-1 = none).
+	activeFailure := -1
+
 	for _, line := range lines {
 		if goPassRe.MatchString(line) {
 			result.PassedTests++
 			result.TotalTests++
-		}
-		if goFailRe.MatchString(line) {
+			activeFailure = -1
+		} else if goFailRe.MatchString(line) {
 			result.FailedTests++
 			result.TotalTests++
 			matches := goFailRe.FindStringSubmatch(line)
-			failure := TestFailure{TestName: matches[1]}
-			result.Failures = append(result.Failures, failure)
-		}
-	}
-
-	// Attach failure messages to failures.
-	for i, f := range result.Failures {
-		for _, line := range lines {
-			if goFailMsgRe.MatchString(line) && strings.Contains(output, f.TestName) {
-				matches := goFailMsgRe.FindStringSubmatch(line)
-				result.Failures[i].Message = matches[2]
-				break
+			result.Failures = append(result.Failures, TestFailure{TestName: matches[1]})
+			activeFailure = len(result.Failures) - 1
+		} else if activeFailure >= 0 && goFailMsgRe.MatchString(line) {
+			// Associate failure detail with the currently active failure block.
+			matches := goFailMsgRe.FindStringSubmatch(line)
+			lineNum, _ := strconv.Atoi(matches[2])
+			f := &result.Failures[activeFailure]
+			if f.Message == "" {
+				f.File = matches[1]
+				f.Line = lineNum
+				f.Message = matches[3]
 			}
 		}
 	}
@@ -89,8 +93,10 @@ func ParseLintOutput(output, lang string) LintResult {
 		line = strings.TrimSpace(line)
 		if lintIssueRe.MatchString(line) {
 			matches := lintIssueRe.FindStringSubmatch(line)
+			lineNum, _ := strconv.Atoi(matches[2])
 			result.Issues = append(result.Issues, LintIssue{
 				File:    matches[1],
+				Line:    lineNum,
 				Message: matches[3],
 			})
 			result.Clean = false

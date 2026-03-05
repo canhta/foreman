@@ -37,7 +37,13 @@ FAIL	example.com/pkg	0.003s`
 		t.Errorf("expected 1 failed, got %d", result.FailedTests)
 	}
 	if len(result.Failures) == 0 {
-		t.Error("expected failure details")
+		t.Fatal("expected failure details")
+	}
+	if result.Failures[0].TestName != "TestAdd" {
+		t.Errorf("expected TestName 'TestAdd', got %q", result.Failures[0].TestName)
+	}
+	if result.Failures[0].Message == "" {
+		t.Error("expected non-empty failure message")
 	}
 }
 
@@ -57,6 +63,12 @@ main.go:15:2: syntax error`
 		t.Error("expected lint errors")
 	}
 	if len(result.Issues) != 2 {
-		t.Errorf("expected 2 issues, got %d", len(result.Issues))
+		t.Fatalf("expected 2 issues, got %d", len(result.Issues))
+	}
+	if result.Issues[0].Line <= 0 {
+		t.Errorf("expected Issues[0].Line > 0, got %d", result.Issues[0].Line)
+	}
+	if result.Issues[0].File != "main.go" {
+		t.Errorf("expected Issues[0].File 'main.go', got %q", result.Issues[0].File)
 	}
 }
