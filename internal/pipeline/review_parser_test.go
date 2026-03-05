@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestParseReviewOutput_Approved(t *testing.T) {
@@ -20,8 +19,7 @@ ISSUES:
 EXTRAS:
 - None`
 
-	result, err := ParseReviewOutput(raw)
-	require.NoError(t, err)
+	result := ParseReviewOutput(raw)
 	assert.True(t, result.Approved)
 	assert.Empty(t, result.Issues)
 }
@@ -40,8 +38,7 @@ ISSUES:
 EXTRAS:
 - None`
 
-	result, err := ParseReviewOutput(raw)
-	require.NoError(t, err)
+	result := ParseReviewOutput(raw)
 	assert.False(t, result.Approved)
 	assert.Len(t, result.Issues, 2)
 	assert.Contains(t, result.Issues[0], "Missing validation")
@@ -57,8 +54,7 @@ STRENGTHS:
 - Clean error handling
 - Consistent naming`
 
-	result, err := ParseReviewOutput(raw)
-	require.NoError(t, err)
+	result := ParseReviewOutput(raw)
 	assert.True(t, result.Approved)
 	assert.Len(t, result.Issues, 1)
 }
@@ -73,8 +69,7 @@ ISSUES:
 STRENGTHS:
 - Good test coverage`
 
-	result, err := ParseReviewOutput(raw)
-	require.NoError(t, err)
+	result := ParseReviewOutput(raw)
 	assert.False(t, result.Approved)
 	assert.Len(t, result.Issues, 2)
 	assert.True(t, result.HasCritical)
@@ -87,8 +82,7 @@ CHANGES: Added user model, handler, and tests.
 CONCERNS: None significant.
 REVIEW_NOTES: Consider adding pagination in a follow-up ticket.`
 
-	result, err := ParseReviewOutput(raw)
-	require.NoError(t, err)
+	result := ParseReviewOutput(raw)
 	assert.True(t, result.Approved)
 	assert.Contains(t, result.Summary, "correctly addresses")
 	assert.Contains(t, result.ReviewNotes, "pagination")
@@ -96,15 +90,13 @@ REVIEW_NOTES: Consider adding pagination in a follow-up ticket.`
 
 func TestParseReviewOutput_Garbage(t *testing.T) {
 	raw := "Here's my review: looks good to me!"
-	result, err := ParseReviewOutput(raw)
-	require.NoError(t, err)
+	result := ParseReviewOutput(raw)
 	// Permissive: if no STATUS found, default to not approved
 	assert.False(t, result.Approved)
 }
 
 func TestParseReviewOutput_PermissiveApproved(t *testing.T) {
 	raw := "I've reviewed the code.\n\nSTATUS: APPROVED\n\nLooks great, no issues."
-	result, err := ParseReviewOutput(raw)
-	require.NoError(t, err)
+	result := ParseReviewOutput(raw)
 	assert.True(t, result.Approved)
 }

@@ -5,6 +5,9 @@ import (
 	"strings"
 )
 
+// statusRe matches STATUS: APPROVED|REJECTED|CHANGES_REQUESTED at line boundaries.
+var statusRe = regexp.MustCompile(`(?i)(?:^|\n)STATUS:\s*(APPROVED|REJECTED|CHANGES_REQUESTED)`)
+
 // ReviewResult holds the parsed output from any reviewer (spec, quality, final).
 type ReviewResult struct {
 	Approved    bool
@@ -16,11 +19,10 @@ type ReviewResult struct {
 }
 
 // ParseReviewOutput parses STATUS: APPROVED|REJECTED|CHANGES_REQUESTED from reviewer LLM output.
-func ParseReviewOutput(raw string) (*ReviewResult, error) {
+func ParseReviewOutput(raw string) *ReviewResult {
 	result := &ReviewResult{RawOutput: raw}
 
 	// Extract STATUS line
-	statusRe := regexp.MustCompile(`(?i)STATUS:\s*(APPROVED|REJECTED|CHANGES_REQUESTED)`)
 	if m := statusRe.FindStringSubmatch(raw); len(m) > 1 {
 		status := strings.ToUpper(m[1])
 		result.Approved = status == "APPROVED"
@@ -47,7 +49,7 @@ func ParseReviewOutput(raw string) (*ReviewResult, error) {
 		result.ReviewNotes = m
 	}
 
-	return result, nil
+	return result
 }
 
 // IssuesText returns all issues as a single string for feedback.
@@ -56,15 +58,15 @@ func (r *ReviewResult) IssuesText() string {
 }
 
 func extractListSection(raw, header string) []string {
-	// Find the header line, then collect "- " prefixed lines
-	headerRe := regexp.MustCompile(`(?i)^` + header + `:\s*$`)
+	// Match header as a full line (case-insensitive) using simple string comparison
+	headerLine := strings.ToUpper(header) + ":"
 	lines := strings.Split(raw, "\n")
 	var items []string
 	inSection := false
 
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		if headerRe.MatchString(trimmed) {
+		if strings.ToUpper(trimmed) == headerLine {
 			inSection = true
 			continue
 		}
@@ -78,7 +80,7 @@ func extractListSection(raw, header string) []string {
 			} else if trimmed == "" {
 				// Blank line might still be in section
 				continue
-			} else if !strings.HasPrefix(trimmed, "- ") && trimmed != "" {
+			} else {
 				// Non-list line ends the section
 				inSection = false
 			}
@@ -88,7 +90,7 @@ func extractListSection(raw, header string) []string {
 }
 
 func extractSingleLine(raw, key string) string {
-	re := regexp.MustCompile(`(?i)` + key + `:\s*(.+)`)
+	re := regexp.MustCompile(`(?i)(?:^|\n)` + key + `:\s*(.+)`)
 	if m := re.FindStringSubmatch(raw); len(m) > 1 {
 		return strings.TrimSpace(m[1])
 	}
