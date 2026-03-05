@@ -55,6 +55,10 @@ func (r *DockerRunner) formatRunArgs(workDir, ticketID string) []string {
 }
 
 func (r *DockerRunner) Run(ctx context.Context, workDir, command string, args []string, timeoutSecs int) (*CommandOutput, error) {
+	if r.currentTicketID == "" {
+		log.Warn().Msg("DockerRunner.Run called without a ticket ID set — container will not be labeled correctly")
+	}
+
 	if timeoutSecs > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, time.Duration(timeoutSecs)*time.Second)
@@ -104,6 +108,25 @@ func (r *DockerRunner) CommandExists(_ context.Context, _ string) bool {
 	return true
 }
 
+// parseContainerList parses the output of `docker ps` with tab-separated
+// containerID and ticketID fields and returns a map of containerID -> ticketID.
+func parseContainerList(output []byte) map[string]string {
+	result := make(map[string]string)
+	for _, line := range bytes.Split(output, []byte("\n")) {
+		parts := bytes.SplitN(line, []byte("\t"), 2)
+		if len(parts) != 2 {
+			continue
+		}
+		containerID := string(parts[0])
+		ticketID := string(parts[1])
+		if containerID == "" {
+			continue
+		}
+		result[containerID] = ticketID
+	}
+	return result
+}
+
 // CleanupOrphanContainers removes Docker containers labeled with foreman-ticket
 // that don't match any active ticket ID.
 func (r *DockerRunner) CleanupOrphanContainers(ctx context.Context, activeTicketIDs map[string]bool) error {
@@ -114,13 +137,7 @@ func (r *DockerRunner) CleanupOrphanContainers(ctx context.Context, activeTicket
 		return fmt.Errorf("failed to list containers: %w", err)
 	}
 
-	for _, line := range bytes.Split(out.Bytes(), []byte("\n")) {
-		parts := bytes.SplitN(line, []byte("\t"), 2)
-		if len(parts) != 2 {
-			continue
-		}
-		containerID := string(parts[0])
-		ticketID := string(parts[1])
+	for containerID, ticketID := range parseContainerList(out.Bytes()) {
 		if !activeTicketIDs[ticketID] {
 			if err := exec.CommandContext(ctx, "docker", "rm", "-f", containerID).Run(); err != nil {
 				log.Warn().Err(err).Str("container_id", containerID).Msg("failed to remove orphan container")

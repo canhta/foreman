@@ -164,8 +164,12 @@ func (a *API) handleCostsWeek(w http.ResponseWriter, r *http.Request) {
 	var costs []map[string]interface{}
 	for i := 6; i >= 0; i-- {
 		date := time.Now().AddDate(0, 0, -i).Format("2006-01-02")
-		cost, _ := a.db.GetDailyCost(r.Context(), date)
-		costs = append(costs, map[string]interface{}{"date": date, "cost_usd": cost})
+		cost, err := a.db.GetDailyCost(r.Context(), date)
+		entry := map[string]interface{}{"date": date, "cost_usd": cost}
+		if err != nil {
+			entry["error"] = "unavailable"
+		}
+		costs = append(costs, entry)
 	}
 	writeJSON(w, http.StatusOK, costs)
 }
@@ -191,9 +195,7 @@ func (a *API) handleRetryTicket(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	id := extractPathParam(r.URL.Path, "/api/tickets/")
-	id = strings.TrimSuffix(id, "/retry")
-	writeJSON(w, http.StatusOK, map[string]interface{}{"id": id, "action": "retry_queued"})
+	http.Error(w, "retry not yet wired to pipeline state machine", http.StatusNotImplemented)
 }
 
 func (a *API) handleDaemonPause(w http.ResponseWriter, r *http.Request) {
@@ -201,7 +203,7 @@ func (a *API) handleDaemonPause(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"status": "paused"})
+	http.Error(w, "daemon pause not yet wired", http.StatusNotImplemented)
 }
 
 func (a *API) handleDaemonResume(w http.ResponseWriter, r *http.Request) {
@@ -209,7 +211,7 @@ func (a *API) handleDaemonResume(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"status": "resumed"})
+	http.Error(w, "daemon resume not yet wired", http.StatusNotImplemented)
 }
 
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {

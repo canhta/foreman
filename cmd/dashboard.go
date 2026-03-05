@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/canhta/foreman/internal/config"
 	"github.com/canhta/foreman/internal/dashboard"
@@ -58,7 +59,9 @@ var dashboardCmd = &cobra.Command{
 
 		go func() {
 			<-ctx.Done()
-			srv.Shutdown(context.Background())
+			shutCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			srv.Shutdown(shutCtx)
 		}()
 
 		log.Info().Int("port", port).Msg("Starting dashboard")

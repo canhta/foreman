@@ -1,6 +1,9 @@
 # Binary
 foreman
 
+# Build artifacts
+dist/
+
 # Database
 *.db
 *.db-shm
