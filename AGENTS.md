@@ -42,7 +42,7 @@ CGO is required (go-sqlite3). Ensure a C toolchain is available.
 | `runner` | Command execution — local and Docker modes |
 | `agent` | Agent runner interface + builtin runner (parallel tool execution, context injection), Claude Code runner, Copilot runner |
 | `agent/tools` | Typed tool registry: Read, Write, Edit, MultiEdit, ListDir, Glob, Grep, GetDiff, GetCommitLog, TreeSummary, GetSymbol, GetErrors, Bash, RunTest, Subagent |
-| `agent/mcp` | MCP stub — MCPServerConfig for Anthropic API-side MCP; Client interface for future client-side proxying |
+| `agent/mcp` | MCP Manager, StdioClient (JSON-RPC 2.0 over stdin/stdout), tool name normalization; MCPServerConfig for Anthropic API-side MCP |
 | `skills` | YAML skill engine for extensible pipeline hooks — subskill composition, output_format validation, ContextProvider |
 | `dashboard` | Web UI server, REST API, WebSocket, bearer token auth |
 | `telemetry` | Cost controller, Prometheus metrics, structured events |
@@ -52,7 +52,8 @@ CGO is required (go-sqlite3). Ensure a C toolchain is available.
 
 ```
 Ticket → Clarification Check → Planning (LLM) → Plan Validation →
-  Per-Task: [Implement (TDD) → Lint → Spec Review → Quality Review → Commit] →
+  Per-Task (parallel DAG, bounded by max_parallel_tasks):
+    [Implement (TDD) → Lint → Spec Review → Quality Review → Commit] →
   Rebase → Full Test Suite → Final Review → PR Creation
 ```
 

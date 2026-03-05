@@ -2,26 +2,13 @@
 
 Foreman connects to three categories of external services: issue trackers (to source work), LLM providers (to perform AI tasks), and git/PR hosts (to manage code and pull requests). Each category is backed by a Go interface — implementations are swappable via configuration.
 
+For the full TOML reference for every integration, see [Configuration](configuration.md).
+
 ---
 
 ## Issue Trackers
 
 ### GitHub Issues
-
-**Configuration:**
-
-```toml
-[tracker]
-provider = "github"
-
-[tracker.github]
-owner  = "your-org"
-repo   = "your-repo"
-token  = "${GITHUB_TOKEN}"
-pickup_label               = "foreman-ready"
-clarification_label        = "foreman-needs-info"
-clarification_timeout_hours = 72
-```
 
 **Setup:**
 
@@ -42,33 +29,11 @@ clarification_timeout_hours = 72
 
 ### Jira (Cloud and Server)
 
-**Configuration:**
-
-```toml
-[tracker]
-provider = "jira"
-
-[tracker.jira]
-base_url    = "https://yourcompany.atlassian.net"
-email       = "bot@yourcompany.com"
-api_token   = "${JIRA_API_TOKEN}"
-project_key = "PROJ"
-pickup_label               = "foreman-ready"
-clarification_label        = "foreman-needs-info"
-clarification_timeout_hours = 72
-
-# Map Foreman pipeline statuses to your Jira workflow statuses
-status_in_progress = "In Progress"
-status_in_review   = "In Review"
-status_done        = "Done"
-status_blocked     = "Blocked"
-```
-
 **Setup:**
 
 1. Create a Jira API token at `https://id.atlassian.com/manage-profile/security/api-tokens`.
 2. Create a `foreman-ready` label in your Jira project.
-3. Map the four status names to the exact names in your Jira workflow.
+3. Map the four status names (`status_in_progress`, `status_in_review`, `status_done`, `status_blocked`) to the exact names in your Jira workflow.
 
 **Behaviour:**
 
@@ -83,19 +48,6 @@ status_blocked     = "Blocked"
 
 ### Linear
 
-**Configuration:**
-
-```toml
-[tracker]
-provider = "linear"
-
-[tracker.linear]
-api_key  = "${LINEAR_API_KEY}"
-team_id  = "TEAM_ID"
-pickup_label               = "foreman-ready"
-clarification_timeout_hours = 72
-```
-
 **Setup:**
 
 1. Create a Linear API key at `https://linear.app/settings/api`.
@@ -108,19 +60,7 @@ clarification_timeout_hours = 72
 
 ### Local File Tracker
 
-For local development and CI testing without an external issue tracker.
-
-**Configuration:**
-
-```toml
-[tracker]
-provider = "local_file"
-
-[tracker.local_file]
-path = "./tickets"
-```
-
-**Ticket format** — a JSON file per ticket in the configured directory:
+For local development and CI testing without an external issue tracker. Ticket format — a JSON file per ticket in the configured directory:
 
 ```json
 {
@@ -148,17 +88,6 @@ To trigger processing, add `"foreman-ready"` to `labels`. Foreman writes status 
 - Extended thinking via the `thinking` parameter (for complex reasoning tasks in skills)
 - Prompt caching (`cache_control: {type: "ephemeral"}`) to reduce repeated context costs
 
-**Configuration:**
-
-```toml
-[llm]
-default_provider = "anthropic"
-
-[llm.anthropic]
-api_key  = "${ANTHROPIC_API_KEY}"
-base_url = "https://api.anthropic.com"   # Optional; useful for proxies
-```
-
 **Recommended model pairings:**
 
 | Role | Model | Rationale |
@@ -180,33 +109,15 @@ base_url = "https://api.anthropic.com"   # Optional; useful for proxies
 - Structured output via `response_format: {type: "json_schema"}`
 - Function calling / tool-use for the builtin agent runner
 
-**Configuration:**
-
-```toml
-[llm.openai]
-api_key  = "${OPENAI_API_KEY}"
-base_url = "https://api.openai.com"
-```
-
 **Note:** The `o1` and `o3` reasoning models have constraints on system prompts and temperature. If you route a role to these models, ensure your prompt templates are compatible.
 
 ---
 
 ### OpenRouter
 
-Route to any model available on OpenRouter, including models from Anthropic, OpenAI, Google, Meta, Mistral, and others.
+Route to any model available on OpenRouter, including models from Anthropic, OpenAI, Google, Meta, Mistral, and others. Uses the same request/response format as OpenAI. Tool-use support depends on the underlying model.
 
-**Configuration:**
-
-```toml
-[llm.openrouter]
-api_key  = "${OPENROUTER_API_KEY}"
-base_url = "https://openrouter.ai/api"
-```
-
-OpenRouter uses the same request/response format as OpenAI. Tool-use support depends on the underlying model. Check the OpenRouter model documentation for tool-use availability.
-
-**Example: route the implementer through OpenRouter to use Claude via OpenRouter:**
+**Example: route the implementer through OpenRouter:**
 
 ```toml
 [models]
@@ -219,13 +130,6 @@ implementer = "openrouter:anthropic/claude-sonnet-4-5-20250929"
 
 Any server that implements the OpenAI Chat Completions API can be used as the `local` provider.
 
-**Configuration:**
-
-```toml
-[llm.local]
-base_url = "http://localhost:11434"   # Ollama default
-```
-
 **With Ollama:**
 
 ```bash
@@ -234,14 +138,14 @@ ollama pull llama3.2
 ollama serve
 ```
 
-Then set `default_provider = "local"` and specify the model:
+Then set `default_provider = "local"` and specify the model in `[models]`:
 
 ```toml
 [models]
 implementer = "local:llama3.2"
 ```
 
-**Tool-use with local models:** The builtin agent runner attempts tool calls against the local provider. If the model does not return a `tool_use` stop reason, the runner falls back to treating the response as a single-turn text answer. This allows the builtin runner to work with local models that do not support tools, at the cost of the multi-turn agentic behaviour.
+**Tool-use with local models:** The builtin agent runner attempts tool calls against the local provider. If the model does not return a `tool_use` stop reason, the runner falls back to treating the response as a single-turn text answer. This allows the builtin runner to work with local models that do not support tools, at the cost of multi-turn agentic behaviour.
 
 ---
 
@@ -249,59 +153,21 @@ implementer = "local:llama3.2"
 
 ### GitHub
 
-Default and most tested backend.
-
-```toml
-[git]
-provider = "github"
-clone_url = "git@github.com:your-org/your-repo.git"
-
-[git.github]
-token = "${GITHUB_TOKEN}"
-```
-
-**Token requirements:** `repo` scope for private repos; `public_repo` for public repos. The token must have permission to push branches and create pull requests.
+Default and most tested backend. Token requirements: `repo` scope for private repos; `public_repo` for public repos. The token must have permission to push branches and create pull requests.
 
 ### GitLab
 
-```toml
-[git]
-provider = "gitlab"
-clone_url = "git@gitlab.com:your-group/your-repo.git"
-
-[git.gitlab]
-token    = "${GITLAB_TOKEN}"
-base_url = "https://gitlab.com"   # Override for self-hosted GitLab
-```
-
-**Token requirements:** A personal access token or project access token with `api` and `write_repository` scopes.
+Token requirements: A personal access token or project access token with `api` and `write_repository` scopes.
 
 ### Bitbucket
 
-```toml
-[git]
-provider = "bitbucket"
-clone_url = "git@bitbucket.org:your-workspace/your-repo.git"
-
-[git.bitbucket]
-username    = "bot-user"
-app_password = "${BITBUCKET_APP_PASSWORD}"
-```
-
-**Note:** Bitbucket integration is defined in the interface but may have gaps. GitHub is the primary tested backend.
+Uses an app password (`BITBUCKET_APP_PASSWORD`). **Note:** Bitbucket integration is defined in the interface but may have gaps. GitHub is the primary tested backend.
 
 ### go-git Fallback
 
-When the `git` CLI is not available (e.g., certain Docker images), Foreman falls back to a pure Go git implementation. Enable explicitly:
+When the `git` CLI is not available, Foreman falls back to a pure Go git implementation. Enable explicitly with `backend = "gogit"` in `[git]`, or it activates automatically if `native` is selected but `git` is not on `$PATH`.
 
-```toml
-[git]
-backend = "gogit"
-```
-
-Or set it to `"native"` (default) to use the system `git` binary. The fallback is automatic if `native` is selected but `git` is not found on `$PATH`.
-
-**Note:** The go-git fallback may have gaps for complex rebase scenarios. If you encounter issues with rebasing during PR creation, ensure the `git` CLI is available and use `backend = "native"`.
+**Note:** The go-git fallback may have gaps for complex rebase scenarios. If you encounter rebase issues during PR creation, ensure the `git` CLI is available.
 
 ---
 

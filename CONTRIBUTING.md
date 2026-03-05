@@ -1,82 +1,41 @@
 # Contributing to Foreman
 
-Thanks for contributing to Foreman. This document describes the expected workflow for code, tests, and pull requests.
+Thanks for contributing to Foreman. For dev environment setup, package conventions, testing strategy, and how to add new features, see [docs/development.md](docs/development.md).
 
-## Development Setup
-
-### Prerequisites
-
-- Go `1.26+`
-- C toolchain for CGO (required by `github.com/mattn/go-sqlite3`)
-- `git`
-
-### Bootstrap
-
-```bash
-git clone https://github.com/canhta/foreman.git
-cd foreman
-make build
-make test
-```
-
-Optional local config:
-
-```bash
-cp foreman.example.toml foreman.toml
-```
-
-## Branch and PR Workflow
-
-1. Create a branch from `main`.
-2. Keep changes focused and scoped to a single concern.
-3. Run checks locally before opening/updating the PR.
-4. Open a PR with clear context and rationale.
-
-Suggested branch naming:
-
-- `feat/<short-description>`
-- `fix/<short-description>`
-- `chore/<short-description>`
-
-## Local Checks Before PR
-
-Run these from repo root:
+## Quick Checks Before Opening a PR
 
 ```bash
 make test
 make lint
 ```
 
-If `golangci-lint` is not installed, run at minimum:
+If `golangci-lint` is not installed:
 
 ```bash
 go test ./...
 go vet ./...
 ```
 
-## Coding Standards
+## Branch Naming
 
-- Keep designs interface-first across `internal/` packages.
-- Prefer deterministic behavior for scaffolding paths (git ops, runners, parsing).
-- Wrap errors with context, for example: `fmt.Errorf("loading config: %w", err)`.
-- Avoid panics in normal control flow; return typed or wrapped errors.
-- Keep functions small and explicit; prioritize readability over cleverness.
+- `feat/<short-description>`
+- `fix/<short-description>`
+- `chore/<short-description>`
 
-## Testing Expectations
+## Commit Messages
 
-- Add or update tests for every behavioral change.
-- Include regression coverage for bug fixes.
-- Keep tests deterministic and independent.
-
-## Commit Message Guidelines
-
-Use imperative, specific commit messages.
-
-Good examples:
+Use imperative, specific messages:
 
 - `add sqlite busy-timeout validation`
 - `implement planner yaml fallback parser`
 - `fix fuzzy search replace threshold handling`
+
+## PR Workflow
+
+1. Branch from `main`.
+2. Keep changes focused on a single concern.
+3. Run checks locally before opening the PR.
+4. Open a PR with clear context and rationale.
 
 ## Pull Request Checklist
 
