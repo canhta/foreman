@@ -3,14 +3,30 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Foreman Dashboard</title>
+    <title>FOREMAN</title>
     <link rel="stylesheet" href="/style.css">
 </head>
 <body>
-    <header><h1>Foreman</h1><span id="status">connecting...</span></header>
+    <header>
+        <span class="wordmark">FOREMAN</span>
+        <div class="header-right">
+            <span id="status-dot" class="status-dot"></span>
+            <span id="status-text">CONNECTING</span>
+            <span class="divider">|</span>
+            <span id="cost-display">COST: --</span>
+            <span class="divider">|</span>
+            <span id="active-display">ACTIVE: --</span>
+        </div>
+    </header>
     <main>
-        <section id="tickets"></section>
-        <section id="events"><h2>Events</h2><ul id="event-log"></ul></section>
+        <section id="tickets-panel">
+            <div class="panel-header">TICKETS (<span id="ticket-count">0</span>)</div>
+            <div id="tickets"></div>
+        </section>
+        <section id="events-panel">
+            <div class="panel-header">LIVE EVENTS</div>
+            <div id="event-log"></div>
+        </section>
     </main>
     <script src="/app.js"></script>
 </body>
