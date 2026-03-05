@@ -107,8 +107,8 @@ func (r *Registry) SetRunFn(fn RunFn) { r.runFn = fn }
 // RunFn returns the injected run function (may be nil before SetRunFn is called).
 func (r *Registry) GetRunFn() RunFn { return r.runFn }
 
-// Stub registration functions — replaced progressively by code.go, exec.go.
-// registerFS  implemented in fs.go
-// registerGit implemented in git.go
-func registerCode(r *Registry, cmd runner.CommandRunner) {}
+// Stub registration function — replaced by exec.go.
+// registerFS   implemented in fs.go
+// registerGit  implemented in git.go
+// registerCode implemented in code.go
 func registerExec(r *Registry, cmd runner.CommandRunner) {}
