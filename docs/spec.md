@@ -156,7 +156,7 @@ Foreman is an open-source, autonomous software development daemon written in Go.
 
 ```go
 // go.mod
-module github.com/anthropics/foreman
+module github.com/canhta/foreman
 
 go 1.23
 
@@ -2978,7 +2978,7 @@ Each release publishes:
 curl -fsSL https://foreman.dev/install.sh | bash
 
 # Go install
-go install github.com/anthropics/foreman@latest
+go install github.com/canhta/foreman@latest
 
 # Docker
 docker run -d --name foreman \
@@ -2987,7 +2987,7 @@ docker run -d --name foreman \
   ghcr.io/org/foreman:latest
 
 # From source
-git clone https://github.com/anthropics/foreman.git
+git clone https://github.com/canhta/foreman.git
 cd foreman && go build -o foreman . && ./foreman --help
 ```
 
