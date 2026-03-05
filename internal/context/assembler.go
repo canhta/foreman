@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/canhta/foreman/internal/models"
 )
@@ -183,13 +184,19 @@ IMPORTANT:
 	user.WriteString(fmt.Sprintf("\n## Commands\nBuild: `%s`  Test: `%s`  Lint: `%s`\n\n",
 		repoInfo.BuildCmd, repoInfo.TestCmd, repoInfo.LintCmd))
 
-	// File contents
+	// File contents — enforce remaining token budget (second half)
+	fileBudget := NewTokenBudget(tokenBudget / 2)
 	user.WriteString("## Files\n")
 	for _, f := range files {
 		content, err := os.ReadFile(filepath.Join(workDir, f.Path))
 		if err != nil {
 			continue
 		}
+		tokens := EstimateTokens(string(content))
+		if !fileBudget.CanFit(tokens) {
+			continue
+		}
+		fileBudget.Add(tokens)
 		ext := strings.TrimPrefix(filepath.Ext(f.Path), ".")
 		user.WriteString(fmt.Sprintf("### %s\n```%s\n%s\n```\n\n", f.Path, ext, string(content)))
 	}
@@ -288,8 +295,13 @@ func readFileTruncated(path string, maxBytes int) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if len(content) > maxBytes {
-		return string(content[:maxBytes]) + "\n... (truncated)", nil
+	if len(content) <= maxBytes {
+		return string(content), nil
 	}
-	return string(content), nil
+	// Truncate at a valid UTF-8 boundary to avoid splitting multi-byte sequences.
+	truncated := content[:maxBytes]
+	for len(truncated) > 0 && !utf8.Valid(truncated) {
+		truncated = truncated[:len(truncated)-1]
+	}
+	return string(truncated) + "\n... (truncated)", nil
 }

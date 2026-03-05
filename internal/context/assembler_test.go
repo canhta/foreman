@@ -59,9 +59,12 @@ func TestAssembleImplementerContext_WithFeedback(t *testing.T) {
 	}
 
 	fb := &FeedbackContext{
-		Attempt:       2,
-		MaxAttempts:   3,
-		PreviousError: "nil pointer dereference",
+		Attempt:         2,
+		MaxAttempts:     3,
+		PreviousError:   "nil pointer dereference",
+		SpecFeedback:    "missing error return",
+		QualityFeedback: "variable name too short",
+		TDDFeedback:     "test ran before implementation",
 	}
 
 	ctx, err := AssembleImplementerContext(workDir, task, fb, 60000)
@@ -69,6 +72,9 @@ func TestAssembleImplementerContext_WithFeedback(t *testing.T) {
 	assert.Contains(t, ctx.UserPrompt, "RETRY")
 	assert.Contains(t, ctx.UserPrompt, "nil pointer dereference")
 	assert.Contains(t, ctx.UserPrompt, "attempt 2")
+	assert.Contains(t, ctx.UserPrompt, "missing error return")
+	assert.Contains(t, ctx.UserPrompt, "variable name too short")
+	assert.Contains(t, ctx.UserPrompt, "test ran before implementation")
 }
 
 func TestAssembleSpecReviewerContext(t *testing.T) {
