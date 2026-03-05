@@ -6,6 +6,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/canhta/foreman/internal/db"
+	"github.com/canhta/foreman/internal/models"
+	"github.com/canhta/foreman/internal/runner"
 	"github.com/rs/zerolog/log"
 )
 
@@ -14,6 +17,7 @@ type DaemonConfig struct {
 	PollIntervalSecs     int
 	IdlePollIntervalSecs int
 	MaxParallelTickets   int
+	RunnerMode           string // "docker" or "local"
 }
 
 // DefaultDaemonConfig returns sensible defaults.
@@ -36,6 +40,7 @@ type DaemonStatus struct {
 // Daemon is the main 24/7 event loop.
 type Daemon struct {
 	config    DaemonConfig
+	db        db.Database
 	running   atomic.Bool
 	paused    atomic.Bool
 	startedAt time.Time
@@ -48,6 +53,13 @@ func NewDaemon(config DaemonConfig) *Daemon {
 	return &Daemon{config: config}
 }
 
+// SetDB attaches a database instance to the daemon for startup cleanup tasks.
+func (d *Daemon) SetDB(database db.Database) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.db = database
+}
+
 // Start begins the daemon's poll loop. Blocks until ctx is cancelled.
 func (d *Daemon) Start(ctx context.Context) {
 	d.running.Store(true)
@@ -57,11 +69,28 @@ func (d *Daemon) Start(ctx context.Context) {
 	defer d.running.Store(false)
 
 	// On startup, clean up orphaned Docker containers from previous crashes.
-	// TODO: wire db and runner from full config during integration.
-	// When runner.Mode == "docker", fetch active tickets from db and call
-	// dockerRunner.CleanupOrphanContainers(ctx, activeIDs). Stub logged here
-	// so the intent is visible before full wiring.
-	log.Debug().Msg("daemon starting — Docker orphan cleanup requires integration wiring")
+	if d.db != nil && d.config.RunnerMode == "docker" {
+		activeTickets, err := d.db.ListTickets(ctx, models.TicketFilter{
+			StatusIn: []models.TicketStatus{
+				models.TicketStatusPlanning,
+				models.TicketStatusPlanValidating,
+				models.TicketStatusImplementing,
+				models.TicketStatusReviewing,
+			},
+		})
+		if err != nil {
+			log.Warn().Err(err).Msg("Failed to list active tickets for Docker orphan cleanup")
+		} else {
+			activeIDs := make(map[string]bool, len(activeTickets))
+			for _, t := range activeTickets {
+				activeIDs[t.ID] = true
+			}
+			dockerRunner := runner.NewDockerRunner("", false, "", "", "", false)
+			if err := dockerRunner.CleanupOrphanContainers(ctx, activeIDs); err != nil {
+				log.Warn().Err(err).Msg("Failed to cleanup orphan containers on startup")
+			}
+		}
+	}
 
 	pollInterval := time.Duration(d.config.PollIntervalSecs) * time.Second
 	ticker := time.NewTicker(pollInterval)
