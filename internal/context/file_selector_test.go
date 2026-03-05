@@ -62,6 +62,7 @@ func TestSelectFilesForTask_TestSibling(t *testing.T) {
 
 func TestSelectFilesForTask_ProximityBoost(t *testing.T) {
 	workDir := setupTestRepo(t)
+	// handler.go is in internal/, so other files in internal/ should be proximity-boosted
 	task := &models.Task{
 		FilesToModify: []string{"internal/handler.go"},
 	}
@@ -69,9 +70,14 @@ func TestSelectFilesForTask_ProximityBoost(t *testing.T) {
 	files, err := SelectFilesForTask(task, workDir, 80000)
 	require.NoError(t, err)
 
-	// Files in the same directory should be included
+	// internal/models/user.go is NOT in the same directory (it's in internal/models/)
+	// but internal/handler_test.go IS a test sibling (score=60) and
+	// no other non-sibling file lives directly in internal/ in the test repo.
+	// The key proximity assertion: a file from a DIFFERENT directory (cmd/main.go)
+	// should NOT appear due to proximity scoring alone.
 	paths := filePaths(files)
 	assert.Contains(t, paths, "internal/handler_test.go")
+	assert.NotContains(t, paths, "cmd/main.go")
 }
 
 func TestSelectFilesForTask_ScoreOrdering(t *testing.T) {

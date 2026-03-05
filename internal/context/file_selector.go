@@ -152,7 +152,7 @@ func listSourceFiles(workDir string) []string {
 		}
 		if fi.IsDir() {
 			base := filepath.Base(path)
-			if skipDirs[base] {
+			if skipDirs[base] || strings.HasPrefix(base, ".") {
 				return filepath.SkipDir
 			}
 			return nil
