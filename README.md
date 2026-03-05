@@ -1,8 +1,21 @@
 # Foreman
 
+[![GitHub stars](https://img.shields.io/github/stars/canhta/foreman?style=social)](https://github.com/canhta/foreman/stargazers)
+[![Go Version](https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go)](https://go.dev/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
 An autonomous software development daemon that turns issue tracker tickets into tested, reviewed pull requests.
 
-Foreman polls your issue tracker, decomposes tickets into tasks, writes code via LLM using TDD, runs reviews, and opens PRs — all without human intervention.
+Foreman polls your issue tracker, decomposes tickets into granular tasks, writes code via LLM with TDD discipline, runs deterministic checks and reviews, and opens pull requests with minimal human intervention.
+
+If Foreman is useful to your team, support the project by starring the repository.
+
+## Why Foreman
+
+- **Stateless LLM calls:** every call is made with explicitly assembled context.
+- **Deterministic scaffolding:** git operations, linting, and test execution are mechanical.
+- **Quality gates:** TDD verification, spec review, quality review, and final review.
+- **Pluggable architecture:** tracker, LLM provider, git backend, and runner are interface-driven.
 
 ## How It Works
 
@@ -14,7 +27,7 @@ Final Review → PR Creation
 
 ## Status
 
-Phase 1 complete — core foundations built:
+Phase 1 complete. Core foundations already implemented:
 
 | Package | Status |
 |---------|--------|
@@ -26,7 +39,9 @@ Phase 1 complete — core foundations built:
 | `internal/db` | SQLite database with full schema |
 | `internal/config` | Config loading via Viper |
 
-## Getting Started
+See `docs/spec.md` for the complete architecture and implementation roadmap.
+
+## Quick Start
 
 **Requirements:** Go 1.26+, CGO (for SQLite)
 
@@ -39,13 +54,13 @@ make test
 
 # Configure
 cp foreman.example.toml foreman.toml
-# Edit foreman.toml — set ANTHROPIC_API_KEY, tracker, git settings
+# Edit foreman.toml and set required tokens and provider settings
 
 # Run
 ./foreman --help
 ```
 
-## Docker
+## Run with Docker
 
 ```bash
 # Build and run with Docker Compose
@@ -58,7 +73,9 @@ Set required environment variables before startup (for example `ANTHROPIC_API_KE
 
 ## Configuration
 
-Copy `foreman.example.toml` to `foreman.toml` and set:
+Start from `foreman.example.toml` and configure tracker, git, and LLM sections.
+
+Minimal example:
 
 ```toml
 [llm.anthropic]
@@ -71,7 +88,7 @@ clone_url = "https://github.com/your-org/your-repo.git"
 provider = "github"  # github, jira, linear, local_file
 ```
 
-See `foreman.example.toml` for all options with defaults.
+For full settings and behavior, refer to `docs/spec.md`.
 
 ## Tech Stack
 
@@ -79,6 +96,10 @@ See `foreman.example.toml` for all options with defaults.
 - **SQLite** (`go-sqlite3`) — persistence
 - **Cobra/Viper** — CLI and config
 - **Anthropic API** — default LLM provider
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=canhta/foreman&type=Date)](https://star-history.com/#canhta/foreman&Date)
 
 ## License
 
