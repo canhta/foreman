@@ -17,6 +17,12 @@ func TestCostCmd_AcceptsSubcommand(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+func TestCostCmd_RejectsZeroArgs(t *testing.T) {
+	cmd := newCostCmd()
+	err := cmd.Args(cmd, []string{})
+	assert.Error(t, err)
+}
+
 func TestPsCmd_Exists(t *testing.T) {
 	cmd := newPsCmd()
 	assert.Equal(t, "ps", cmd.Use)
