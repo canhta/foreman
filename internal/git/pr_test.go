@@ -58,6 +58,27 @@ func TestPRRequest_Defaults(t *testing.T) {
 	assert.Contains(t, req.Labels, "foreman-generated")
 }
 
+func TestFormatPRBody_SkippedTasks(t *testing.T) {
+	body := FormatPRBody(PRBodyInput{
+		TicketExternalID: "PROJ-789",
+		TicketTitle:      "Build DAG pipeline",
+		TaskSummaries: []PRTaskSummary{
+			{Title: "Setup config", Status: "done"},
+			{Title: "Build executor", Status: "failed"},
+			{Title: "Add metrics", Status: "skipped"},
+			{Title: "Write docs", Status: "pending"},
+		},
+		IsPartial:     true,
+		FailedTask:    "Build executor",
+		FailureReason: "Compilation error",
+	})
+
+	assert.Contains(t, body, "- [x] Setup config")
+	assert.Contains(t, body, "- [ ] ~~Build executor~~ (failed)")
+	assert.Contains(t, body, "- [ ] ~~Add metrics~~ (skipped)")
+	assert.Contains(t, body, "- [ ] Write docs — pending")
+}
+
 func TestPRRequest_Partial(t *testing.T) {
 	req := NewPartialPRRequest("PROJ-123", "Add users", "foreman/PROJ-123-add-users", "main", []string{})
 	assert.Contains(t, req.Title, "[PARTIAL]")

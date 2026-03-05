@@ -54,16 +54,16 @@ func FormatPRBody(input PRBodyInput) string {
 
 	sb.WriteString("### Tasks\n\n")
 	for _, t := range input.TaskSummaries {
-		var icon string
 		switch t.Status {
 		case "done":
-			icon = "✅"
+			fmt.Fprintf(&sb, "- [x] %s\n", t.Title)
 		case "failed":
-			icon = "❌"
+			fmt.Fprintf(&sb, "- [ ] ~~%s~~ (failed)\n", t.Title)
+		case "skipped":
+			fmt.Fprintf(&sb, "- [ ] ~~%s~~ (skipped)\n", t.Title)
 		default:
-			icon = "⏳" // pending, skipped, unknown status
+			fmt.Fprintf(&sb, "- [ ] %s — %s\n", t.Title, t.Status)
 		}
-		fmt.Fprintf(&sb, "- %s %s — %s\n", icon, t.Title, t.Status)
 	}
 
 	if input.IsPartial && input.FailedTask != "" {
