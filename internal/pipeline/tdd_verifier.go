@@ -28,13 +28,23 @@ func ClassifyTestFailure(stdout, stderr string) TestFailureType {
 	combined := stdout + "\n" + stderr
 	lower := strings.ToLower(combined)
 
+	// Check for runtime errors (panics) — ambiguous, treat as invalid
+	runtimePatterns := []string{
+		"panic: runtime error",
+		"panic:",
+	}
+	for _, p := range runtimePatterns {
+		if strings.Contains(lower, p) {
+			return FailureRuntime
+		}
+	}
+
 	// Check for import errors first (more specific than compile)
 	importPatterns := []string{
 		"cannot find module",
 		"module not found",
 		"importerror",
 		"import error",
-		"no such file or directory",
 		"could not resolve",
 		"cannot resolve",
 	}
@@ -52,6 +62,7 @@ func ClassifyTestFailure(stdout, stderr string) TestFailureType {
 		"build failed",
 		"error ts",
 		"type error",
+		"typeerror",
 		"undefined: ",
 		"cannot find symbol",
 		"error[e",
@@ -70,8 +81,7 @@ func ClassifyTestFailure(stdout, stderr string) TestFailureType {
 		"expected",
 		"assert.",
 		"assertequal",
-		"fail:",
-		"failed:",
+		"--- fail:",
 		"not equal",
 		"not to equal",
 		"tobetruthy",
