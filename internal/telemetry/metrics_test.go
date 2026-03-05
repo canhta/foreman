@@ -62,3 +62,31 @@ func TestMetricsRecordTicket(t *testing.T) {
 		t.Fatal("expected foreman_tickets_total metric")
 	}
 }
+
+func TestMetrics_AllCountersRegistered(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	m := NewMetrics(reg)
+
+	// Prime the ProviderOutages CounterVec so it appears in Gather output.
+	m.ProviderOutages.WithLabelValues("test").Inc()
+
+	families, _ := reg.Gather()
+	names := make(map[string]bool)
+	for _, f := range families {
+		names[f.GetName()] = true
+	}
+
+	required := []string{
+		"foreman_clarification_timeouts_total",
+		"foreman_file_reservation_conflicts_total",
+		"foreman_search_block_fuzzy_matches_total",
+		"foreman_search_block_misses_total",
+		"foreman_provider_outages_total",
+		"foreman_crash_recoveries_total",
+	}
+	for _, name := range required {
+		if !names[name] {
+			t.Errorf("missing metric: %s", name)
+		}
+	}
+}

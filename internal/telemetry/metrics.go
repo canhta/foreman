@@ -25,6 +25,13 @@ type Metrics struct {
 	SecretsDetected     prometheus.Counter
 	HookExecutions      *prometheus.CounterVec
 	SkillExecutions     *prometheus.CounterVec
+
+	ClarificationTimeouts    prometheus.Counter
+	FileReservationConflicts prometheus.Counter
+	SearchBlockFuzzyMatches  prometheus.Counter
+	SearchBlockMisses        prometheus.Counter
+	ProviderOutages          *prometheus.CounterVec
+	CrashRecoveries          prometheus.Counter
 }
 
 // NewMetrics creates and registers all Prometheus metrics with the given registerer.
@@ -100,6 +107,30 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 			Name: "foreman_skill_executions_total",
 			Help: "Skill executions by skill and status",
 		}, []string{"skill", "status"}),
+		ClarificationTimeouts: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "foreman_clarification_timeouts_total",
+			Help: "Total clarification timeouts",
+		}),
+		FileReservationConflicts: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "foreman_file_reservation_conflicts_total",
+			Help: "Total file reservation conflicts",
+		}),
+		SearchBlockFuzzyMatches: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "foreman_search_block_fuzzy_matches_total",
+			Help: "Total fuzzy matches in SEARCH blocks",
+		}),
+		SearchBlockMisses: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "foreman_search_block_misses_total",
+			Help: "Total SEARCH block misses",
+		}),
+		ProviderOutages: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "foreman_provider_outages_total",
+			Help: "Total provider outages by provider",
+		}, []string{"provider"}),
+		CrashRecoveries: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "foreman_crash_recoveries_total",
+			Help: "Total crash recoveries",
+		}),
 	}
 
 	reg.MustRegister(
@@ -109,6 +140,9 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 		m.RetriesTotal, m.RateLimitsTotal, m.TDDVerifyTotal,
 		m.PartialPRsTotal, m.ClarificationsTotal, m.SecretsDetected,
 		m.HookExecutions, m.SkillExecutions,
+		m.ClarificationTimeouts, m.FileReservationConflicts,
+		m.SearchBlockFuzzyMatches, m.SearchBlockMisses,
+		m.ProviderOutages, m.CrashRecoveries,
 	)
 
 	return m
