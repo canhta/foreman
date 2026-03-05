@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestFormatPRBody_Full(t *testing.T) {
@@ -65,6 +64,3 @@ func TestPRRequest_Partial(t *testing.T) {
 	assert.True(t, req.Draft)
 	assert.Contains(t, req.Labels, "partial")
 }
-
-// ensure require is used (import check)
-var _ = require.New
