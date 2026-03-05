@@ -5,6 +5,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/rs/zerolog/log"
 )
 
 // DaemonConfig holds daemon configuration.
@@ -53,6 +55,13 @@ func (d *Daemon) Start(ctx context.Context) {
 	d.startedAt = time.Now()
 	d.mu.Unlock()
 	defer d.running.Store(false)
+
+	// On startup, clean up orphaned Docker containers from previous crashes.
+	// TODO: wire db and runner from full config during integration.
+	// When runner.Mode == "docker", fetch active tickets from db and call
+	// dockerRunner.CleanupOrphanContainers(ctx, activeIDs). Stub logged here
+	// so the intent is visible before full wiring.
+	log.Debug().Msg("daemon starting — Docker orphan cleanup requires integration wiring")
 
 	pollInterval := time.Duration(d.config.PollIntervalSecs) * time.Second
 	ticker := time.NewTicker(pollInterval)
