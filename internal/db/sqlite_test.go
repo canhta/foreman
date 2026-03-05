@@ -162,6 +162,44 @@ func TestSQLiteDB_ListLlmCalls(t *testing.T) {
 	assert.Equal(t, 100, got[0].TokensInput)
 }
 
+func TestSQLiteDB_ParentChildTickets(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	parent := &models.Ticket{
+		ID: "parent-1", ExternalID: "EXT-1", Title: "Parent",
+		Description: "Parent ticket", Status: models.TicketStatusDecomposed,
+		DecomposeDepth: 0, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}
+	require.NoError(t, db.CreateTicket(ctx, parent))
+
+	child := &models.Ticket{
+		ID: "child-1", ExternalID: "EXT-2", Title: "Child",
+		Description: "Child ticket", Status: models.TicketStatusQueued,
+		ParentTicketID: "EXT-1", DecomposeDepth: 1,
+		CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}
+	require.NoError(t, db.CreateTicket(ctx, child))
+
+	// Verify parent fields persisted
+	got, err := db.GetTicket(ctx, "parent-1")
+	require.NoError(t, err)
+	assert.Equal(t, 0, got.DecomposeDepth)
+
+	// Verify child fields persisted
+	got, err = db.GetTicket(ctx, "child-1")
+	require.NoError(t, err)
+	assert.Equal(t, "EXT-1", got.ParentTicketID)
+	assert.Equal(t, 1, got.DecomposeDepth)
+
+	// Test GetChildTickets
+	children, err := db.GetChildTickets(ctx, "EXT-1")
+	require.NoError(t, err)
+	assert.Len(t, children, 1)
+	assert.Equal(t, "child-1", children[0].ID)
+}
+
 func TestSQLiteDB_RecordEvent(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
