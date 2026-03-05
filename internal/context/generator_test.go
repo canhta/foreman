@@ -48,7 +48,8 @@ func TestGenerator_GenerateOnline(t *testing.T) {
 	assert.Contains(t, result, "Generated AGENTS.md")
 	// Verify LLM was called
 	require.NotNil(t, mock.lastRequest)
-	assert.Contains(t, mock.lastRequest.SystemPrompt, "agent")
+	assert.Contains(t, mock.lastRequest.SystemPrompt, "Foreman")
+	assert.Contains(t, mock.lastRequest.SystemPrompt, "autonomous")
 	assert.Equal(t, "test-model", mock.lastRequest.Model)
 }
 

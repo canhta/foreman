@@ -6,11 +6,15 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
+	"github.com/canhta/foreman/internal/config"
 	fcontext "github.com/canhta/foreman/internal/context"
+	"github.com/canhta/foreman/internal/llm"
+	"github.com/canhta/foreman/internal/models"
 )
 
 func newContextCmd() *cobra.Command {
@@ -47,18 +51,31 @@ func newContextGenerateCmd() *cobra.Command {
 				return nil
 			}
 
-			// Try to create LLM provider; fall back to offline if it fails
 			var gen *fcontext.Generator
 			if offline {
 				gen = fcontext.NewGenerator(nil, "")
 			} else {
-				// Attempt to create provider from config
-				gen = fcontext.NewGenerator(nil, "")
-				offline = true // fallback to offline for now
+				cfg, cfgErr := config.LoadFromFile("foreman.toml")
+				if cfgErr != nil {
+					cfg, cfgErr = config.LoadDefaults()
+				}
+				if cfgErr == nil {
+					provider, provErr := llm.NewProviderFromConfig(cfg.LLM.DefaultProvider, cfg.LLM)
+					if provErr != nil {
+						fmt.Fprintf(cmd.ErrOrStderr(), "Warning: could not create LLM provider, falling back to offline: %v\n", provErr)
+						offline = true
+						gen = fcontext.NewGenerator(nil, "")
+					} else {
+						gen = fcontext.NewGenerator(provider, cfg.Models.Planner)
+					}
+				} else {
+					offline = true
+					gen = fcontext.NewGenerator(nil, "")
+				}
 			}
 
 			content, err := gen.Generate(cmd.Context(), ".", fcontext.GenerateOptions{
-				MaxTokens: 120000,
+				MaxTokens: 32000,
 				Offline:   offline,
 			})
 			if err != nil {
@@ -117,13 +134,42 @@ func newContextUpdateCmd() *cobra.Command {
 
 			fmt.Fprintf(cmd.OutOrStdout(), "Found %d new observations. Updating AGENTS.md...\n", len(observations))
 
-			// For now, append a comment about observations (LLM integration to be wired)
-			// In full implementation, this would make an LLM call to update the content
-			footer := fmt.Sprintf("\n<!--foreman:last-update:%d:observations-cursor:%d-->\n",
-				0, newCursor)
+			// Build observation summary for LLM
+			var obsSummary strings.Builder
+			for _, obs := range observations {
+				obsSummary.WriteString(fmt.Sprintf("- [%s] %s", obs.Type, obs.File))
+				for k, v := range obs.Details {
+					obsSummary.WriteString(fmt.Sprintf(" %s=%s", k, v))
+				}
+				obsSummary.WriteByte('\n')
+			}
 
-			// Strip old footer if present
+			// Try LLM update; fall back to cursor-only update if unavailable
 			cleaned := stripFooter(string(content))
+			cfg, cfgErr := config.LoadFromFile("foreman.toml")
+			if cfgErr != nil {
+				cfg, cfgErr = config.LoadDefaults()
+			}
+			if cfgErr == nil {
+				provider, provErr := llm.NewProviderFromConfig(cfg.LLM.DefaultProvider, cfg.LLM)
+				if provErr == nil {
+					resp, llmErr := provider.Complete(cmd.Context(), models.LlmRequest{
+						SystemPrompt: "You are updating an AGENTS.md file for Foreman, an autonomous coding daemon. Incorporate the new observations into the existing file. Keep the same structure. Only add or modify sections where observations provide new information. Output the complete updated AGENTS.md.",
+						UserPrompt:   fmt.Sprintf("## Current AGENTS.md\n\n%s\n\n## New Observations\n\n%s", cleaned, obsSummary.String()),
+						Model:        cfg.Models.Planner,
+						MaxTokens:    4096,
+						Temperature:  0.2,
+					})
+					if llmErr == nil {
+						cleaned = resp.Content
+					} else {
+						fmt.Fprintf(cmd.ErrOrStderr(), "Warning: LLM update failed, updating cursor only: %v\n", llmErr)
+					}
+				}
+			}
+
+			footer := fmt.Sprintf("\n<!--foreman:last-update:%s:observations-cursor:%d-->\n",
+				time.Now().UTC().Format(time.RFC3339), newCursor)
 			updated := cleaned + footer
 
 			if err := os.WriteFile(agentsPath, []byte(updated), 0o644); err != nil {
@@ -143,7 +189,7 @@ func fileExistsAt(path string) bool {
 	return err == nil
 }
 
-var cursorRe = regexp.MustCompile(`<!--foreman:last-update:\d+:observations-cursor:(\d+)-->`)
+var cursorRe = regexp.MustCompile(`<!--foreman:last-update:[^:]+:observations-cursor:(\d+)-->`)
 
 func parseCursorFromFooter(content string) int64 {
 	matches := cursorRe.FindStringSubmatch(content)

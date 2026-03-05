@@ -79,6 +79,6 @@ path = "~/.foreman/foreman.db"
 }
 
 func init() {
-	initCmd.Flags().BoolVar(&initAnalyze, "analyze", false, "Scan repo and generate .foreman-context.md")
+	initCmd.Flags().BoolVar(&initAnalyze, "analyze", false, "Scan repo and generate AGENTS.md")
 	rootCmd.AddCommand(initCmd)
 }

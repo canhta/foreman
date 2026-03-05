@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
-	"sync"
 
 	"github.com/rs/zerolog/log"
 )
@@ -18,7 +17,6 @@ type ProcessTransport struct {
 	stdin      io.WriteCloser
 	scanner    *bufio.Scanner
 	serverName string
-	writeMu    sync.Mutex
 }
 
 // NewProcessTransport spawns a subprocess from the given config.
@@ -74,9 +72,8 @@ func NewProcessTransport(cfg MCPServerConfig) (*ProcessTransport, error) {
 }
 
 // Send writes a JSON message followed by a newline to the process stdin.
+// Callers (StdioClient) serialize writes via their own writeMu.
 func (p *ProcessTransport) Send(msg json.RawMessage) error {
-	p.writeMu.Lock()
-	defer p.writeMu.Unlock()
 	_, err := fmt.Fprintf(p.stdin, "%s\n", msg)
 	return err
 }

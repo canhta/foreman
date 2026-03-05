@@ -26,18 +26,23 @@ func NewGenerator(provider llm.LlmProvider, model string) *Generator {
 	return &Generator{provider: provider, model: model}
 }
 
-const defaultMaxTokens = 120000
+const defaultMaxTokens = 32000
 
-const systemPrompt = `You are an expert at generating agent-optimized AGENTS.md files for software repositories.
-Your output will be read by AI coding agents (not humans primarily), so optimize for:
-- Precise conventions: exact file patterns, naming rules, import ordering
-- Exact commands: build, test, lint, format — copy-pasteable
-- Anti-patterns: things an agent should NEVER do in this codebase
-- Architecture: key directories, module boundaries, data flow
-- Testing: how to write and run tests, test file naming conventions
+const systemPrompt = `You are generating an AGENTS.md for Foreman, a fully autonomous coding daemon.
+This file is read by an LLM agent, not a human developer. Optimize for:
+- Precise naming conventions (the agent will follow them literally)
+- Exact test commands (the agent will run them verbatim)
+- Explicit anti-patterns to avoid (the agent has no implicit human intuition)
+- File organization rules (the agent must know where to create new files)
+Omit marketing language, narrative prose, and generic best practices.
 
-Output only the AGENTS.md content in markdown. Be concise but complete.
-Do NOT include generic advice — only project-specific information derived from the provided files.`
+Output pure Markdown. Include these sections:
+1. Project Overview (language, framework, purpose)
+2. Architecture (key packages/modules, entry points)
+3. Coding Conventions (naming, error handling, patterns)
+4. Build & Test Commands (exact, copy-pasteable)
+5. Key Dependencies
+6. File Organization Rules`
 
 // Generate creates AGENTS.md content for the repository at workDir.
 func (g *Generator) Generate(ctx context.Context, workDir string, opts GenerateOptions) (string, error) {

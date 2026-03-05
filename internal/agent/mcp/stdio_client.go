@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/canhta/foreman/internal/models"
 )
@@ -245,8 +246,14 @@ func (c *StdioClient) Call(ctx context.Context, name string, input json.RawMessa
 	return text, nil
 }
 
-// Close shuts down the client and transport.
+// Close sends shutdown/exit notifications per the MCP spec, then closes the transport.
 func (c *StdioClient) Close() error {
+	// Send shutdown request (best effort, short timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	_, _ = c.sendRequest(ctx, "shutdown", nil)
+	cancel()
+	// Send exit notification (no response expected)
+	_ = c.sendNotification("exit", nil)
 	err := c.transport.Close()
 	<-c.readerDone
 	return err
