@@ -1070,21 +1070,24 @@ li { padding: 0.25rem 0; font-size: 0.85rem; border-bottom: 1px solid #21262d; }
 package dashboard
 
 import (
+	"context"
 	"embed"
 	"io/fs"
 	"net"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog/log"
 )
 
-//go:embed all:../../web
+//go:embed web
 var webFS embed.FS
 
+// Server is the HTTP server for the Foreman dashboard.
 type Server struct {
 	api    *API
 	db     DashboardDB
@@ -1092,6 +1095,7 @@ type Server struct {
 	server *http.Server
 }
 
+// NewServer creates a new dashboard Server and registers all HTTP routes.
 func NewServer(db DashboardDB, emitter EventSubscriber, reg *prometheus.Registry, version, host string, port int) *Server {
 	api := NewAPI(db, emitter, version)
 
@@ -1104,13 +1108,26 @@ func NewServer(db DashboardDB, emitter EventSubscriber, reg *prometheus.Registry
 	mux.Handle("/api/tickets", auth(http.HandlerFunc(api.handleListTickets)))
 	mux.Handle("/api/tickets/", auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
-		if strings.HasSuffix(path, "/events") {
+		switch {
+		case strings.HasSuffix(path, "/tasks"):
+			api.handleGetTasks(w, r)
+		case strings.HasSuffix(path, "/events"):
 			api.handleGetEvents(w, r)
-		} else {
+		case strings.HasSuffix(path, "/llm-calls"):
+			api.handleGetLlmCalls(w, r)
+		case strings.HasSuffix(path, "/retry"):
+			api.handleRetryTicket(w, r)
+		default:
 			api.handleGetTicket(w, r)
 		}
 	})))
 	mux.Handle("/api/costs/today", auth(http.HandlerFunc(api.handleCostsToday)))
+	mux.Handle("/api/pipeline/active", auth(http.HandlerFunc(api.handleActivePipelines)))
+	mux.Handle("/api/costs/week", auth(http.HandlerFunc(api.handleCostsWeek)))
+	mux.Handle("/api/costs/month", auth(http.HandlerFunc(api.handleCostsMonth)))
+	mux.Handle("/api/costs/budgets", auth(http.HandlerFunc(api.handleCostsBudgets)))
+	mux.Handle("/api/daemon/pause", auth(http.HandlerFunc(api.handleDaemonPause)))
+	mux.Handle("/api/daemon/resume", auth(http.HandlerFunc(api.handleDaemonResume)))
 
 	// Metrics endpoint (no auth — Prometheus scraper)
 	if reg != nil {
@@ -1120,7 +1137,7 @@ func NewServer(db DashboardDB, emitter EventSubscriber, reg *prometheus.Registry
 	// WebSocket (auth via token query param)
 	mux.HandleFunc("/ws/events", api.handleWebSocket)
 
-	// Static frontend files
+	// Static frontend files embedded at build time
 	webContent, err := fs.Sub(webFS, "web")
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to load embedded web assets")
@@ -1134,23 +1151,28 @@ func NewServer(db DashboardDB, emitter EventSubscriber, reg *prometheus.Registry
 		db:  db,
 		reg: reg,
 		server: &http.Server{
-			Addr:    addr,
-			Handler: mux,
+			Addr:         addr,
+			Handler:      mux,
+			ReadTimeout:  10 * time.Second,
+			WriteTimeout: 60 * time.Second,
+			IdleTimeout:  120 * time.Second,
 		},
 	}
 }
 
+// Start begins listening for HTTP connections. Blocks until the server stops.
 func (s *Server) Start() error {
 	log.Info().Str("addr", s.server.Addr).Msg("Dashboard server starting")
 	return s.server.ListenAndServe()
 }
 
+// Shutdown gracefully stops the HTTP server.
 func (s *Server) Shutdown(ctx context.Context) error {
 	return s.server.Shutdown(ctx)
 }
 ```
 
-> **Note:** The `go:embed` path `all:../../web` works when the `dashboard` package is inside `internal/dashboard/`. Adjust the embed directive during implementation if the build fails — it must be relative to the file's location.
+> **Note:** The `go:embed web` directive works because the `web/` directory is located at `internal/dashboard/web/` (relative to the `server.go` file). Task 15 (context import) is already included in the import block above.
 
 **Step 3: Verify build**
 
@@ -2244,11 +2266,9 @@ git commit -m "chore: add gorilla/websocket and prometheus dependencies"
 
 ---
 
-### Task 15: Add `context` Import to Dashboard Server
+### Task 15: ~~Add `context` Import to Dashboard Server~~
 
-The `internal/dashboard/server.go` file uses `context.Context` in `Shutdown` but the import is part of the `"context"` package. Ensure the import block includes `"context"`.
-
-This is a minor fixup — verify during Task 6 that all imports compile. If the build passes, skip this task.
+> **Already handled** — The `context` import is included in the Task 6 server.go implementation above. Skip this task.
 
 ---
 

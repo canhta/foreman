@@ -1,0 +1,388 @@
+# Configuration
+
+Foreman is configured via a TOML file named `foreman.toml` in the working directory, or via the `--config` flag. Copy `foreman.example.toml` from the repo as a starting point.
+
+Environment variables can be interpolated using `${VAR_NAME}` syntax anywhere in the config. All secrets should use this form — never hardcode API keys in the config file.
+
+---
+
+## Daemon
+
+```toml
+[daemon]
+poll_interval_secs      = 60    # How often to check for new tickets (seconds)
+idle_poll_interval_secs = 300   # Longer interval when no work is queued
+max_parallel_tickets    = 3     # Concurrent pipeline limit
+                                # Max 3 for SQLite; use PostgreSQL for more
+work_dir   = "~/.foreman/work"  # Directory where repos are cloned
+log_level  = "info"             # trace | debug | info | warn | error
+log_format = "json"             # json | pretty
+```
+
+---
+
+## Dashboard
+
+```toml
+[dashboard]
+enabled    = true
+port       = 3333
+host       = "127.0.0.1"                   # Loopback only by default; use 0.0.0.0 with caution
+auth_token = "${FOREMAN_DASHBOARD_TOKEN}"  # Required; generate with: foreman token generate
+```
+
+Generate a dashboard token:
+
+```bash
+./foreman token generate
+```
+
+---
+
+## Issue Tracker
+
+```toml
+[tracker]
+provider = "github"   # github | jira | linear | local_file
+```
+
+### GitHub Issues
+
+```toml
+[tracker.github]
+owner  = "your-org"
+repo   = "your-repo"
+token  = "${GITHUB_TOKEN}"
+pickup_label               = "foreman-ready"
+clarification_label        = "foreman-needs-info"
+clarification_timeout_hours = 72
+```
+
+### Jira
+
+```toml
+[tracker.jira]
+base_url    = "https://yourcompany.atlassian.net"
+email       = "bot@yourcompany.com"
+api_token   = "${JIRA_API_TOKEN}"
+project_key = "PROJ"
+pickup_label               = "foreman-ready"
+clarification_label        = "foreman-needs-info"
+clarification_timeout_hours = 72
+
+# Status transitions in your Jira workflow
+status_in_progress = "In Progress"
+status_in_review   = "In Review"
+status_done        = "Done"
+status_blocked     = "Blocked"
+```
+
+### Linear
+
+```toml
+[tracker.linear]
+api_key  = "${LINEAR_API_KEY}"
+team_id  = "TEAM_ID"
+pickup_label               = "foreman-ready"
+clarification_timeout_hours = 72
+```
+
+### Local File Tracker
+
+For development and testing without an issue tracker:
+
+```toml
+[tracker.local_file]
+path = "./tickets"   # Directory containing .json ticket files
+```
+
+---
+
+## Git
+
+```toml
+[git]
+provider          = "github"    # github | gitlab | bitbucket
+backend           = "native"    # native (git CLI) | gogit (pure Go fallback)
+clone_url         = "git@github.com:your-org/your-repo.git"
+default_branch    = "main"
+auto_push         = true
+pr_draft          = true
+pr_reviewers      = ["team-lead"]
+branch_prefix     = "foreman"   # Branch names: foreman/PROJ-123-add-auth
+rebase_before_pr  = true
+
+[git.github]
+token = "${GITHUB_TOKEN}"
+
+[git.gitlab]
+token    = "${GITLAB_TOKEN}"
+base_url = "https://gitlab.com"   # Override for self-hosted GitLab
+```
+
+---
+
+## LLM Providers
+
+```toml
+[llm]
+default_provider = "anthropic"   # anthropic | openai | openrouter | local
+```
+
+### Anthropic
+
+```toml
+[llm.anthropic]
+api_key  = "${ANTHROPIC_API_KEY}"
+base_url = "https://api.anthropic.com"   # Optional override
+```
+
+### OpenAI
+
+```toml
+[llm.openai]
+api_key  = "${OPENAI_API_KEY}"
+base_url = "https://api.openai.com"
+```
+
+### OpenRouter
+
+```toml
+[llm.openrouter]
+api_key  = "${OPENROUTER_API_KEY}"
+base_url = "https://openrouter.ai/api"
+```
+
+### Local (Ollama or OpenAI-compatible)
+
+```toml
+[llm.local]
+base_url = "http://localhost:11434"
+```
+
+### Provider Outage Behaviour
+
+```toml
+[llm.outage]
+max_connection_retries      = 3    # Retries before pausing the pipeline
+connection_retry_delay_secs = 30
+fallback_provider           = ""   # Optional: "openai", "openrouter", etc.
+# If all retries exhausted and no fallback: pause pipeline, retry on next poll.
+# The ticket is NOT failed.
+```
+
+---
+
+## Model Routing
+
+Route each pipeline role to a specific provider and model. This lets you use cheaper models for lightweight review roles and your best model for implementation.
+
+```toml
+[models]
+# Format: "provider:model_name"
+planner          = "anthropic:claude-sonnet-4-5-20250929"
+implementer      = "anthropic:claude-sonnet-4-5-20250929"
+spec_reviewer    = "anthropic:claude-haiku-4-5-20251001"
+quality_reviewer = "anthropic:claude-haiku-4-5-20251001"
+final_reviewer   = "anthropic:claude-sonnet-4-5-20250929"
+clarifier        = "anthropic:claude-haiku-4-5-20251001"
+```
+
+---
+
+## Cost Control
+
+```toml
+[cost]
+max_cost_per_ticket_usd  = 15.00    # Abort + escalate when exceeded
+max_cost_per_day_usd     = 150.00   # Pause all pipelines when exceeded
+max_cost_per_month_usd   = 3000.00  # Hard stop
+alert_threshold_percent  = 80       # Alert at 80% of any budget level
+max_llm_calls_per_task   = 8        # Absolute per-task cap (all roles combined)
+```
+
+### Per-Model Pricing Override
+
+Default pricing is bundled for common models. Override when provider pricing changes:
+
+```toml
+[cost.pricing]
+"anthropic:claude-sonnet-4-5-20250929" = { input = 3.00,  output = 15.00 }
+"anthropic:claude-haiku-4-5-20251001"  = { input = 0.80,  output = 4.00  }
+"openai:gpt-4o"                         = { input = 2.50,  output = 10.00 }
+"openai:o3-mini"                        = { input = 1.10,  output = 4.40  }
+```
+
+Units: USD per 1 million tokens.
+
+---
+
+## Pipeline Limits
+
+```toml
+[limits]
+max_tasks_per_ticket        = 20     # Planner is instructed not to exceed this
+max_implementation_retries  = 2      # Per lint/test feedback tier
+max_spec_review_cycles      = 2
+max_quality_review_cycles   = 1
+max_task_duration_secs      = 600    # 10 minutes per task before timeout
+max_total_duration_secs     = 7200   # 2 hours per ticket before timeout
+context_token_budget        = 80000  # Max tokens per LLM call context window
+enable_partial_pr           = true   # Create PR with completed tasks on partial failure
+enable_clarification        = true   # Ask for clarification on ambiguous tickets
+enable_tdd_verification     = true   # Mechanical RED/GREEN TDD verification
+search_replace_similarity   = 0.92   # Fuzzy match threshold for SEARCH blocks (0.0–1.0)
+search_replace_min_context_lines = 3 # Minimum surrounding lines in each SEARCH block
+```
+
+---
+
+## Pipeline Hooks
+
+```toml
+[pipeline.hooks]
+# List skill names to run at each hook point.
+# Hook failures are logged but do not block the pipeline.
+post_lint = []                         # After lint passes (e.g., ["security-scan"])
+pre_pr    = []                         # Before PR creation (e.g., ["write-changelog"])
+post_pr   = []                         # After PR created (e.g., ["notify-slack"])
+```
+
+See [Skills](skills.md) for how to write skill files.
+
+---
+
+## Secrets Scanning
+
+```toml
+[secrets]
+enabled = true
+# Additional regex patterns beyond built-in defaults
+extra_patterns = []
+# Files always excluded from LLM context, regardless of content
+always_exclude = [".env", ".env.*", "*.pem", "*.key", "*.p12"]
+```
+
+Built-in patterns detect: AWS keys, GitHub tokens, private key blocks (`BEGIN RSA PRIVATE KEY`, etc.), and common secret formats. These cannot be disabled individually — use `enabled = false` to turn off the scanner entirely (not recommended).
+
+---
+
+## Rate Limiting
+
+Shared across all pipeline workers for a given provider.
+
+```toml
+[rate_limit]
+requests_per_minute = 50      # Token bucket refill rate
+burst_size          = 10      # Max burst above the steady-state rate
+backoff_base_ms     = 1000    # Base delay on HTTP 429
+backoff_max_ms      = 60000   # Maximum delay (1 minute)
+jitter_percent      = 25      # Random jitter applied to all retry delays
+```
+
+---
+
+## Execution Runner
+
+```toml
+[runner]
+mode = "local"   # local | docker
+```
+
+### Local Runner
+
+```toml
+[runner.local]
+allowed_commands = ["npm", "yarn", "pnpm", "cargo", "go", "pytest", "make", "bun"]
+forbidden_paths  = [".env", ".ssh", ".aws", ".gnupg", "*.key", "*.pem"]
+```
+
+### Docker Runner
+
+```toml
+[runner.docker]
+image              = "node:22-slim"  # Default image; override per repo in AGENTS.md
+persist_per_ticket = true            # Reuse container across tasks for the same ticket
+network            = "none"          # Network isolation (recommended)
+cpu_limit          = "2.0"
+memory_limit       = "4g"
+auto_reinstall_deps = true           # Reinstall deps when package manifests change
+```
+
+---
+
+## Database
+
+```toml
+[database]
+driver = "sqlite"   # sqlite | postgres
+```
+
+### SQLite (Default)
+
+```toml
+[database.sqlite]
+path                    = "~/.foreman/foreman.db"
+busy_timeout_ms         = 5000    # SQLite PRAGMA busy_timeout
+wal_mode                = true    # PRAGMA journal_mode=WAL (required for concurrency)
+event_flush_interval_ms = 100     # Batch flush interval for non-critical writes
+```
+
+> SQLite caps `max_parallel_tickets` at 3. For more concurrent pipelines, use PostgreSQL.
+
+### PostgreSQL (Optional)
+
+```toml
+[database.postgres]
+url             = "${DATABASE_URL}"   # postgres://user:pass@host:5432/foreman
+max_connections = 10
+```
+
+---
+
+## Agent Runner
+
+```toml
+[agent_runner]
+type = "builtin"   # builtin | claudecode | copilot
+```
+
+### Builtin Runner
+
+```toml
+[agent_runner.builtin]
+max_turns    = 20    # Maximum agent turns per task
+timeout_secs = 300   # Per-task timeout
+```
+
+### Claude Code
+
+```toml
+[agent_runner.claudecode]
+binary_path  = "claude"  # Path to the claude CLI binary
+max_turns    = 20
+timeout_secs = 300
+```
+
+### Copilot
+
+```toml
+[agent_runner.copilot]
+timeout_secs = 300
+```
+
+---
+
+## Environment Variable Reference
+
+| Variable | Used By |
+|---|---|
+| `ANTHROPIC_API_KEY` | `[llm.anthropic] api_key` |
+| `OPENAI_API_KEY` | `[llm.openai] api_key` |
+| `OPENROUTER_API_KEY` | `[llm.openrouter] api_key` |
+| `GITHUB_TOKEN` | `[tracker.github] token` and `[git.github] token` |
+| `JIRA_API_TOKEN` | `[tracker.jira] api_token` |
+| `LINEAR_API_KEY` | `[tracker.linear] api_key` |
+| `GITLAB_TOKEN` | `[git.gitlab] token` |
+| `FOREMAN_DASHBOARD_TOKEN` | `[dashboard] auth_token` |
+| `DATABASE_URL` | `[database.postgres] url` |
