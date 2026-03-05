@@ -6,13 +6,14 @@ The YAML skill engine lets you extend Foreman's pipeline with custom steps at th
 
 ## Hook Points
 
-Skills are triggered at one of three pipeline hook points:
+Skills are triggered at one of four pipeline hook points:
 
 | Hook | When it runs | Common uses |
 |---|---|---|
 | `post_lint` | After lint passes, before spec review | Security scanning, custom static analysis |
 | `pre_pr` | Before PR creation, after final review | Changelog generation, documentation updates |
 | `post_pr` | After PR is created and tracker is synced | Slack notifications, Jira automations |
+| `post_merge` | After PR is merged | Deployment triggers, cleanup tasks, metrics |
 
 Hook failures are **logged but do not block the pipeline**. A skill that errors or times out is recorded as a `hook_skill_failed` event and execution continues.
 
@@ -20,9 +21,10 @@ Enable skills at hook points in your `foreman.toml`:
 
 ```toml
 [pipeline.hooks]
-post_lint = ["security-scan"]
-pre_pr    = ["write-changelog"]
-post_pr   = []
+post_lint  = ["security-scan"]
+pre_pr     = ["write-changelog"]
+post_pr    = []
+post_merge = []
 ```
 
 ---
@@ -34,7 +36,7 @@ Skills are YAML files located in the `skills/` directory. Community contribution
 ```yaml
 id: my-skill            # Must be unique; used in foreman.toml hooks config
 description: "What this skill does"
-trigger: post_lint      # post_lint | pre_pr | post_pr
+trigger: post_lint      # post_lint | pre_pr | post_pr | post_merge
 steps:
   - id: step-id
     type: step-type

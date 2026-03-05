@@ -8,7 +8,7 @@ Foreman is a single Go binary structured as a daemon with a pluggable, interface
 ┌──────────────────────────────────────────────────────────┐
 │                        DAEMON                             │
 │  Runs 24/7. Polls issue tracker. Manages goroutine pool.  │
-│  File reservation layer. Crash recovery.                  │
+│  File reservation layer. Crash recovery. Merge checker.   │
 └──────────────┬───────────────────────────────────────────┘
                │  (up to N parallel)
     ┌──────────┴──────────┐
@@ -22,9 +22,10 @@ Foreman is a single Go binary structured as a daemon with a pluggable, interface
 ┌─────────────────────────────────────────────────────────┐
 │                    PIPELINE (per ticket)                  │
 │                                                          │
-│  Issue Sync → Context Assembly → Planner → Validator     │
+│  Issue Sync → Decompose Check → Planner → Validator      │
 │    → Per-Task [Implement → TDD → Lint → Reviews → Commit]│
 │    → Rebase → Full Tests → Final Review → PR             │
+│    → Merge Check → post_merge hooks → Parent Completion  │
 │                                                          │
 │  LLM Router ───────────────────────────────────────────  │
 │  Cost Controller ──────────────────────────────────────  │
@@ -66,7 +67,7 @@ Partial success is better than total failure. If 4 of 5 tasks succeed, Foreman c
 ```
 internal/
 ├── config/         TOML config loading, validation, env-var substitution
-├── daemon/         Event loop, scheduler, DAG executor (coordinator/worker-pool), file reservations, crash recovery
+├── daemon/         Event loop, scheduler, DAG executor (coordinator/worker-pool), merge checker, file reservations, crash recovery
 ├── db/             Database interface + SQLite and PostgreSQL implementations
 ├── pipeline/       State machine orchestrator — all pipeline stages
 ├── context/        Context assembly: file selection, token budgets, secrets scanning; AGENTS.md generator
@@ -107,6 +108,7 @@ Implementations: `anthropic.go`, `openai.go`, `openrouter.go`, `local.go`.
 
 ```go
 type IssueTracker interface {
+    CreateTicket(ctx context.Context, req CreateTicketRequest) (*Ticket, error)
     FetchReadyTickets(ctx context.Context) ([]Ticket, error)
     GetTicket(ctx context.Context, externalID string) (*Ticket, error)
     UpdateStatus(ctx context.Context, externalID, status string) error
@@ -139,6 +141,16 @@ type GitProvider interface {
 ```
 
 Default implementation: native `git` CLI (`native.go`). Fallback: `go-git/v5` (`gogit.go`).
+
+### PRChecker (`internal/git`)
+
+```go
+type PRChecker interface {
+    GetPRStatus(ctx context.Context, prNumber int) (PRMergeStatus, error)
+}
+```
+
+Polls pull request merge/close status. Used by `MergeChecker` to detect when PRs are merged or closed. Implementation: `GitHubPRChecker` (`pr_checker.go`).
 
 ### CommandRunner (`internal/runner`)
 

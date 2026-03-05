@@ -22,6 +22,7 @@ For the full TOML reference for every integration, see [Configuration](configura
 - A comment is posted at each major pipeline stage (planning complete, PR created, blocked, etc.).
 - The PR URL is attached to the issue.
 - For clarification requests, the `foreman-needs-info` label is applied and removed once the author responds.
+- When decomposition is enabled, child tickets are created as new GitHub Issues with a parent reference in the body.
 
 **Required token permissions:** `repo` (full repo access) or at minimum `issues:write` and `pull-requests:write`.
 
@@ -41,6 +42,7 @@ For the full TOML reference for every integration, see [Configuration](configura
 - Status transitions are applied automatically at each pipeline stage.
 - Comments are posted with progress updates.
 - The PR URL is added as a link to the Jira issue.
+- When decomposition is enabled, child tickets are created as Jira sub-tasks linked to the parent issue.
 
 **Note:** Status transitions must match your project workflow exactly. Use `foreman doctor` to verify the status names are reachable.
 
@@ -54,13 +56,13 @@ For the full TOML reference for every integration, see [Configuration](configura
 2. Find your team ID in `https://linear.app/[workspace]/settings/teams`.
 3. Apply the `foreman-ready` label to any issue you want processed.
 
-**Behaviour:** Same as GitHub Issues — comment posting, PR attachment, label-based clarification flow.
+**Behaviour:** Same as GitHub Issues — comment posting, PR attachment, label-based clarification flow. Decomposition creates child issues via the `issueCreate` GraphQL mutation.
 
 ---
 
 ### Local File Tracker
 
-For local development and CI testing without an external issue tracker. Ticket format — a JSON file per ticket in the configured directory:
+For local development and CI testing without an external issue tracker. Decomposition creates child ticket JSON files in the tickets directory. Ticket format — a JSON file per ticket in the configured directory:
 
 ```json
 {

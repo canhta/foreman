@@ -15,7 +15,8 @@ idle_poll_interval_secs = 300   # Longer interval when no work is queued
 max_parallel_tickets    = 3     # Concurrent pipeline limit
                                 # Max 3 for SQLite; use PostgreSQL for more
 max_parallel_tasks      = 3     # Concurrent tasks per ticket (DAG executor worker pool)
-task_timeout_minutes    = 15    # Per-task timeout in minutes
+task_timeout_minutes       = 15    # Per-task timeout in minutes
+merge_check_interval_secs  = 300   # How often to poll PR merge status (seconds)
 work_dir   = "~/.foreman/work"  # Directory where repos are cloned
 log_level  = "info"             # trace | debug | info | warn | error
 log_format = "json"             # json | pretty
@@ -245,12 +246,32 @@ search_replace_min_context_lines = 3 # Minimum surrounding lines in each SEARCH 
 [pipeline.hooks]
 # List skill names to run at each hook point.
 # Hook failures are logged but do not block the pipeline.
-post_lint = []                         # After lint passes (e.g., ["security-scan"])
-pre_pr    = []                         # Before PR creation (e.g., ["write-changelog"])
-post_pr   = []                         # After PR created (e.g., ["notify-slack"])
+post_lint  = []                         # After lint passes (e.g., ["security-scan"])
+pre_pr     = []                         # Before PR creation (e.g., ["write-changelog"])
+post_pr    = []                         # After PR created (e.g., ["notify-slack"])
+post_merge = []                         # After PR merged (e.g., ["deploy-staging"])
 ```
 
 See [Skills](skills.md) for how to write skill files.
+
+---
+
+## Decomposition
+
+Automatic ticket decomposition breaks oversized tickets into child tracker issues before planning.
+
+```toml
+[decompose]
+enabled            = false              # Enable automatic decomposition
+max_ticket_words   = 150                # Word count threshold for decomposition
+max_scope_keywords = 2                  # Scope keyword count threshold ("and", "also", "plus", "additionally")
+approval_label     = "foreman-ready"    # Label for approved child tickets
+parent_label       = "foreman-decomposed"  # Label applied to decomposed parent tickets
+```
+
+When enabled, tickets exceeding the word count or scope keyword thresholds are decomposed by an LLM into 3–6 focused child tickets. Each child is created in the tracker with a `{approval_label}-pending` label. The parent is labelled with `parent_label` and its status changes to `decomposed`.
+
+Child tickets are not further decomposed (max depth = 1). When all children's PRs merge, the parent is automatically marked `done`.
 
 ---
 

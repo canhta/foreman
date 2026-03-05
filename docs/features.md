@@ -79,6 +79,12 @@ When `enable_partial_pr = true`, if some tasks succeed and others fail or are sk
 
 This is better than discarding all work when a single task hits a retry cap or a dependency fails.
 
+### Ticket Decomposition
+When enabled, Foreman automatically detects oversized tickets using deterministic heuristics (word count, scope keywords, missing acceptance criteria) and decomposes them into 3–6 focused child tickets via an LLM call. Each child is created in the issue tracker with a parent reference. The parent ticket waits in `decomposed` status until all children's PRs merge, at which point it is automatically closed.
+
+### PR Merge Lifecycle
+After a PR is created, a dedicated `MergeChecker` goroutine polls PR status at a configurable interval. When a PR is merged, `post_merge` skill hooks fire (e.g., deployment triggers). For decomposed tickets, parent completion is checked automatically — when all child PRs merge, the parent ticket is marked `done` and closed in the tracker.
+
 ### Crash Recovery
 Task completions are checkpointed by `last_completed_task_seq` in the database. If the daemon crashes mid-pipeline, it resumes from the last committed task on the next start — no work is lost.
 
@@ -271,10 +277,11 @@ All dashboard endpoints require a bearer token. Tokens are generated with `forem
 ## YAML Skill Engine
 
 ### Extensible Pipeline Hooks
-Three hook points allow custom steps to be injected into the pipeline without modifying core code:
+Four hook points allow custom steps to be injected into the pipeline without modifying core code:
 - `post_lint` — after lint passes, before spec review (e.g., security scanning)
 - `pre_pr` — before PR creation (e.g., changelog generation)
 - `post_pr` — after PR is created (e.g., Slack notification)
+- `post_merge` — after PR is merged (e.g., deployment triggers, cleanup)
 
 ### Skill Step Types
 Skills are composed of typed steps:

@@ -8,6 +8,9 @@ This document describes the full lifecycle of a ticket as it flows through Forem
 QUEUED
   │
   ▼
+DECOMPOSITION CHECK ──── oversized ──► DECOMPOSE (LLM) ──► create child tickets ──► DECOMPOSED
+  │
+  ▼ (fits in one PR)
 FILE RESERVATION CHECK ──── conflict ──► re-queue (retry on next poll)
   │
   ▼ (free)
@@ -76,12 +79,46 @@ HOOK: post_pr
 RELEASE FILE RESERVATIONS
   │
   ▼
-DONE
+AWAITING MERGE ◄───────────────────────────────────────────────
+  │                                                            │
+  ▼                                                            │
+MERGE CHECKER (polls PR status)                                │
+  │                                                            │
+  ├── merged ──► MERGED ──► HOOK: post_merge                   │
+  │                  │                                         │
+  │                  ▼ (child ticket?)                         │
+  │              CHECK PARENT COMPLETION                       │
+  │                  │                                         │
+  │                  ▼ (all children merged)                   │
+  │              PARENT → DONE                                 │
+  │                                                            │
+  └── closed (not merged) ──► PR_CLOSED                        │
+                                                               │
+DONE ◄─────────────────────────────────────────────────────────┘
 ```
 
 ---
 
 ## Pipeline Stages
+
+### 0. Decomposition Check
+
+Before entering the main pipeline, Foreman checks whether the ticket is too large for a single PR using deterministic heuristics:
+
+- **Word count**: description exceeds `max_ticket_words` (default: 150)
+- **Scope keywords**: multiple scope-expanding words ("and", "also", "plus", "additionally") exceed `max_scope_keywords` (default: 2)
+- **Vague and long**: no acceptance criteria and description over 100 words
+
+Child tickets (those with `decompose_depth > 0`) are never decomposed further.
+
+If decomposition is triggered:
+1. The ticket status changes to `decomposing`
+2. An LLM call generates 3–6 child ticket specs with titles, descriptions, acceptance criteria, estimated complexity, and dependency relationships
+3. Each child ticket is created in the tracker with a `foreman-ready-pending` label and a parent reference
+4. The parent ticket is labelled `foreman-decomposed` and a summary comment is posted listing all children
+5. The parent status changes to `decomposed` — it exits the pipeline and waits for all children to merge
+
+Decomposition is disabled by default (`decompose.enabled = false`). See [Configuration](configuration.md#decomposition) for settings.
 
 ### 1. Clarification Check
 
@@ -220,6 +257,40 @@ An LLM call that reviews the complete diff across all tasks as a whole. This cat
 Before creating the PR, `pre_pr` skill hooks run (e.g., to generate a changelog entry). After PR creation, `post_pr` hooks run (e.g., to notify a Slack channel).
 
 File reservations are released atomically after all hooks complete.
+
+### 9. Merge Lifecycle
+
+After a PR is created, the ticket enters the `awaiting_merge` state. A dedicated `MergeChecker` goroutine polls PR status at a configurable interval (`merge_check_interval_secs`, default: 300 seconds).
+
+**On PR merge:**
+1. The ticket status changes to `merged`
+2. `post_merge` skill hooks are executed (e.g., deployment triggers, cleanup tasks)
+3. If the ticket is a child of a decomposed parent, the parent is checked for completion — when all children are merged, the parent ticket is automatically marked `done` and closed in the tracker
+
+**On PR closed (not merged):**
+1. The ticket status changes to `pr_closed`
+2. No hooks are fired — the ticket can be manually re-processed
+
+### Ticket Statuses
+
+| Status | Meaning |
+|---|---|
+| `queued` | Waiting for pickup |
+| `clarification_needed` | Waiting for author response |
+| `planning` | LLM generating task plan |
+| `plan_validating` | Deterministic plan validation |
+| `implementing` | Tasks executing |
+| `reviewing` | Final review in progress |
+| `pr_created` | PR submitted |
+| `decomposing` | LLM generating child ticket specs |
+| `decomposed` | Parent ticket — waiting for children to merge |
+| `awaiting_merge` | PR open, polling for merge/close |
+| `merged` | PR merged successfully |
+| `pr_closed` | PR closed without merging |
+| `done` | Ticket complete |
+| `partial` | Partial PR created |
+| `failed` | Pipeline failed |
+| `blocked` | Blocked (e.g., clarification timeout) |
 
 ---
 
