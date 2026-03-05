@@ -112,3 +112,42 @@ func hasOrderingBetween(tasks []PlannedTask, titles []string) bool {
 	}
 	return false
 }
+
+// EstimateTicketCost estimates the total cost for a set of planned tasks
+// based on complexity tiers and model pricing.
+func EstimateTicketCost(tasks []PlannedTask, pricing map[string]models.PricingConfig, implModel, reviewModel string) float64 {
+	type tier struct {
+		llmCalls        int
+		avgInputTokens  int
+		avgOutputTokens int
+	}
+	tiers := map[string]tier{
+		"simple":  {llmCalls: 2, avgInputTokens: 20000, avgOutputTokens: 4000},
+		"medium":  {llmCalls: 4, avgInputTokens: 40000, avgOutputTokens: 8000},
+		"complex": {llmCalls: 6, avgInputTokens: 60000, avgOutputTokens: 12000},
+	}
+
+	var totalCost float64
+	for _, task := range tasks {
+		t, ok := tiers[task.EstimatedComplexity]
+		if !ok {
+			t = tiers["medium"]
+		}
+		implCalls := t.llmCalls / 2
+		if implCalls < 1 {
+			implCalls = 1
+		}
+		totalCost += float64(implCalls) * estimateCallCost(implModel, t.avgInputTokens, t.avgOutputTokens, pricing)
+		reviewCalls := t.llmCalls - implCalls
+		totalCost += float64(reviewCalls) * estimateCallCost(reviewModel, t.avgInputTokens/2, t.avgOutputTokens/4, pricing)
+	}
+	return totalCost
+}
+
+func estimateCallCost(model string, inputTokens, outputTokens int, pricing map[string]models.PricingConfig) float64 {
+	p, ok := pricing[model]
+	if !ok {
+		return 0
+	}
+	return (float64(inputTokens)/1_000_000)*p.Input + (float64(outputTokens)/1_000_000)*p.Output
+}

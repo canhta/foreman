@@ -104,6 +104,27 @@ func TestValidatePlan_TooManyTasks(t *testing.T) {
 	assert.Contains(t, result.Errors[0], "exceeding limit")
 }
 
+func TestEstimateTicketCost(t *testing.T) {
+	pricing := map[string]models.PricingConfig{
+		"anthropic:claude-sonnet-4-5-20250929": {Input: 3.00, Output: 15.00},
+		"anthropic:claude-haiku-4-5-20251001":  {Input: 0.80, Output: 4.00},
+	}
+
+	tasks := []PlannedTask{
+		{EstimatedComplexity: "simple"},
+		{EstimatedComplexity: "medium"},
+		{EstimatedComplexity: "complex"},
+	}
+
+	cost := EstimateTicketCost(tasks, pricing, "anthropic:claude-sonnet-4-5-20250929", "anthropic:claude-haiku-4-5-20251001")
+	if cost <= 0 {
+		t.Errorf("expected positive cost, got %f", cost)
+	}
+	if cost > 50.0 {
+		t.Errorf("cost seems too high: %f", cost)
+	}
+}
+
 func TestValidatePlan_SharedFileWithoutOrdering(t *testing.T) {
 	workDir := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(workDir, "internal"), 0o755))
