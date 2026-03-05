@@ -15,6 +15,24 @@ type Config struct {
 	Skills    SkillsConfig    `mapstructure:"skills"`
 	Limits    LimitsConfig    `mapstructure:"limits"`
 	RateLimit RateLimitConfig `mapstructure:"rate_limit"`
+	MCP       MCPConfig       `mapstructure:"mcp"`
+}
+
+// MCPConfig holds configuration for MCP (Model Context Protocol) servers.
+type MCPConfig struct {
+	Servers []MCPServerEntry `mapstructure:"servers"`
+}
+
+// MCPServerEntry defines a single MCP server to connect to.
+type MCPServerEntry struct {
+	Name             string            `mapstructure:"name"`
+	Command          string            `mapstructure:"command"`
+	Args             []string          `mapstructure:"args"`
+	Env              map[string]string `mapstructure:"env"`
+	AllowedTools     []string          `mapstructure:"allowed_tools"`
+	RestartPolicy    string            `mapstructure:"restart_policy"`
+	MaxRestarts      int               `mapstructure:"max_restarts"`
+	RestartDelaySecs int               `mapstructure:"restart_delay_secs"`
 }
 
 type DaemonConfig struct {
