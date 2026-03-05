@@ -2,7 +2,6 @@ package daemon
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
 	"github.com/canhta/foreman/internal/models"
@@ -16,7 +15,7 @@ type mockPickupDB struct {
 func (m *mockPickupDB) GetTicketByExternalID(_ context.Context, externalID string) (*models.Ticket, error) {
 	t, ok := m.tickets[externalID]
 	if !ok {
-		return nil, fmt.Errorf("not found")
+		return nil, nil // not found — matches actual DB behavior
 	}
 	return t, nil
 }
@@ -38,7 +37,7 @@ func TestShouldPickUp_NewTicket(t *testing.T) {
 	db := &mockPickupDB{tickets: map[string]*models.Ticket{}}
 	tracker := &mockPickupTracker{labels: map[string][]string{}}
 
-	if !shouldPickUp(context.Background(), zerolog.Nop(), db, tracker, "NEW-1", "foreman:clarification") {
+	if !shouldPickUp(context.Background(), db, tracker, zerolog.Nop(), "NEW-1", "foreman:clarification") {
 		t.Error("expected true for new ticket")
 	}
 }
@@ -51,7 +50,7 @@ func TestShouldPickUp_ClarificationWithLabel(t *testing.T) {
 		"PROJ-1": {"foreman:clarification"},
 	}}
 
-	if shouldPickUp(context.Background(), zerolog.Nop(), db, tracker, "PROJ-1", "foreman:clarification") {
+	if shouldPickUp(context.Background(), db, tracker, zerolog.Nop(), "PROJ-1", "foreman:clarification") {
 		t.Error("expected false — still has clarification label")
 	}
 }
@@ -64,7 +63,7 @@ func TestShouldPickUp_ClarificationLabelRemoved(t *testing.T) {
 		"PROJ-2": {},
 	}}
 
-	if !shouldPickUp(context.Background(), zerolog.Nop(), db, tracker, "PROJ-2", "foreman:clarification") {
+	if !shouldPickUp(context.Background(), db, tracker, zerolog.Nop(), "PROJ-2", "foreman:clarification") {
 		t.Error("expected true — clarification label was removed (author responded)")
 	}
 }
@@ -75,7 +74,7 @@ func TestShouldPickUp_ActiveTicket(t *testing.T) {
 	}}
 	tracker := &mockPickupTracker{labels: map[string][]string{}}
 
-	if shouldPickUp(context.Background(), zerolog.Nop(), db, tracker, "PROJ-3", "foreman:clarification") {
+	if shouldPickUp(context.Background(), db, tracker, zerolog.Nop(), "PROJ-3", "foreman:clarification") {
 		t.Error("expected false — ticket already active")
 	}
 }

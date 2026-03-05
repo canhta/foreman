@@ -17,10 +17,14 @@ type PickupTracker interface {
 	HasLabel(ctx context.Context, externalID, label string) (bool, error)
 }
 
-func shouldPickUp(ctx context.Context, log zerolog.Logger, db PickupDB, tracker PickupTracker, externalID, clarificationLabel string) bool {
+func shouldPickUp(ctx context.Context, db PickupDB, tracker PickupTracker, log zerolog.Logger, externalID, clarificationLabel string) bool {
 	existing, err := db.GetTicketByExternalID(ctx, externalID)
 	if err != nil {
-		return true // New ticket, safe to pick up
+		log.Warn().Err(err).Str("external_id", externalID).Msg("failed to check ticket existence, skipping pickup")
+		return false // fail safe
+	}
+	if existing == nil {
+		return true // genuinely new ticket
 	}
 	if existing.Status == models.TicketStatusClarificationNeeded {
 		hasLabel, err := tracker.HasLabel(ctx, externalID, clarificationLabel)
