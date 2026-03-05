@@ -29,9 +29,8 @@ cp foreman.example.toml foreman.toml
 
 1. Create a branch from `main`.
 2. Keep changes focused and scoped to a single concern.
-3. Add or update tests for behavioral changes.
-4. Run checks locally before opening/updating the PR.
-5. Open a PR with clear context and rationale.
+3. Run checks locally before opening/updating the PR.
+4. Open a PR with clear context and rationale.
 
 Suggested branch naming:
 
@@ -65,9 +64,8 @@ go vet ./...
 
 ## Testing Expectations
 
-- Add unit tests for new logic.
-- Update existing tests when behavior changes.
-- Include regression tests for bug fixes.
+- Add or update tests for every behavioral change.
+- Include regression coverage for bug fixes.
 - Keep tests deterministic and independent.
 
 ## Commit Message Guidelines
@@ -95,11 +93,11 @@ Please include:
 - Expected behavior
 - Actual behavior
 - Reproduction steps
-- Relevant logs or error output (with secrets redacted)
+- Relevant logs or error output
 - Environment details (OS, Go version)
 
 ## Security
 
-Do not post secrets or credentials in issues, discussions, or PRs.
+Never post secrets or credentials in issues, discussions, logs, or PRs.
 
 If you discover a security issue, report it privately to the maintainers rather than opening a public issue.
