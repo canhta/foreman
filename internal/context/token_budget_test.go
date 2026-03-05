@@ -38,7 +38,8 @@ func TestTokenBudget_Add(t *testing.T) {
 	}
 
 	if tb.CanFit(40) {
-		// 60 + 40 = 100, which should be exactly at limit
+		// 60 + 40 = 100, which is exactly at limit — acceptable
+		t.Log("fits exactly at limit")
 	}
 
 	if tb.Remaining() != 40 {

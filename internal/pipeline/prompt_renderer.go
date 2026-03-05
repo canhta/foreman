@@ -98,7 +98,7 @@ func RenderPrompt(templateName string, ctx PromptContext) (string, error) {
 	}
 
 	path := filepath.Join(dir, templateName+".md.j2")
-	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+	if _, statErr := os.Stat(path); errors.Is(statErr, os.ErrNotExist) {
 		return "", fmt.Errorf("prompt template not found: %s", path)
 	}
 

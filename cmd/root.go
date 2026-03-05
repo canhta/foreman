@@ -4,8 +4,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var appVersion string
-
 var rootCmd = &cobra.Command{
 	Use:   "foreman",
 	Short: "Autonomous software development daemon",
@@ -13,7 +11,6 @@ var rootCmd = &cobra.Command{
 }
 
 func SetVersion(v string) {
-	appVersion = v
 	rootCmd.Version = v
 }
 

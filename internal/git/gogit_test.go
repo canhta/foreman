@@ -43,13 +43,14 @@ func TestGoGitProvider_EnsureRepo_Idempotent(t *testing.T) {
 
 func TestGoGitProvider_FileTree(t *testing.T) {
 	dir := t.TempDir()
-	exec.Command("git", "init", dir).Run()
+	ctx := context.Background()
+	exec.CommandContext(ctx, "git", "init", dir).Run()
 	// Configure git identity for commit
-	exec.Command("git", "-C", dir, "config", "user.email", "test@test.com").Run()
-	exec.Command("git", "-C", dir, "config", "user.name", "Test").Run()
+	exec.CommandContext(ctx, "git", "-C", dir, "config", "user.email", "test@test.com").Run()
+	exec.CommandContext(ctx, "git", "-C", dir, "config", "user.name", "Test").Run()
 	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main"), 0o644)
-	exec.Command("git", "-C", dir, "add", ".").Run()
-	exec.Command("git", "-C", dir, "commit", "-m", "init").Run()
+	exec.CommandContext(ctx, "git", "-C", dir, "add", ".").Run()
+	exec.CommandContext(ctx, "git", "-C", dir, "commit", "-m", "init").Run()
 
 	provider := NewGoGitProvider()
 	files, err := provider.FileTree(context.Background(), dir)
@@ -63,9 +64,10 @@ func TestGoGitProvider_FileTree(t *testing.T) {
 
 func TestGoGitProvider_StageAll(t *testing.T) {
 	dir := t.TempDir()
-	exec.Command("git", "init", dir).Run()
-	exec.Command("git", "-C", dir, "config", "user.email", "test@test.com").Run()
-	exec.Command("git", "-C", dir, "config", "user.name", "Test").Run()
+	ctx := context.Background()
+	exec.CommandContext(ctx, "git", "init", dir).Run()
+	exec.CommandContext(ctx, "git", "-C", dir, "config", "user.email", "test@test.com").Run()
+	exec.CommandContext(ctx, "git", "-C", dir, "config", "user.name", "Test").Run()
 	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main"), 0o644)
 
 	provider := NewGoGitProvider()

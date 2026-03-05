@@ -32,17 +32,17 @@ func (t *bashTool) Schema() json.RawMessage {
 }
 func (t *bashTool) Execute(ctx context.Context, workDir string, input json.RawMessage) (string, error) {
 	if t.cmd == nil {
-		return "", fmt.Errorf("Bash: command runner not available")
+		return "", fmt.Errorf("bash: command runner not available")
 	}
 	var args struct {
 		Command     string `json:"command"`
 		TimeoutSecs int    `json:"timeout_secs"`
 	}
 	if err := json.Unmarshal(input, &args); err != nil {
-		return "", fmt.Errorf("Bash: %w", err)
+		return "", fmt.Errorf("bash: %w", err)
 	}
 	if err := validateBashCommand(args.Command, t.registry.AllowedCommands()); err != nil {
-		return "", fmt.Errorf("Bash: %w", err)
+		return "", fmt.Errorf("bash: %w", err)
 	}
 	timeout := args.TimeoutSecs
 	if timeout == 0 {

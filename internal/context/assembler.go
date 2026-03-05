@@ -77,21 +77,21 @@ tasks:
 Do NOT wrap the YAML in markdown fences. Output ONLY the YAML.`
 
 	var user strings.Builder
-	user.WriteString(fmt.Sprintf("## Ticket\nTitle: %s\n\nDescription:\n%s\n\n", ticket.Title, ticket.Description))
+	fmt.Fprintf(&user, "## Ticket\nTitle: %s\n\nDescription:\n%s\n\n", ticket.Title, ticket.Description)
 	if ticket.AcceptanceCriteria != "" {
-		user.WriteString(fmt.Sprintf("Acceptance Criteria:\n%s\n\n", ticket.AcceptanceCriteria))
+		fmt.Fprintf(&user, "Acceptance Criteria:\n%s\n\n", ticket.AcceptanceCriteria)
 	}
 
-	user.WriteString(fmt.Sprintf("## Repository\n### File Tree\n```\n%s\n```\n\n", repoInfo.FileTree))
+	fmt.Fprintf(&user, "## Repository\n### File Tree\n```\n%s\n```\n\n", repoInfo.FileTree)
 
 	// Read README if it exists
 	if content, err := readFileTruncated(filepath.Join(workDir, "README.md"), 3000); err == nil {
-		user.WriteString(fmt.Sprintf("### README\n%s\n\n", content))
+		fmt.Fprintf(&user, "### README\n%s\n\n", content)
 	}
 
 	// Read .foreman-context.md if it exists
 	if content, err := os.ReadFile(filepath.Join(workDir, ".foreman-context.md")); err == nil {
-		user.WriteString(fmt.Sprintf("## Project-Specific Context\n%s\n\n", string(content)))
+		fmt.Fprintf(&user, "## Project-Specific Context\n%s\n\n", string(content))
 	}
 
 	return &AssembledContext{

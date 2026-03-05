@@ -103,7 +103,7 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 
 	var outputSchema *json.RawMessage
 	if req.OutputSchema != nil {
-		s := json.RawMessage(req.OutputSchema)
+		s := req.OutputSchema
 		outputSchema = &s
 	}
 
@@ -228,6 +228,6 @@ func extractPath(input json.RawMessage) string {
 	var v struct {
 		Path string `json:"path"`
 	}
-	json.Unmarshal(input, &v)
+	_ = json.Unmarshal(input, &v)
 	return v.Path
 }

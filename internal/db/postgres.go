@@ -35,7 +35,7 @@ func NewPostgresDB(url string, maxConns int) (*PostgresDB, error) {
 }
 
 func runPostgresSchema(db *sqlx.DB) error {
-	_, err := db.Exec(schema)
+	_, err := db.ExecContext(context.Background(), schema)
 	return err
 }
 

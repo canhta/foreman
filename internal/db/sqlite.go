@@ -20,7 +20,7 @@ func NewSQLiteDB(path string) (*SQLiteDB, error) {
 		return nil, fmt.Errorf("failed to open SQLite: %w", err)
 	}
 
-	if _, err := db.Exec(schema); err != nil {
+	if _, err := db.ExecContext(context.Background(), schema); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("failed to create schema: %w", err)
 	}
@@ -240,7 +240,7 @@ func (s *SQLiteDB) ReserveFiles(ctx context.Context, ticketID string, paths []st
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	for _, p := range paths {
 		_, err := tx.ExecContext(ctx,

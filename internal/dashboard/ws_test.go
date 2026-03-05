@@ -33,7 +33,10 @@ func TestWebSocketEvents(t *testing.T) {
 	// Valid token — mockDashboardDB.ValidateAuthToken always returns true
 	token := "valid-token"
 	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws/events?token=" + token
-	ws, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	ws, wsResp, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if wsResp != nil {
+		defer wsResp.Body.Close()
+	}
 	if err != nil {
 		t.Fatalf("dial failed: %v", err)
 	}
@@ -66,6 +69,9 @@ func TestWebSocketAuth_MissingToken(t *testing.T) {
 	// Attempt connection without token — should get 401
 	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws/events"
 	_, resp, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if resp != nil {
+		defer resp.Body.Close()
+	}
 	if err == nil {
 		t.Fatal("expected connection to be rejected, but it succeeded")
 	}
@@ -87,6 +93,9 @@ func TestWebSocketAuth_InvalidToken(t *testing.T) {
 
 	wsURL := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws/events?token=bad-token"
 	_, resp, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if resp != nil {
+		defer resp.Body.Close()
+	}
 	if err == nil {
 		t.Fatal("expected connection to be rejected, but it succeeded")
 	}
