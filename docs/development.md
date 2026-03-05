@@ -1,0 +1,285 @@
+# Development Guide
+
+This guide covers setting up a development environment, the project's conventions, testing strategy, and how to contribute changes.
+
+## Prerequisites
+
+| Requirement | Version | Notes |
+|---|---|---|
+| Go | 1.23+ | Module: `github.com/canhta/foreman` |
+| C toolchain | Any | Required by `go-sqlite3` (CGO) |
+| `git` | 2.x+ | Used as subprocess by the git module |
+| `golangci-lint` | Latest | Optional, for lint checks |
+
+On macOS, the C toolchain is provided by Xcode Command Line Tools:
+
+```bash
+xcode-select --install
+```
+
+On Debian/Ubuntu:
+
+```bash
+apt-get install -y build-essential
+```
+
+## Bootstrap
+
+```bash
+git clone https://github.com/canhta/foreman.git
+cd foreman
+
+# Build the binary
+make build
+
+# Run all tests
+make test
+
+# Create a local config
+cp foreman.example.toml foreman.toml
+```
+
+## Build Targets
+
+| Command | Description |
+|---|---|
+| `make build` | Build binary to `./foreman` |
+| `make test` | Run all tests with `-race` flag |
+| `make lint` | Run `go vet` + `golangci-lint` |
+| `make clean` | Remove `./foreman` binary |
+| `make release` | Cross-compile for linux/darwin/windows amd64+arm64 |
+| `make docker` | Build Docker image `foreman:latest` |
+
+### Building Without Make
+
+```bash
+go build -o foreman ./main.go
+go test ./...                              # all packages
+go test ./internal/pipeline/...           # single package
+go test -run TestPlanValidator ./internal/pipeline/  # single test
+go vet ./...
+```
+
+## Running Locally
+
+```bash
+./foreman run          # process one ticket from the queue
+./foreman doctor       # validate config and connectivity
+./foreman start        # start the background daemon
+./foreman status       # show daemon status
+```
+
+## Package Structure
+
+```
+main.go              Entry point, cobra root command
+cmd/                 CLI commands (run, start, stop, status, ps, cost, dashboard, token, logs)
+internal/
+  agent/             AgentRunner interface + builtin, claudecode, copilot implementations
+  agent/tools/       Typed tool registry (14 tools)
+  agent/mcp/         MCP config stub
+  config/            TOML/Viper config loading + validation
+  context/           Context assembler, file selector, token budget, secrets scanner
+  daemon/            Scheduler, clarification gate, file reservations, crash recovery
+  dashboard/         HTTP server, REST API handlers, WebSocket, auth
+  db/                Database interface, SQLite + PostgreSQL backends
+  git/               Git interface + native CLI implementation
+  llm/               LlmProvider interface + Anthropic, OpenAI, OpenRouter, local implementations
+  models/            Domain models: Ticket, Task, LlmCall, events, pipeline states
+  pipeline/          State machine orchestrator + all stage implementations
+  runner/            CommandRunner interface + local and Docker implementations
+  skills/            YAML skill engine, step executor, hook dispatcher
+  telemetry/         Cost controller, Prometheus metrics, structured events
+  tracker/           IssueTracker interface + GitHub, Jira, Linear, local_file implementations
+prompts/             Jinja2 (.j2) prompt templates
+skills/              Built-in and community YAML skill files
+```
+
+## Coding Conventions
+
+### Interface-First Design
+
+Every external dependency is behind a Go interface. All implementations are in the same `internal/` sub-package as the interface. This makes unit testing straightforward and implementations swappable.
+
+```go
+// Define the interface in internal/llm/provider.go
+type LlmProvider interface { ... }
+
+// Implement in internal/llm/anthropic.go
+type AnthropicProvider struct { ... }
+```
+
+### Error Handling
+
+Wrap errors with context using `fmt.Errorf`:
+
+```go
+// Good
+return fmt.Errorf("loading config: %w", err)
+
+// Bad
+return err
+```
+
+Never panic in normal control flow. Return typed or wrapped errors.
+
+### Logging
+
+Use `zerolog` exclusively. Always attach contextual fields:
+
+```go
+log.Info().
+    Str("ticket_id", ticket.ID).
+    Int("task_seq", task.Sequence).
+    Msg("starting implementation")
+```
+
+Do not use the standard library `log` package.
+
+### Configuration
+
+Use Viper. Support `${ENV_VAR}` substitution in TOML values. Never hard-code credentials or configuration defaults that an operator might need to override.
+
+### Tool Schemas
+
+Write JSON Schema for tool definitions by hand — no reflection. This makes schemas explicit and stable.
+
+### Package Layout Rules
+
+- Nothing is exported outside the Go module except `cmd/` (CLI entry points) and `main.go`.
+- `models/` contains only plain data structs — no business logic.
+- `pipeline/` owns the state machine. Other packages do not modify ticket/task state directly.
+
+## Testing
+
+### Running Tests
+
+```bash
+make test                             # all packages, race detector enabled
+go test ./internal/pipeline/... -v    # verbose output for one package
+go test -run TestName ./internal/...  # single test by name
+```
+
+### Test Conventions
+
+- Every behavioral change must have a corresponding test.
+- Bug fixes require a regression test.
+- Tests must be deterministic and independent (no shared mutable state between tests, no test ordering dependencies).
+- Use `t.TempDir()` for file system operations.
+- Use the mock implementations in `internal/*/mock.go` or build simple fakes in `_test.go` files.
+
+### Mock Objects
+
+Several packages provide mock implementations for testing:
+
+| Mock | Location |
+|---|---|
+| `MockLlmProvider` | `internal/llm/` |
+| `MockAgentRunner` | `internal/agent/mock.go` |
+| `MockIssueTracker` | `internal/tracker/` |
+| `MockDatabase` | `internal/db/` |
+| `MockCommandRunner` | `internal/runner/` |
+
+### Integration Tests
+
+Tests that require a database use the SQLite in-memory driver. No external services are required to run the test suite.
+
+## Adding a New Feature
+
+### New LLM Provider
+
+1. Implement `llm.LlmProvider` in `internal/llm/<provider>.go`.
+2. Register the provider in `internal/llm/factory.go`.
+3. Add a config section to `foreman.example.toml`.
+4. Add doc entry to `docs/integrations.md`.
+
+### New Issue Tracker
+
+1. Implement `tracker.IssueTracker` in `internal/tracker/<name>.go`.
+2. Register in `internal/tracker/factory.go`.
+3. Add config section and doc entry.
+
+### New Agent Tool
+
+1. Implement `tools.Tool` in `internal/agent/tools/<name>.go`.
+2. Register in the tools registry in `internal/agent/tools/registry.go`.
+3. Update `docs/agent-runner.md` with the new tool entry.
+
+### New Skill Step Type
+
+1. Add a new case to the step executor in `internal/skills/executor.go`.
+2. Define the YAML schema in the step type documentation.
+3. Update `docs/skills.md`.
+
+## Commit Messages
+
+Use imperative, specific messages:
+
+```
+add sqlite busy-timeout validation
+implement planner yaml fallback parser
+fix fuzzy search replace threshold handling
+refactor context assembler token budget calculation
+```
+
+Avoid vague messages like `fix bug`, `update code`, `changes`.
+
+## Branch and PR Workflow
+
+1. Branch from `main` using a descriptive name:
+   - `feat/<short-description>`
+   - `fix/<short-description>`
+   - `chore/<short-description>`
+2. Keep changes scoped to a single concern per PR.
+3. Run `make test` and `make lint` locally before pushing.
+4. Open a PR with:
+   - A clear summary of what changed and why
+   - Linked issue or ticket when applicable
+   - Test evidence (commands run, outcomes)
+   - Notes on tradeoffs or follow-up items
+
+## Pull Request Checklist
+
+- [ ] `make test` passes locally
+- [ ] `make lint` passes with no new warnings
+- [ ] New tests cover the changed behavior
+- [ ] Config changes are reflected in `foreman.example.toml`
+- [ ] Documentation updated (`docs/`) if user-facing behavior changed
+- [ ] No secrets, credentials, or API keys in code or tests
+
+## CI Pipeline
+
+GitHub Actions runs on every pull request:
+
+1. **Test** — `go test ./... -race`
+2. **Lint** — `go vet ./...` + `golangci-lint run`
+3. **Build** — `go build ./...`
+
+All three jobs must pass before merge.
+
+## Release Process
+
+Releases are created by pushing a `v*` tag. `goreleaser` handles:
+
+- Cross-compilation for linux/darwin/windows on amd64 + arm64
+- Archive generation (`.tar.gz` / `.zip`)
+- GitHub Release creation with changelogs
+- Docker image push to GHCR (`ghcr.io/canhta/foreman`)
+
+```bash
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+## Security
+
+- Never commit credentials, API keys, or secrets.
+- Do not post sensitive data in issues or PRs.
+- Report security vulnerabilities privately to the maintainers before opening a public issue.
+- All user input that reaches LLM prompts is treated as untrusted. The secrets scanner blocks known credential patterns before context assembly.
+
+## Getting Help
+
+- Read the existing tests — they are the most accurate documentation of expected behavior.
+- Check `docs/` for architecture, pipeline, and configuration references.
+- Open a GitHub Issue with a clear problem statement and reproduction steps.
