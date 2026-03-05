@@ -187,21 +187,31 @@ func NewBuiltinRunner(
 
 ### 6. MCP Stub
 
+**Architecture** (from anthropic-sdk-go inspection):
+- **Anthropic** handles MCP server-side — pass `MCPServers` URL configs in the API request; API connects to the server, calls tools, returns `mcp_tool_use`/`mcp_tool_result` blocks. Client never calls MCP directly. Our `stop_reason == tool_use` loop is already correct — `mcp_tool_use` blocks are Anthropic-managed and never trigger client execution.
+- **OpenAI/local** has no API-side MCP; client-side proxying via `Client` interface is needed for those.
+
 ```go
 // internal/agent/mcp/client.go
+type MCPServerConfig struct {
+    Name         string   `json:"name"`
+    URL          string   `json:"url,omitempty"`          // Anthropic: API-side
+    AuthToken    string   `json:"auth_token,omitempty"`
+    AllowedTools []string `json:"allowed_tools,omitempty"`
+    Command      string   `json:"command,omitempty"`      // future: stdio
+    Args         []string `json:"args,omitempty"`
+}
+
+// Client: client-side MCP proxy for non-Anthropic providers only.
 type Client interface {
     ListTools(ctx context.Context) ([]models.ToolDef, error)
     Call(ctx context.Context, name string, input json.RawMessage) (string, error)
 }
 
-type NoopClient struct{}
-func (n *NoopClient) ListTools(ctx context.Context) ([]models.ToolDef, error) { return nil, nil }
-func (n *NoopClient) Call(ctx context.Context, _ string, _ json.RawMessage) (string, error) {
-    return "", fmt.Errorf("MCP not yet implemented")
-}
+type NoopClient struct{}  // placeholder for OpenAI/local path
 ```
 
-`AgentRequest` gains `MCPServers []MCPServerConfig`. Registry merges MCP tool defs at session start if a real client is provided. The tool-use loop is unchanged.
+`AgentRequest` gains `MCPServers []MCPServerConfig`. For Anthropic, these are passed through to `llm/anthropic.go` as request params (post-V1). The tool-use loop is unchanged.
 
 ---
 

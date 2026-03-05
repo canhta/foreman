@@ -2177,6 +2177,11 @@ git commit -m "feat(agent): add ContextProvider interface and SkillsContextProvi
 
 **Step 1: Create MCP stub**
 
+**Architecture note (from anthropic-sdk-go):**
+- **Anthropic** handles MCP server-side: you pass `MCPServers` URL configs in the API request; Anthropic's infrastructure connects, calls tools, and returns `mcp_tool_use`/`mcp_tool_result` blocks. The client never calls the MCP server directly.
+- **OpenAI/local** providers have no API-side MCP; client-side proxying via the `Client` interface is the right path for those.
+- Our tool-use loop (`stop_reason == tool_use`) is already correct — `mcp_tool_use` and `server_tool_use` blocks are Anthropic-handled and never trigger our client loop.
+
 ```go
 // internal/agent/mcp/client.go
 package mcp
@@ -2190,26 +2195,31 @@ import (
 )
 
 // MCPServerConfig holds connection config for a single MCP server.
+// For Anthropic: set URL + AuthToken — configs are passed to the API request.
+// For OpenAI/local: a future Client implementation proxies calls client-side.
 type MCPServerConfig struct {
-	Name    string `json:"name"`
-	Command string `json:"command"` // e.g. "npx @modelcontextprotocol/server-filesystem"
-	Args    []string `json:"args"`
+	Name       string   `json:"name"`
+	URL        string   `json:"url,omitempty"`        // Anthropic API-side MCP
+	AuthToken  string   `json:"auth_token,omitempty"` // Anthropic API-side MCP
+	AllowedTools []string `json:"allowed_tools,omitempty"`
+	Command    string   `json:"command,omitempty"` // future: stdio transport
+	Args       []string `json:"args,omitempty"`    // future: stdio transport
 }
 
-// Client is the interface for MCP server communication.
-// The builtin runner merges MCP tools into the registry at session start
-// if a real Client is provided — the tool-use loop requires no other changes.
+// Client is the interface for client-side MCP proxying (OpenAI/local providers).
+// For Anthropic, MCP is handled API-side — Client is not used.
 type Client interface {
 	ListTools(ctx context.Context) ([]models.ToolDef, error)
 	Call(ctx context.Context, name string, input json.RawMessage) (string, error)
 }
 
-// NoopClient satisfies Client but does nothing. Used until MCP is implemented.
+// NoopClient satisfies Client but does nothing. Placeholder until client-side
+// MCP is implemented for non-Anthropic providers.
 type NoopClient struct{}
 
 func (n *NoopClient) ListTools(_ context.Context) ([]models.ToolDef, error) { return nil, nil }
 func (n *NoopClient) Call(_ context.Context, name string, _ json.RawMessage) (string, error) {
-	return "", fmt.Errorf("MCP tool %q called but MCP is not yet implemented", name)
+	return "", fmt.Errorf("MCP tool %q: client-side MCP not yet implemented", name)
 }
 ```
 
@@ -2243,6 +2253,13 @@ func TestNoopClient_Call_ReturnsError(t *testing.T) {
 	_, err := c.Call(context.Background(), "some-tool", json.RawMessage(`{}`))
 	if err == nil {
 		t.Fatal("expected error from noop client")
+	}
+}
+
+func TestMCPServerConfig_Fields(t *testing.T) {
+	cfg := mcp.MCPServerConfig{Name: "fs", URL: "https://mcp.example.com/sse", AuthToken: "tok"}
+	if cfg.Name != "fs" || cfg.URL == "" {
+		t.Error("expected URL-based config fields to be set")
 	}
 }
 ```
