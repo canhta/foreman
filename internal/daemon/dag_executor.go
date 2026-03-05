@@ -14,9 +14,9 @@ type TaskRunner interface {
 
 // TaskResult holds the outcome of a single task execution.
 type TaskResult struct {
+	Error  error
 	TaskID string
 	Status models.TaskStatus
-	Error  error
 }
 
 // DAGTask represents a task node in the dependency graph.

@@ -137,9 +137,9 @@ func newContextUpdateCmd() *cobra.Command {
 			// Build observation summary for LLM
 			var obsSummary strings.Builder
 			for _, obs := range observations {
-				obsSummary.WriteString(fmt.Sprintf("- [%s] %s", obs.Type, obs.File))
+				fmt.Fprintf(&obsSummary, "- [%s] %s", obs.Type, obs.File)
 				for k, v := range obs.Details {
-					obsSummary.WriteString(fmt.Sprintf(" %s=%s", k, v))
+					fmt.Fprintf(&obsSummary, " %s=%s", k, v)
 				}
 				obsSummary.WriteByte('\n')
 			}

@@ -17,7 +17,18 @@ The planner decomposes a ticket into 2–20 granular tasks. Each task includes:
 - Files to read and files to modify
 - Test assertions the implementation must satisfy
 - An estimated complexity (simple / medium / complex)
-- Optional task dependencies (DAG for ordering)
+- Optional task dependencies (`depends_on` edges that drive the parallel DAG executor)
+
+### Parallel DAG Task Execution
+Tasks with no unmet dependencies execute immediately in parallel. A coordinator goroutine owns all mutable DAG state (zero mutexes); a bounded worker pool (configurable via `max_parallel_tasks`, default 3) pulls from a ready queue. When a task completes, the coordinator checks its dependents — if all dependencies are now satisfied, the dependent is pushed to the ready queue.
+
+Failure semantics:
+- A failing task triggers BFS pruning: all transitive dependents are marked `skipped`.
+- Independent branches continue executing unaffected.
+- If all tasks fail, the ticket is marked `failed` and no PR is created.
+- If some tasks succeed, Foreman creates a partial PR (when `enable_partial_pr = true`).
+
+Each task runs with an individual timeout (`task_timeout_minutes`, default 15 min) to prevent a hung task from blocking its dependents.
 
 ### Plan Validation
 After planning, a deterministic validator checks the plan before any code is written:
@@ -56,7 +67,17 @@ After all tasks are complete, a final reviewer inspects the full diff across the
 Every task tracks an absolute count of LLM calls (implementer + spec reviewer + quality reviewer combined). When it hits the configured cap (default: 8 calls/task), the task fails immediately. This prevents runaway retries from consuming unbounded budget.
 
 ### Partial PRs
-When `enable_partial_pr = true`, if some tasks succeed and others fail, Foreman creates a PR containing the completed work with a clear note about which tasks are incomplete. This is better than discarding all work when a single task hits a retry cap.
+When `enable_partial_pr = true`, if some tasks succeed and others fail or are skipped, Foreman creates a PR containing the completed work. The PR body includes a GitHub-flavoured checklist:
+
+```markdown
+## Tasks
+- [x] Add user authentication middleware
+- [x] Write auth unit tests
+- [ ] ~~Add rate limiting~~ (skipped)
+- [ ] ~~Write rate limit tests~~ (failed)
+```
+
+This is better than discarding all work when a single task hits a retry cap or a dependency fails.
 
 ### Crash Recovery
 Task completions are checkpointed by `last_completed_task_seq` in the database. If the daemon crashes mid-pipeline, it resumes from the last committed task on the next start — no work is lost.
@@ -167,6 +188,9 @@ Runs each ticket's commands in a dedicated Docker container (one container per t
 ### Parallel Ticket Processing
 The daemon runs multiple pipelines concurrently (configurable, default up to 3 for SQLite, higher with PostgreSQL). A shared rate limiter (token bucket) prevents provider API overload across parallel workers.
 
+### Parallel Task Execution Within a Ticket
+Within each ticket, tasks execute in parallel respecting `depends_on` edges. The DAG executor uses a coordinator goroutine and a bounded worker pool (`max_parallel_tasks`). Tasks with no pending dependencies start immediately; completions unlock their dependents in real time.
+
 ### File Reservation Layer
 Before beginning a ticket, Foreman checks whether any planned files are currently being modified by another active pipeline. Conflicting tickets are re-queued to avoid parallel edit conflicts. Reservations are released atomically when a pipeline completes or fails.
 
@@ -206,6 +230,7 @@ All log output uses `zerolog` for structured JSON logging with contextual fields
 A Prometheus-compatible metrics endpoint is available on the dashboard server. Metrics include:
 - Ticket and task counters by status
 - LLM call counters, token usage, cost, and duration histograms — all labelled by role and model
+- DAG execution metrics: `foreman_dag_tasks_completed_total`, `foreman_dag_tasks_failed_total`, `foreman_dag_tasks_skipped_total`, `foreman_dag_execution_duration_seconds`
 - Test run results
 - Retry counts by role
 - Rate limit hits by provider
@@ -306,12 +331,31 @@ All tool operations that access files enforce:
 - Relative-path-only enforcement
 - Secrets pattern blocking on writes (`.env`, `*.key`, private key content patterns)
 
-### MCP Support
-An `MCPServerConfig` struct supports Anthropic API-side MCP server configuration. A `Client` interface stub is in place for future client-side MCP proxying.
+### MCP Support (stdio transport)
+Foreman's builtin agent runner supports MCP servers via stdio subprocess transport. Configured servers are spawned at agent startup; tools are discovered via `tools/list` and registered in the tool registry with normalized names (`mcp_{server}_{tool}`). The `Manager` routes `tools/call` requests to the correct server by matching the name prefix.
+
+Restart policy (`always` / `never` / `on-failure`) with configurable `max_restarts` and `restart_delay_secs` provides graceful degradation — if a server exhausts its restart budget, its tools are marked unavailable and the agent continues with built-in tools only.
+
+For Anthropic API-side MCP, set `URL` and `AuthToken` in `MCPServerConfig` — Anthropic's infrastructure handles the connection without a local subprocess.
 
 ---
 
 ## Miscellaneous Features
+
+### `foreman context generate`
+Generates an `AGENTS.md` file by scanning the repository and making a single LLM call. The LLM receives a tiered file selection (go.mod/package.json, CI configs, entry points, key package files) assembled within a configurable token budget (`context_generate_max_tokens`, default 32 000 tokens).
+
+The generated file is optimised for autonomous agents — precise naming conventions, exact test commands, explicit anti-patterns, and file organisation rules. Use `--offline` for a static, LLM-free scan.
+
+```bash
+foreman context generate              # LLM-powered (default)
+foreman context generate --offline    # Static analysis only
+foreman context generate --dry-run    # Print to stdout without writing
+foreman context generate --force      # Overwrite existing AGENTS.md
+```
+
+### `foreman context update`
+Post-merge learning loop. Reads structured observations appended to `.foreman/observations.jsonl` by the pipeline after each successful PR merge (naming corrections, test patterns, discovered conventions) and issues a single LLM call to update `AGENTS.md` with the new knowledge. A cursor embedded in the file footer (`<!--foreman:last-update:...-->`) enables resumable reads.
 
 ### `foreman init`
 Interactively generates a `foreman.toml` for a new project. With `--analyze`, it inspects the target repository to suggest appropriate configuration (detected language, test commands, lint commands).
@@ -334,11 +378,10 @@ After each task commit, Foreman diffs package/dependency manifest files (`go.mod
 
 > These are areas identified in design documents where behaviour may differ from the descriptions above or where features are partially implemented.
 
-- **Parallel task execution within a ticket** is not implemented in V1. Tasks execute sequentially. The `depends_on` DAG field is validated but not used for parallelism.
 - **GitLab and Bitbucket PR creation** is defined in the interface but may not be fully tested. GitHub is the primary tested backend.
 - **go-git fallback** implements the `GitProvider` interface but may have gaps for complex rebase scenarios.
 - **Extended thinking** (Anthropic) and **prompt caching** are defined in the LLM request model but may not be surfaced in the standard pipeline steps — they are primarily available via skill YAML.
 - **Cross-provider fallback** (`fallback_provider`) is defined in config but the circuit-breaker logic between primary and fallback is not fully detailed in the implementation plans.
-- **MCP client-side proxying** (`mcp.Client`) is a stub. The current implementation supports API-side MCP server configuration only.
+- **MCP HTTP/SSE transport** is not implemented. Only stdio subprocess transport is supported.
+- **MCP resources and prompts** are not supported. Tools only.
 - **Community skills** (`skills/community/`) are defined but the submission and review process for community contributions is not yet documented.
-- **`foreman init --analyze`** repository analysis to auto-suggest config values is partially stubbed.

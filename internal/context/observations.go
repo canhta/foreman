@@ -12,10 +12,10 @@ import (
 
 // Observation records a single event observed during development.
 type Observation struct {
-	Type    string            `json:"type"`
-	Details map[string]string `json:"details,omitempty"`
-	File    string            `json:"file,omitempty"`
 	Time    time.Time         `json:"ts"`
+	Details map[string]string `json:"details,omitempty"`
+	Type    string            `json:"type"`
+	File    string            `json:"file,omitempty"`
 }
 
 // ObservationLog manages a JSONL file of observations.
@@ -69,8 +69,8 @@ func (o *ObservationLog) ReadFrom(cursor int64) ([]Observation, int64, error) {
 	}
 	defer f.Close()
 
-	if _, err := f.Seek(cursor, io.SeekStart); err != nil {
-		return nil, cursor, fmt.Errorf("seek: %w", err)
+	if _, seekErr := f.Seek(cursor, io.SeekStart); seekErr != nil {
+		return nil, cursor, fmt.Errorf("seek: %w", seekErr)
 	}
 
 	var observations []Observation
@@ -81,14 +81,14 @@ func (o *ObservationLog) ReadFrom(cursor int64) ([]Observation, int64, error) {
 			continue
 		}
 		var obs Observation
-		if err := json.Unmarshal(line, &obs); err != nil {
+		if unmarshalErr := json.Unmarshal(line, &obs); unmarshalErr != nil {
 			continue // skip malformed lines
 		}
 		observations = append(observations, obs)
 	}
 
-	if err := scanner.Err(); err != nil {
-		return observations, cursor, fmt.Errorf("scan: %w", err)
+	if scanErr := scanner.Err(); scanErr != nil {
+		return observations, cursor, fmt.Errorf("scan: %w", scanErr)
 	}
 
 	// Calculate new cursor position

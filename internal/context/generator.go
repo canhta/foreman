@@ -65,21 +65,21 @@ func (g *Generator) generateOffline(workDir string) (string, error) {
 
 	var sb strings.Builder
 	sb.WriteString("# AGENTS.md\n\n")
-	sb.WriteString(fmt.Sprintf("## Language\n\n%s\n\n", info.Language))
+	fmt.Fprintf(&sb, "## Language\n\n%s\n\n", info.Language)
 
 	if info.Framework != "" {
-		sb.WriteString(fmt.Sprintf("## Framework\n\n%s\n\n", info.Framework))
+		fmt.Fprintf(&sb, "## Framework\n\n%s\n\n", info.Framework)
 	}
 
 	sb.WriteString("## Commands\n\n")
 	if info.BuildCmd != "" {
-		sb.WriteString(fmt.Sprintf("- Build: `%s`\n", info.BuildCmd))
+		fmt.Fprintf(&sb, "- Build: `%s`\n", info.BuildCmd)
 	}
 	if info.TestCmd != "" {
-		sb.WriteString(fmt.Sprintf("- Test: `%s`\n", info.TestCmd))
+		fmt.Fprintf(&sb, "- Test: `%s`\n", info.TestCmd)
 	}
 	if info.LintCmd != "" {
-		sb.WriteString(fmt.Sprintf("- Lint: `%s`\n", info.LintCmd))
+		fmt.Fprintf(&sb, "- Lint: `%s`\n", info.LintCmd)
 	}
 
 	if info.FileTree != "" {
@@ -103,18 +103,18 @@ func (g *Generator) generateOnline(ctx context.Context, workDir string, opts Gen
 
 	// Build user prompt with repo info and file contents
 	var userPrompt strings.Builder
-	userPrompt.WriteString(fmt.Sprintf("Repository language: %s\n", info.Language))
+	fmt.Fprintf(&userPrompt, "Repository language: %s\n", info.Language)
 	if info.Framework != "" {
-		userPrompt.WriteString(fmt.Sprintf("Framework: %s\n", info.Framework))
+		fmt.Fprintf(&userPrompt, "Framework: %s\n", info.Framework)
 	}
 	if info.BuildCmd != "" {
-		userPrompt.WriteString(fmt.Sprintf("Build command: %s\n", info.BuildCmd))
+		fmt.Fprintf(&userPrompt, "Build command: %s\n", info.BuildCmd)
 	}
 	if info.TestCmd != "" {
-		userPrompt.WriteString(fmt.Sprintf("Test command: %s\n", info.TestCmd))
+		fmt.Fprintf(&userPrompt, "Test command: %s\n", info.TestCmd)
 	}
 	if info.LintCmd != "" {
-		userPrompt.WriteString(fmt.Sprintf("Lint command: %s\n", info.LintCmd))
+		fmt.Fprintf(&userPrompt, "Lint command: %s\n", info.LintCmd)
 	}
 
 	userPrompt.WriteString("\n## File Tree\n\n```\n")
@@ -123,7 +123,7 @@ func (g *Generator) generateOnline(ctx context.Context, workDir string, opts Gen
 
 	userPrompt.WriteString("## File Contents\n\n")
 	for _, f := range files {
-		userPrompt.WriteString(fmt.Sprintf("### %s (tier %d)\n\n```\n%s\n```\n\n", f.Path, f.Tier, f.Content))
+		fmt.Fprintf(&userPrompt, "### %s (tier %d)\n\n```\n%s\n```\n\n", f.Path, f.Tier, f.Content)
 	}
 
 	userPrompt.WriteString("Generate the AGENTS.md content for this repository.")

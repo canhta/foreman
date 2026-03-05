@@ -14,6 +14,8 @@ poll_interval_secs      = 60    # How often to check for new tickets (seconds)
 idle_poll_interval_secs = 300   # Longer interval when no work is queued
 max_parallel_tickets    = 3     # Concurrent pipeline limit
                                 # Max 3 for SQLite; use PostgreSQL for more
+max_parallel_tasks      = 3     # Concurrent tasks per ticket (DAG executor worker pool)
+task_timeout_minutes    = 15    # Per-task timeout in minutes
 work_dir   = "~/.foreman/work"  # Directory where repos are cloned
 log_level  = "info"             # trace | debug | info | warn | error
 log_format = "json"             # json | pretty
@@ -373,7 +375,39 @@ timeout_secs = 300
 
 ---
 
-## Environment Variable Reference
+## MCP Servers (stdio transport)
+
+Connect Foreman's builtin agent runner to external MCP servers via stdin/stdout subprocess.
+
+```toml
+[[mcp.servers]]
+name    = "internal-db"
+command = "npx"
+args    = ["-y", "@company/db-mcp-server"]
+allowed_tools      = ["query", "schema"]   # optional whitelist
+restart_policy     = "on-failure"          # always | never | on-failure (default: on-failure)
+max_restarts       = 3                     # default: 3
+restart_delay_secs = 2                     # default: 2
+[mcp.servers.env]
+DB_URL = "${DATABASE_URL}"                 # explicit env passthrough only
+```
+
+Multiple servers can be configured by repeating `[[mcp.servers]]` blocks. Tools from all registered servers are automatically added to the builtin agent's tool registry with normalized names (`mcp_{server}_{tool}`, max 64 chars).
+
+If a server exceeds its restart budget, its tools are marked unavailable and the agent continues with built-in tools only.
+
+---
+
+## Context Generation
+
+```toml
+[context]
+context_generate_max_tokens = 32000  # Token budget for LLM prompt when generating AGENTS.md
+```
+
+See [Context Generate](getting-started.md#generating-agentsmd) for usage.
+
+---
 
 | Variable | Used By |
 |---|---|

@@ -297,18 +297,37 @@ The runner name from `RunnerName()` appears in logs and the dashboard.
 
 ## MCP Support
 
-An `MCPServerConfig` struct is available for configuring Anthropic API-side MCP servers. This allows the LLM to access MCP-provided tools via the Anthropic Messages API.
+Foreman supports MCP servers via two mechanisms:
 
-A `Client` interface stub exists at `internal/agent/mcp/` for future client-side MCP proxying (where Foreman would act as an MCP client connecting to external MCP servers). This is currently a stub — no proxy implementation is provided.
+### Anthropic API-Side MCP
 
-```go
-// internal/agent/mcp/mcp.go
-type MCPServerConfig struct {
-    Name    string
-    URL     string
-    APIKey  string
-    Tools   []string  // Filter to specific tools (empty = all)
-}
+Set `URL` and `AuthToken` in `MCPServerConfig` and pass it in the Anthropic API request. Anthropic's infrastructure connects to the server server-side — no local subprocess is needed.
+
+### stdio Transport (Client-Side)
+
+The builtin runner can connect to MCP servers as local subprocesses over stdin/stdout using JSON-RPC 2.0. The `StdioClient` (`internal/agent/mcp/stdio_client.go`) handles:
+
+- Subprocess lifecycle management (spawn, restart on failure, shutdown)
+- `initialize` handshake and `tools/list` discovery
+- Concurrent `tools/call` multiplexing via an atomic request ID and per-request response channels
+
+The `Manager` (`internal/agent/mcp/manager.go`) aggregates tools from all registered servers and routes `tools/call` requests by matching the `mcp_{server}_` name prefix.
+
+Tool names are normalized by `MCPToolName(server, tool string) string` (`internal/agent/mcp/naming.go`): special characters (`-`, `.`, spaces) are replaced with `_`, the result is prefixed with `mcp_`, and names longer than 64 characters (OpenAI limit) are truncated with a 6-character hash suffix.
+
+Configure stdio MCP servers in `foreman.toml`:
+
+```toml
+[[mcp.servers]]
+name    = "my-server"
+command = "npx"
+args    = ["-y", "@company/my-mcp-server"]
+allowed_tools      = ["query", "schema"]   # optional whitelist
+restart_policy     = "on-failure"          # always | never | on-failure
+max_restarts       = 3
+restart_delay_secs = 2
+[mcp.servers.env]
+DB_URL = "${DATABASE_URL}"
 ```
 
-To enable API-side MCP, pass an `MCPServerConfig` in your agent request. This feature is documented but not yet fully surfaced in the YAML skill step configuration.
+**Scope boundaries (v1):** tools only — `resources` and `prompts` are not supported. HTTP/SSE transport is not implemented.

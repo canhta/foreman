@@ -27,7 +27,7 @@ func (m *mockLLMProvider) Complete(ctx context.Context, req models.LlmRequest) (
 	return m.response, nil
 }
 
-func (m *mockLLMProvider) ProviderName() string      { return "mock" }
+func (m *mockLLMProvider) ProviderName() string              { return "mock" }
 func (m *mockLLMProvider) HealthCheck(context.Context) error { return nil }
 
 func TestGenerator_GenerateOnline(t *testing.T) {

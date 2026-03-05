@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -23,7 +24,7 @@ type ProcessTransport struct {
 // Only cfg.Env is passed (not inherited from the parent process).
 // Returns an error if the command cannot be started.
 func NewProcessTransport(cfg MCPServerConfig) (*ProcessTransport, error) {
-	cmd := exec.Command(cfg.Command, cfg.Args...)
+	cmd := exec.CommandContext(context.Background(), cfg.Command, cfg.Args...)
 
 	// Build env from config only (no inheritance)
 	env := make([]string, 0, len(cfg.Env))

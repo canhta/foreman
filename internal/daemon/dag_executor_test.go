@@ -14,12 +14,12 @@ import (
 
 // mockTaskRunner is a test double for TaskRunner.
 type mockTaskRunner struct {
-	mu          sync.Mutex
+	failTasks   map[string]bool
 	execOrder   []string
+	runDuration time.Duration
+	mu          sync.Mutex
 	activeCnt   int32
 	maxConcur   int32
-	failTasks   map[string]bool
-	runDuration time.Duration
 }
 
 func newMockRunner(duration time.Duration, failTasks map[string]bool) *mockTaskRunner {

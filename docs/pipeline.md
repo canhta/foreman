@@ -24,7 +24,7 @@ PLAN VALIDATE ──── invalid ──► re-plan (max 1 retry) ──► FAI
 RESERVE FILES
   │
   ╔══════════════════════════════════════════════╗
-  ║  FOR EACH TASK (sequential topological order) ║
+  ║  FOR EACH TASK (parallel, DAG-respecting)     ║
   ╠══════════════════════════════════════════════╣
   ║  SECRETS SCAN                                ║
   ║    │                                         ║
@@ -122,7 +122,9 @@ If validation fails, the planner is retried once with the validation errors as f
 
 ### 4. Per-Task Execution
 
-All tasks execute in sequential topological order (parallel task execution within a ticket is not implemented in V1).
+Tasks execute in parallel using a coordinator/worker-pool DAG executor (`internal/daemon/dag_executor.go`). Tasks with no unmet dependencies start immediately; a task begins only when all entries in its `depends_on` list have completed successfully. The worker pool is bounded by `max_parallel_tasks` (default 3). Each task runs with an individual timeout (`task_timeout_minutes`, default 15 minutes).
+
+If a task fails, its entire transitive closure of dependents is marked `skipped` via BFS — independent branches continue executing. For partial outcomes, Foreman creates a PR with a GitHub-flavoured checklist distinguishing completed, failed, and skipped tasks.
 
 #### Secrets Scan
 Before assembling any LLM context, Foreman scans the files relevant to the current task using pattern matching. Files matching secret patterns (`.env`, `*.key`, `*.pem`, known API key formats, private key headers) are excluded from context. Matched files are logged as security events.

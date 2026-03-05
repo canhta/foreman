@@ -5,17 +5,17 @@ type Config struct {
 	Runner    RunnerConfig    `mapstructure:"runner"`
 	Pipeline  PipelineConfig  `mapstructure:"pipeline"`
 	Tracker   TrackerConfig   `mapstructure:"tracker"`
+	MCP       MCPConfig       `mapstructure:"mcp"`
 	LLM       LLMConfig       `mapstructure:"llm"`
 	Git       GitConfig       `mapstructure:"git"`
 	Secrets   SecretsConfig   `mapstructure:"secrets"`
 	Dashboard DashboardConfig `mapstructure:"dashboard"`
 	Database  DatabaseConfig  `mapstructure:"database"`
-	Daemon    DaemonConfig    `mapstructure:"daemon"`
 	Cost      CostConfig      `mapstructure:"cost"`
+	Daemon    DaemonConfig    `mapstructure:"daemon"`
 	Skills    SkillsConfig    `mapstructure:"skills"`
 	Limits    LimitsConfig    `mapstructure:"limits"`
 	RateLimit RateLimitConfig `mapstructure:"rate_limit"`
-	MCP       MCPConfig       `mapstructure:"mcp"`
 }
 
 // MCPConfig holds configuration for MCP (Model Context Protocol) servers.
@@ -25,12 +25,12 @@ type MCPConfig struct {
 
 // MCPServerEntry defines a single MCP server to connect to.
 type MCPServerEntry struct {
+	Env              map[string]string `mapstructure:"env"`
 	Name             string            `mapstructure:"name"`
 	Command          string            `mapstructure:"command"`
-	Args             []string          `mapstructure:"args"`
-	Env              map[string]string `mapstructure:"env"`
-	AllowedTools     []string          `mapstructure:"allowed_tools"`
 	RestartPolicy    string            `mapstructure:"restart_policy"`
+	Args             []string          `mapstructure:"args"`
+	AllowedTools     []string          `mapstructure:"allowed_tools"`
 	MaxRestarts      int               `mapstructure:"max_restarts"`
 	RestartDelaySecs int               `mapstructure:"restart_delay_secs"`
 }

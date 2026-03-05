@@ -32,9 +32,9 @@ var tier1Files = map[string]bool{
 
 // tier2ExactFiles are included up to the tier-2 cap.
 var tier2ExactFiles = map[string]bool{
-	"Dockerfile":        true,
+	"Dockerfile":         true,
 	"docker-compose.yml": true,
-	"Makefile":          true,
+	"Makefile":           true,
 }
 
 // tier2MainEntries are main entry point filenames.

@@ -19,16 +19,16 @@ import (
 // For Anthropic: set URL + AuthToken — configs are passed to the API request.
 // For OpenAI/local: a future Client implementation proxies calls client-side.
 type MCPServerConfig struct {
-	Name             string            `json:"name"`
-	URL              string            `json:"url,omitempty"`                  // Anthropic API-side MCP
-	AuthToken        string            `json:"auth_token,omitempty"`           // Anthropic API-side MCP
-	AllowedTools     []string          `json:"allowed_tools,omitempty"`
-	Command          string            `json:"command,omitempty"`              // stdio transport
-	Args             []string          `json:"args,omitempty"`                 // stdio transport
 	Env              map[string]string `json:"env,omitempty"`
-	RestartPolicy    string            `json:"restart_policy,omitempty"`       // always | never | on-failure
-	MaxRestarts      *int              `json:"max_restarts,omitempty"`         // default 3
-	RestartDelaySecs *int              `json:"restart_delay_secs,omitempty"`   // default 2
+	MaxRestarts      *int              `json:"max_restarts,omitempty"`
+	RestartDelaySecs *int              `json:"restart_delay_secs,omitempty"`
+	Name             string            `json:"name"`
+	URL              string            `json:"url,omitempty"`
+	AuthToken        string            `json:"auth_token,omitempty"`
+	Command          string            `json:"command,omitempty"`
+	RestartPolicy    string            `json:"restart_policy,omitempty"`
+	AllowedTools     []string          `json:"allowed_tools,omitempty"`
+	Args             []string          `json:"args,omitempty"`
 }
 
 // EffectiveRestartPolicy returns the restart policy, defaulting to "on-failure".

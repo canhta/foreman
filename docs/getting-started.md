@@ -163,6 +163,31 @@ The default `docker-compose.yml` maps the dashboard to port `3333`. The config f
 
 ## Adding Project Context
 
+### Generating AGENTS.md
+
+The quickest way to create an `AGENTS.md` for your target repository is to let Foreman generate one:
+
+```bash
+# LLM-powered (recommended — uses your configured provider)
+./foreman context generate
+
+# Static analysis only, no LLM call
+./foreman context generate --offline
+
+# Preview without writing
+./foreman context generate --dry-run
+```
+
+Foreman scans your repository (config files, entry points, key sources), assembles the content within a configurable token budget, and calls your LLM provider to produce an agent-optimised `AGENTS.md` file.
+
+To update `AGENTS.md` after merges with learned patterns:
+
+```bash
+./foreman context update
+```
+
+### Authoring AGENTS.md manually
+
 Foreman injects project context into every agent call automatically. Create an `AGENTS.md` at the root of your target repository:
 
 ```markdown

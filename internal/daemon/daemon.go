@@ -29,7 +29,7 @@ func DefaultDaemonConfig() DaemonConfig {
 		IdlePollIntervalSecs: 300,
 		MaxParallelTickets:   3,
 		MaxParallelTasks:     3,
-		TaskTimeoutMinutes:  15,
+		TaskTimeoutMinutes:   15,
 	}
 }
 

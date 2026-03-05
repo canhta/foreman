@@ -66,20 +66,20 @@ Partial success is better than total failure. If 4 of 5 tasks succeed, Foreman c
 ```
 internal/
 ├── config/         TOML config loading, validation, env-var substitution
-├── daemon/         Event loop, scheduler, file reservations, crash recovery
+├── daemon/         Event loop, scheduler, DAG executor (coordinator/worker-pool), file reservations, crash recovery
 ├── db/             Database interface + SQLite and PostgreSQL implementations
 ├── pipeline/       State machine orchestrator — all pipeline stages
-├── context/        Context assembly: file selection, token budgets, secrets scanning
+├── context/        Context assembly: file selection, token budgets, secrets scanning; AGENTS.md generator
 ├── llm/            LLM provider interface + Anthropic, OpenAI, OpenRouter, local
 ├── tracker/        Issue tracker interface + Jira, GitHub, Linear, local file
 ├── git/            Git operations interface + native CLI and go-git fallback
 ├── runner/         Command runner interface + local and Docker implementations
 ├── agent/          AgentRunner interface + builtin, claudecode, copilot runners
 │   ├── tools/      Typed tool registry (14 tools) with parallel execution
-│   └── mcp/        MCP server config and client stub
+│   └── mcp/        MCP Manager, stdio client (JSON-RPC 2.0), tool name normalization
 ├── skills/         YAML skill engine, loader, hook executor
 ├── dashboard/      HTTP server, REST API, WebSocket, bearer token auth
-├── telemetry/      Cost controller, Prometheus metrics, structured events
+├── telemetry/      Cost controller, Prometheus metrics (incl. DAG metrics), structured events
 └── models/         Shared domain types: Ticket, Task, LlmCall, pipeline states
 ```
 
@@ -220,6 +220,9 @@ See [Pipeline](pipeline.md) for the detailed state machine.
 
 ### Goroutine Pool
 The daemon runs up to `max_parallel_tickets` pipelines concurrently. Each pipeline is a goroutine. A shared rate limiter (token bucket using `golang.org/x/time/rate`) prevents all workers from hammering the LLM provider simultaneously.
+
+### DAG Executor (Per-Ticket Parallelism)
+Within each ticket, tasks execute in parallel via a coordinator/worker-pool DAG executor (`internal/daemon/dag_executor.go`). A single coordinator goroutine owns all mutable DAG state (adjacency list, in-degree map, results) — zero mutexes on DAG state. Workers pull task IDs from a `readyChan`, execute via the injected `TaskRunner` interface, and send results back on a `resultChan`. The coordinator decments in-degree counters and pushes newly-ready tasks. On failure, BFS prunes the transitive dependent closure (marking them `skipped`). The worker pool size is `max_parallel_tasks` (default 3); each task runs under a per-task `context.WithTimeout` (`task_timeout_minutes`, default 15 min).
 
 ### SQLite Serialized Writer
 When using SQLite, all writes go through a single writer goroutine via a buffered channel. This prevents `SQLITE_BUSY` errors under concurrent load. Non-critical writes (events, metrics) are batched and flushed on a configurable interval. Reads go directly to the SQLite connection (WAL mode allows concurrent reads alongside a single writer).

@@ -20,23 +20,23 @@ type Transport interface {
 
 // jsonRPCRequest is a JSON-RPC 2.0 request.
 type jsonRPCRequest struct {
-	JSONRPC string      `json:"jsonrpc"`
-	ID      int64       `json:"id,omitempty"`
-	Method  string      `json:"method"`
 	Params  interface{} `json:"params,omitempty"`
+	JSONRPC string      `json:"jsonrpc"`
+	Method  string      `json:"method"`
+	ID      int64       `json:"id,omitempty"`
 }
 
 // jsonRPCResponse is a JSON-RPC 2.0 response.
 type jsonRPCResponse struct {
-	JSONRPC string          `json:"jsonrpc"`
-	ID      int64           `json:"id"`
-	Result  json.RawMessage `json:"result,omitempty"`
 	Error   *jsonRPCError   `json:"error,omitempty"`
+	JSONRPC string          `json:"jsonrpc"`
+	Result  json.RawMessage `json:"result,omitempty"`
+	ID      int64           `json:"id"`
 }
 
 type jsonRPCError struct {
-	Code    int    `json:"code"`
 	Message string `json:"message"`
+	Code    int    `json:"code"`
 }
 
 // pendingRequest tracks an in-flight JSON-RPC request.
@@ -47,13 +47,13 @@ type pendingRequest struct {
 // StdioClient implements the Client interface over JSON-RPC 2.0 via a Transport.
 type StdioClient struct {
 	transport    Transport
+	capabilities map[string]json.RawMessage
+	readerDone   chan struct{}
+	pending      sync.Map
 	serverName   string
 	nextID       atomic.Int64
-	pending      sync.Map // map[int64]*pendingRequest
 	writeMu      sync.Mutex
-	capabilities map[string]json.RawMessage
 	initialized  bool
-	readerDone   chan struct{}
 }
 
 // NewStdioClientWithTransport creates a new StdioClient with the given transport.
@@ -81,8 +81,9 @@ func (c *StdioClient) readLoop() {
 		}
 		// Route to pending request
 		if val, ok := c.pending.LoadAndDelete(resp.ID); ok {
-			pr := val.(*pendingRequest)
-			pr.resp <- resp
+			if pr, ok := val.(*pendingRequest); ok {
+				pr.resp <- resp
+			}
 		}
 	}
 }
@@ -127,9 +128,9 @@ func (c *StdioClient) sendRequest(ctx context.Context, method string, params int
 // sendNotification sends a JSON-RPC notification (no ID, no response expected).
 func (c *StdioClient) sendNotification(method string, params interface{}) error {
 	req := struct {
+		Params  interface{} `json:"params,omitempty"`
 		JSONRPC string      `json:"jsonrpc"`
 		Method  string      `json:"method"`
-		Params  interface{} `json:"params,omitempty"`
 	}{
 		JSONRPC: "2.0",
 		Method:  method,
@@ -218,7 +219,7 @@ func (c *StdioClient) ListTools(ctx context.Context) ([]models.ToolDef, error) {
 func (c *StdioClient) Call(ctx context.Context, name string, input json.RawMessage) (string, error) {
 	params := map[string]interface{}{
 		"name":      name,
-		"arguments": json.RawMessage(input),
+		"arguments": input,
 	}
 
 	result, err := c.sendRequest(ctx, "tools/call", params)
