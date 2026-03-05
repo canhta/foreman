@@ -39,13 +39,26 @@ func NewServer(db DashboardDB, emitter EventSubscriber, reg *prometheus.Registry
 	mux.Handle("/api/tickets", auth(http.HandlerFunc(api.handleListTickets)))
 	mux.Handle("/api/tickets/", auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
-		if strings.HasSuffix(path, "/events") {
+		switch {
+		case strings.HasSuffix(path, "/tasks"):
+			api.handleGetTasks(w, r)
+		case strings.HasSuffix(path, "/events"):
 			api.handleGetEvents(w, r)
-		} else {
+		case strings.HasSuffix(path, "/llm-calls"):
+			api.handleGetLlmCalls(w, r)
+		case strings.HasSuffix(path, "/retry"):
+			api.handleRetryTicket(w, r)
+		default:
 			api.handleGetTicket(w, r)
 		}
 	})))
 	mux.Handle("/api/costs/today", auth(http.HandlerFunc(api.handleCostsToday)))
+	mux.Handle("/api/pipeline/active", auth(http.HandlerFunc(api.handleActivePipelines)))
+	mux.Handle("/api/costs/week", auth(http.HandlerFunc(api.handleCostsWeek)))
+	mux.Handle("/api/costs/month", auth(http.HandlerFunc(api.handleCostsMonth)))
+	mux.Handle("/api/costs/budgets", auth(http.HandlerFunc(api.handleCostsBudgets)))
+	mux.Handle("/api/daemon/pause", auth(http.HandlerFunc(api.handleDaemonPause)))
+	mux.Handle("/api/daemon/resume", auth(http.HandlerFunc(api.handleDaemonResume)))
 
 	// Metrics endpoint (no auth — Prometheus scraper)
 	if reg != nil {

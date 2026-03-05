@@ -51,6 +51,18 @@ func (m *mockDashboardDB) GetTicketCost(_ context.Context, _ string) (float64, e
 	return 3.25, nil
 }
 
+func (m *mockDashboardDB) ListTasks(_ context.Context, ticketID string) ([]models.Task, error) {
+	return nil, nil
+}
+
+func (m *mockDashboardDB) ListLlmCalls(_ context.Context, ticketID string) ([]models.LlmCallRecord, error) {
+	return nil, nil
+}
+
+func (m *mockDashboardDB) GetMonthlyCost(_ context.Context, yearMonth string) (float64, error) {
+	return 250.0, nil
+}
+
 // mockInvalidAuthDB always rejects auth token validation.
 type mockInvalidAuthDB struct {
 	mockDashboardDB
@@ -147,6 +159,43 @@ func TestAPICostsToday(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/costs/today", nil)
 	rec := httptest.NewRecorder()
 	api.handleCostsToday(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestAPIGetTicketTasks(t *testing.T) {
+	db := &mockDashboardDB{}
+	api := NewAPI(db, nil, "1.0.0")
+	req := httptest.NewRequest("GET", "/api/tickets/t1/tasks", nil)
+	rec := httptest.NewRecorder()
+	api.handleGetTasks(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestAPIGetCostsWeek(t *testing.T) {
+	db := &mockDashboardDB{}
+	api := NewAPI(db, nil, "1.0.0")
+	req := httptest.NewRequest("GET", "/api/costs/week", nil)
+	rec := httptest.NewRecorder()
+	api.handleCostsWeek(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestAPIGetActivePipelines(t *testing.T) {
+	db := &mockDashboardDB{
+		tickets: []models.Ticket{
+			{ID: "t1", Title: "Active", Status: models.TicketStatusImplementing},
+		},
+	}
+	api := NewAPI(db, nil, "1.0.0")
+	req := httptest.NewRequest("GET", "/api/pipeline/active", nil)
+	rec := httptest.NewRecorder()
+	api.handleActivePipelines(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
