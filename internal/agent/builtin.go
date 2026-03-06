@@ -10,6 +10,8 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/rs/zerolog/log"
+
 	"github.com/canhta/foreman/internal/agent/tools"
 	"github.com/canhta/foreman/internal/llm"
 	"github.com/canhta/foreman/internal/models"
@@ -188,7 +190,10 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 
 			// Layer 2: reactive context injection (once per turn, after all tools complete)
 			if r.contextProvider != nil && len(touchedPaths) > 0 {
-				if inject, err := r.contextProvider.OnFilesAccessed(ctx, touchedPaths); err == nil && inject != "" {
+				inject, cpErr := r.contextProvider.OnFilesAccessed(ctx, touchedPaths)
+				if cpErr != nil {
+					log.Warn().Err(cpErr).Strs("paths", touchedPaths).Msg("context provider failed")
+				} else if inject != "" {
 					messages = append(messages, models.Message{Role: "user", Content: "[context update]\n" + inject})
 				}
 			}
