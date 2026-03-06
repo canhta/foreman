@@ -35,6 +35,11 @@ type InboundHandler interface {
 	HandleMessage(ctx context.Context, msg InboundMessage) error
 }
 
+// HealthChecker reports the health of a channel transport.
+type HealthChecker interface {
+	IsConnected() bool
+}
+
 // CommandHandler provides daemon state to the channel router.
 // Implemented by the daemon — the channel layer never imports daemon internals.
 type CommandHandler interface {

@@ -40,6 +40,13 @@ func New(sessionDB string, logger zerolog.Logger) *WhatsAppChannel {
 
 func (w *WhatsAppChannel) Name() string { return "whatsapp" }
 
+// IsConnected reports whether the WhatsApp client is currently connected.
+func (w *WhatsAppChannel) IsConnected() bool {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.connected
+}
+
 // Start connects to WhatsApp and begins listening for messages.
 // Blocks until ctx is cancelled or a fatal error occurs.
 func (w *WhatsAppChannel) Start(ctx context.Context, handler channel.InboundHandler) error {
