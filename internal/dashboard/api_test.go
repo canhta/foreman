@@ -12,8 +12,10 @@ import (
 )
 
 type mockDashboardDB struct {
-	tickets []models.Ticket
-	events  []models.EventRecord
+	tickets   []models.Ticket
+	events    []models.EventRecord
+	teamStats []models.TeamStat
+	summaries []models.TicketSummary
 }
 
 func (m *mockDashboardDB) ValidateAuthToken(_ context.Context, _ string) (bool, error) {
@@ -61,6 +63,26 @@ func (m *mockDashboardDB) ListLlmCalls(_ context.Context, ticketID string) ([]mo
 
 func (m *mockDashboardDB) GetMonthlyCost(_ context.Context, yearMonth string) (float64, error) {
 	return 250.0, nil
+}
+
+func (m *mockDashboardDB) UpdateTaskStatus(_ context.Context, _ string, _ models.TaskStatus) error {
+	return nil
+}
+
+func (m *mockDashboardDB) GetTeamStats(_ context.Context, _ time.Time) ([]models.TeamStat, error) {
+	return m.teamStats, nil
+}
+
+func (m *mockDashboardDB) GetRecentPRs(_ context.Context, _ int) ([]models.Ticket, error) {
+	return m.tickets, nil
+}
+
+func (m *mockDashboardDB) GetTicketSummaries(_ context.Context, _ models.TicketFilter) ([]models.TicketSummary, error) {
+	return m.summaries, nil
+}
+
+func (m *mockDashboardDB) GetGlobalEvents(_ context.Context, _, _ int) ([]models.EventRecord, error) {
+	return m.events, nil
 }
 
 // mockDaemonStatus implements DaemonStatusProvider for tests.
@@ -312,36 +334,36 @@ func TestAPICostsMonth(t *testing.T) {
 	}
 }
 
-func TestAPIRetryTicket_NotImplemented(t *testing.T) {
+func TestAPIRetryTicket_NoRetrier(t *testing.T) {
 	db := &mockDashboardDB{}
 	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
 	req := httptest.NewRequest("POST", "/api/tickets/t1/retry", nil)
 	rec := httptest.NewRecorder()
 	api.handleRetryTicket(rec, req)
-	if rec.Code != http.StatusNotImplemented {
-		t.Fatalf("expected 501, got %d", rec.Code)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rec.Code)
 	}
 }
 
-func TestAPIDaemonPause(t *testing.T) {
+func TestAPIDaemonPause_NoController(t *testing.T) {
 	db := &mockDashboardDB{}
 	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
 	req := httptest.NewRequest("POST", "/api/daemon/pause", nil)
 	rec := httptest.NewRecorder()
 	api.handleDaemonPause(rec, req)
-	if rec.Code != http.StatusNotImplemented {
-		t.Fatalf("expected 501, got %d", rec.Code)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rec.Code)
 	}
 }
 
-func TestAPIDaemonResume(t *testing.T) {
+func TestAPIDaemonResume_NoController(t *testing.T) {
 	db := &mockDashboardDB{}
 	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
 	req := httptest.NewRequest("POST", "/api/daemon/resume", nil)
 	rec := httptest.NewRecorder()
 	api.handleDaemonResume(rec, req)
-	if rec.Code != http.StatusNotImplemented {
-		t.Fatalf("expected 501, got %d", rec.Code)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rec.Code)
 	}
 }
 
@@ -374,6 +396,142 @@ func TestAPIGetStatus_WithChannelHealth(t *testing.T) {
 	}
 	if wa["connected"] != true {
 		t.Errorf("expected connected=true, got %v", wa["connected"])
+	}
+}
+
+func TestAPIGetTeamStats(t *testing.T) {
+	db := &mockDashboardDB{
+		teamStats: []models.TeamStat{
+			{ChannelSenderID: "84123@s.whatsapp.net", TicketCount: 5, CostUSD: 10.0, FailedCount: 1},
+		},
+	}
+	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
+	req := httptest.NewRequest("GET", "/api/stats/team", nil)
+	rec := httptest.NewRecorder()
+	api.handleTeamStats(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestAPIGetRecentPRs(t *testing.T) {
+	db := &mockDashboardDB{
+		tickets: []models.Ticket{
+			{ID: "t1", Title: "PR ticket", PRURL: "https://github.com/repo/pull/1"},
+		},
+	}
+	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
+	req := httptest.NewRequest("GET", "/api/stats/recent-prs", nil)
+	rec := httptest.NewRecorder()
+	api.handleRecentPRs(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestAPIGetTicketSummaries(t *testing.T) {
+	db := &mockDashboardDB{
+		summaries: []models.TicketSummary{
+			{Ticket: models.Ticket{ID: "t1", Title: "Test", Status: models.TicketStatusImplementing}, TasksTotal: 6, TasksDone: 4},
+		},
+	}
+	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
+	req := httptest.NewRequest("GET", "/api/ticket-summaries", nil)
+	rec := httptest.NewRecorder()
+	api.handleTicketSummaries(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestAPIGetGlobalEvents(t *testing.T) {
+	db := &mockDashboardDB{
+		events: []models.EventRecord{
+			{ID: "e1", TicketID: "t1", EventType: "task_started", Message: "Starting task"},
+		},
+	}
+	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
+	req := httptest.NewRequest("GET", "/api/events", nil)
+	rec := httptest.NewRecorder()
+	api.handleGlobalEvents(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+}
+
+type mockDaemonController struct {
+	mockDaemonStatus
+	pauseCalled  bool
+	resumeCalled bool
+}
+
+func (m *mockDaemonController) Pause()  { m.pauseCalled = true }
+func (m *mockDaemonController) Resume() { m.resumeCalled = true }
+
+type mockTicketRetrier struct {
+	retriedID string
+}
+
+func (m *mockTicketRetrier) RetryTicket(_ context.Context, id string) error {
+	m.retriedID = id
+	return nil
+}
+
+func TestAPIDaemonPause_Wired(t *testing.T) {
+	ctrl := &mockDaemonController{mockDaemonStatus: mockDaemonStatus{running: true}}
+	api := NewAPI(&mockDashboardDB{}, nil, ctrl, models.CostConfig{}, "1.0.0")
+	api.SetDaemonController(ctrl)
+
+	req := httptest.NewRequest("POST", "/api/daemon/pause", nil)
+	rec := httptest.NewRecorder()
+	api.handleDaemonPause(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if !ctrl.pauseCalled {
+		t.Error("expected Pause() to be called")
+	}
+}
+
+func TestAPIDaemonResume_Wired(t *testing.T) {
+	ctrl := &mockDaemonController{mockDaemonStatus: mockDaemonStatus{running: true, paused: true}}
+	api := NewAPI(&mockDashboardDB{}, nil, ctrl, models.CostConfig{}, "1.0.0")
+	api.SetDaemonController(ctrl)
+
+	req := httptest.NewRequest("POST", "/api/daemon/resume", nil)
+	rec := httptest.NewRecorder()
+	api.handleDaemonResume(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if !ctrl.resumeCalled {
+		t.Error("expected Resume() to be called")
+	}
+}
+
+func TestAPIRetryTicket_Wired(t *testing.T) {
+	retrier := &mockTicketRetrier{}
+	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
+	api.SetTicketRetrier(retrier)
+
+	req := httptest.NewRequest("POST", "/api/tickets/t1/retry", nil)
+	rec := httptest.NewRecorder()
+	api.handleRetryTicket(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if retrier.retriedID != "t1" {
+		t.Errorf("expected retriedID=t1, got %s", retrier.retriedID)
+	}
+}
+
+func TestAPIRetryTask(t *testing.T) {
+	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
+	req := httptest.NewRequest("POST", "/api/tasks/task-1/retry", nil)
+	rec := httptest.NewRecorder()
+	api.handleRetryTask(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
 	}
 }
 

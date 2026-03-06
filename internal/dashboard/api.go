@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,6 +22,11 @@ type DashboardDB interface {
 	ListTasks(ctx context.Context, ticketID string) ([]models.Task, error)
 	ListLlmCalls(ctx context.Context, ticketID string) ([]models.LlmCallRecord, error)
 	GetMonthlyCost(ctx context.Context, yearMonth string) (float64, error)
+	UpdateTaskStatus(ctx context.Context, id string, status models.TaskStatus) error
+	GetTeamStats(ctx context.Context, since time.Time) ([]models.TeamStat, error)
+	GetRecentPRs(ctx context.Context, limit int) ([]models.Ticket, error)
+	GetTicketSummaries(ctx context.Context, filter models.TicketFilter) ([]models.TicketSummary, error)
+	GetGlobalEvents(ctx context.Context, limit, offset int) ([]models.EventRecord, error)
 }
 
 // EventSubscriber is the subset of EventEmitter needed for WebSocket.
@@ -36,12 +42,26 @@ type DaemonStatusProvider interface {
 	IsPaused() bool
 }
 
+// DaemonController allows the dashboard to control the daemon lifecycle.
+type DaemonController interface {
+	DaemonStatusProvider
+	Pause()
+	Resume()
+}
+
+// TicketRetrier re-queues a failed ticket for processing.
+type TicketRetrier interface {
+	RetryTicket(ctx context.Context, ticketID string) error
+}
+
 // API handles REST API requests for the dashboard.
 type API struct {
 	startedAt      time.Time
 	db             DashboardDB
 	emitter        EventSubscriber
 	statusProvider DaemonStatusProvider
+	controller     DaemonController
+	retrier        TicketRetrier
 	channelHealth  map[string]interface{ IsConnected() bool }
 	version        string
 	costCfg        models.CostConfig
@@ -53,6 +73,17 @@ func (a *API) SetChannelHealth(name string, h interface{ IsConnected() bool }) {
 		a.channelHealth = make(map[string]interface{ IsConnected() bool })
 	}
 	a.channelHealth[name] = h
+}
+
+// SetDaemonController wires a DaemonController for pause/resume.
+func (a *API) SetDaemonController(c DaemonController) {
+	a.controller = c
+	a.statusProvider = c
+}
+
+// SetTicketRetrier wires a TicketRetrier for ticket retry.
+func (a *API) SetTicketRetrier(r TicketRetrier) {
+	a.retrier = r
 }
 
 // NewAPI creates a new API instance.
@@ -231,6 +262,8 @@ func (a *API) handleCostsMonth(w http.ResponseWriter, r *http.Request) {
 func (a *API) handleCostsBudgets(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"max_daily_usd":       a.costCfg.MaxCostPerDayUSD,
+		"max_monthly_usd":     a.costCfg.MaxCostPerMonthUSD,
+		"max_ticket_usd":      a.costCfg.MaxCostPerTicketUSD,
 		"alert_threshold_pct": a.costCfg.AlertThresholdPct,
 	})
 }
@@ -240,7 +273,87 @@ func (a *API) handleRetryTicket(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	http.Error(w, "retry not yet wired to pipeline state machine", http.StatusNotImplemented)
+	if a.retrier == nil {
+		http.Error(w, "retry not available", http.StatusServiceUnavailable)
+		return
+	}
+	id := extractPathParam(r.URL.Path, "/api/tickets/")
+	if idx := strings.Index(id, "/"); idx != -1 {
+		id = id[:idx]
+	}
+	if err := a.retrier.RetryTicket(r.Context(), id); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "retrying", "ticket_id": id})
+}
+
+func (a *API) handleTeamStats(w http.ResponseWriter, r *http.Request) {
+	since := time.Now().AddDate(0, 0, -7)
+	stats, err := a.db.GetTeamStats(r.Context(), since)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, stats)
+}
+
+func (a *API) handleRecentPRs(w http.ResponseWriter, r *http.Request) {
+	tickets, err := a.db.GetRecentPRs(r.Context(), 5)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, tickets)
+}
+
+func (a *API) handleTicketSummaries(w http.ResponseWriter, r *http.Request) {
+	filter := models.TicketFilter{}
+	summaries, err := a.db.GetTicketSummaries(r.Context(), filter)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, summaries)
+}
+
+func (a *API) handleGlobalEvents(w http.ResponseWriter, r *http.Request) {
+	limit := 50
+	offset := 0
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 100 {
+			limit = n
+		}
+	}
+	if v := r.URL.Query().Get("offset"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			offset = n
+		}
+	}
+	events, err := a.db.GetGlobalEvents(r.Context(), limit, offset)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, events)
+}
+
+func (a *API) handleRetryTask(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	path := strings.TrimPrefix(r.URL.Path, "/api/tasks/")
+	id := strings.TrimSuffix(path, "/retry")
+	if id == "" {
+		http.Error(w, "missing task id", http.StatusBadRequest)
+		return
+	}
+	if err := a.db.UpdateTaskStatus(r.Context(), id, models.TaskStatusPending); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "retrying", "task_id": id})
 }
 
 func (a *API) handleDaemonPause(w http.ResponseWriter, r *http.Request) {
@@ -248,7 +361,12 @@ func (a *API) handleDaemonPause(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	http.Error(w, "daemon pause not yet wired", http.StatusNotImplemented)
+	if a.controller == nil {
+		http.Error(w, "daemon control not available", http.StatusServiceUnavailable)
+		return
+	}
+	a.controller.Pause()
+	writeJSON(w, http.StatusOK, map[string]string{"status": "paused"})
 }
 
 func (a *API) handleDaemonResume(w http.ResponseWriter, r *http.Request) {
@@ -256,7 +374,12 @@ func (a *API) handleDaemonResume(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	http.Error(w, "daemon resume not yet wired", http.StatusNotImplemented)
+	if a.controller == nil {
+		http.Error(w, "daemon control not available", http.StatusServiceUnavailable)
+		return
+	}
+	a.controller.Resume()
+	writeJSON(w, http.StatusOK, map[string]string{"status": "resumed"})
 }
 
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {

@@ -60,6 +60,17 @@ func NewServer(db DashboardDB, emitter EventSubscriber, statusProvider DaemonSta
 	mux.Handle("/api/costs/budgets", auth(http.HandlerFunc(api.handleCostsBudgets)))
 	mux.Handle("/api/daemon/pause", auth(http.HandlerFunc(api.handleDaemonPause)))
 	mux.Handle("/api/daemon/resume", auth(http.HandlerFunc(api.handleDaemonResume)))
+	mux.Handle("/api/stats/team", auth(http.HandlerFunc(api.handleTeamStats)))
+	mux.Handle("/api/stats/recent-prs", auth(http.HandlerFunc(api.handleRecentPRs)))
+	mux.Handle("/api/ticket-summaries", auth(http.HandlerFunc(api.handleTicketSummaries)))
+	mux.Handle("/api/events", auth(http.HandlerFunc(api.handleGlobalEvents)))
+	mux.Handle("/api/tasks/", auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/retry") {
+			api.handleRetryTask(w, r)
+			return
+		}
+		http.NotFound(w, r)
+	})))
 
 	// Metrics endpoint (no auth — Prometheus scraper)
 	if reg != nil {
