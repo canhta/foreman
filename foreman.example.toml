@@ -104,6 +104,7 @@ event_flush_interval_ms = 100
 post_lint = []
 pre_pr = []
 post_pr = []
+post_merge = []
 
 # ─── Skills Agent Runner ────────────────────────────────
 # Which runner backs the "agentsdk" step type in YAML skills.

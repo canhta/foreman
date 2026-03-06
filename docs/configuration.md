@@ -419,32 +419,43 @@ Any non-command message from an allowed sender is classified (via LLM) and can c
 ## Agent Runner
 
 ```toml
-[agent_runner]
-type = "builtin"   # builtin | claudecode | copilot
+[skills.agent_runner]
+provider = "builtin"   # builtin | claudecode | copilot
+
+# Cost cap for skill agent calls — does NOT draw from the core pipeline budget.
+max_cost_per_ticket_usd = 2.00
+max_turns_default       = 10
+timeout_secs_default    = 120
 ```
 
 ### Builtin Runner
 
 ```toml
-[agent_runner.builtin]
-max_turns    = 20    # Maximum agent turns per task
-timeout_secs = 300   # Per-task timeout
+[skills.agent_runner.builtin]
+default_allowed_tools = ["Read", "Glob", "Grep"]
 ```
 
 ### Claude Code
 
 ```toml
-[agent_runner.claudecode]
-binary_path  = "claude"  # Path to the claude CLI binary
-max_turns    = 20
-timeout_secs = 300
+[skills.agent_runner.claudecode]
+bin                  = "claude"   # resolved via $PATH if relative
+default_allowed_tools = ["Read", "Edit", "Glob", "Grep", "Bash"]
+max_turns_default    = 10
+timeout_secs_default = 180
+max_budget_usd       = 2.00
+# model = "sonnet"             # optional: override default model
 ```
 
 ### Copilot
 
 ```toml
-[agent_runner.copilot]
-timeout_secs = 300
+[skills.agent_runner.copilot]
+cli_path             = "copilot"
+github_token         = "${GITHUB_TOKEN}"
+model                = "gpt-4o"
+default_allowed_tools = ["Read", "Edit", "Glob", "Grep", "Bash"]
+timeout_secs_default = 180
 ```
 
 ---
