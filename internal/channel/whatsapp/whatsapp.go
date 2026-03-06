@@ -46,7 +46,7 @@ func (w *WhatsAppChannel) Start(ctx context.Context, handler channel.InboundHand
 	w.handler = handler
 
 	container, err := sqlstore.New(ctx, "sqlite3",
-		fmt.Sprintf("file:%s?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)", w.sessionDB),
+		fmt.Sprintf("file:%s?_foreign_keys=on&_busy_timeout=5000", w.sessionDB),
 		waLog.Noop)
 	if err != nil {
 		return fmt.Errorf("whatsapp session db: %w", err)

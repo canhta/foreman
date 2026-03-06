@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"os/signal"
@@ -107,6 +109,20 @@ func newStartCmd() *cobra.Command {
 				return err
 			}
 			defer database.Close()
+
+			// 1b. Seed dashboard auth token from config (idempotent).
+			if cfg.Dashboard.AuthToken != "" {
+				h := sha256.Sum256([]byte(cfg.Dashboard.AuthToken))
+				hashStr := hex.EncodeToString(h[:])
+				valid, _ := database.ValidateAuthToken(cmd.Context(), hashStr)
+				if !valid {
+					if seedErr := database.CreateAuthToken(cmd.Context(), hashStr, "config"); seedErr != nil {
+						log.Warn().Err(seedErr).Msg("failed to seed dashboard auth token")
+					} else {
+						log.Info().Msg("dashboard auth token seeded from config")
+					}
+				}
+			}
 
 			// 2. Initialize LLM provider.
 			llmProv, err := llm.NewProviderFromConfig(cfg.LLM.DefaultProvider, cfg.LLM)

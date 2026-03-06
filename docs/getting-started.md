@@ -77,12 +77,6 @@ export ANTHROPIC_API_KEY=sk-ant-...
 export FOREMAN_DASHBOARD_TOKEN=$(./foreman token generate)
 ```
 
-Or store them in a `.env` file and load it:
-
-```bash
-source .env
-```
-
 For a complete config reference, see [Configuration](configuration.md).
 
 ## First Run
