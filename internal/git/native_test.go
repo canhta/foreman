@@ -173,10 +173,21 @@ func TestNativeGitProvider_EnsureRepo(t *testing.T) {
 		require.NoError(t, err)
 	})
 
-	t.Run("non-git directory", func(t *testing.T) {
+	t.Run("non-git directory without clone_url returns error", func(t *testing.T) {
 		dir := t.TempDir() // plain directory, not a git repo
 		err := g.EnsureRepo(ctx, dir)
-		require.Error(t, err, "EnsureRepo should fail on a non-git directory")
+		require.Error(t, err, "EnsureRepo should fail on a non-git directory when no clone_url is set")
+	})
+
+	t.Run("non-existent directory is created and cloned", func(t *testing.T) {
+		// Use an existing repo as the clone source so no network is required.
+		src := initTestRepo(t)
+		dest := filepath.Join(t.TempDir(), "work")
+		gWithClone := NewNativeGitProviderWithClone(src)
+		require.NoError(t, gWithClone.EnsureRepo(ctx, dest))
+		// Verify the clone landed correctly.
+		_, err := os.Stat(filepath.Join(dest, ".git"))
+		require.NoError(t, err, "expected .git directory after clone")
 	})
 }
 

@@ -315,7 +315,7 @@ func buildGitProvider(cfg *models.Config) git.GitProvider {
 	if cfg.Git.Backend == "gogit" {
 		return git.NewGoGitProvider()
 	}
-	return git.NewNativeGitProvider()
+	return git.NewNativeGitProviderWithClone(cfg.Git.CloneURL)
 }
 
 func buildPRCreator(cfg *models.Config) git.PRCreator {

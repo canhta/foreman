@@ -11,19 +11,35 @@ import (
 )
 
 // NativeGitProvider shells out to the native git CLI.
-type NativeGitProvider struct{}
+type NativeGitProvider struct {
+	cloneURL string
+}
 
 // NewNativeGitProvider creates a native git provider.
 func NewNativeGitProvider() *NativeGitProvider {
 	return &NativeGitProvider{}
 }
 
+// NewNativeGitProviderWithClone creates a native git provider that can clone the repo
+// into the work directory if it does not yet exist as a git repository.
+func NewNativeGitProviderWithClone(cloneURL string) *NativeGitProvider {
+	return &NativeGitProvider{cloneURL: cloneURL}
+}
+
 func (g *NativeGitProvider) EnsureRepo(ctx context.Context, workDir string) error {
 	if err := os.MkdirAll(workDir, 0o755); err != nil {
 		return fmt.Errorf("create work dir: %w", err)
 	}
-	_, err := g.run(ctx, workDir, "git", "status")
-	return err
+	// If already a valid git repo, nothing to do.
+	if _, err := g.run(ctx, workDir, "git", "status"); err == nil {
+		return nil
+	}
+	// Not a git repo — clone if a URL is configured.
+	if g.cloneURL != "" {
+		_, err := g.run(ctx, workDir, "git", "clone", g.cloneURL, ".")
+		return err
+	}
+	return fmt.Errorf("work directory %q is not a git repository and no clone_url is configured", workDir)
 }
 
 func (g *NativeGitProvider) CreateBranch(ctx context.Context, workDir, branchName string) error {
