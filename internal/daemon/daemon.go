@@ -182,7 +182,11 @@ func (d *Daemon) Start(ctx context.Context) {
 	if prChecker != nil && database != nil {
 		mc := NewMergeChecker(database, prChecker, hookRunner, tr, log.Logger)
 		interval := time.Duration(d.config.MergeCheckIntervalSecs) * time.Second
-		go mc.Start(ctx, interval)
+		d.wg.Add(1)
+		go func() {
+			defer d.wg.Done()
+			mc.Start(ctx, interval)
+		}()
 	}
 
 	// Start channel listener

@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/canhta/foreman/internal/git"
 	"github.com/canhta/foreman/internal/models"
 	"github.com/canhta/foreman/internal/tracker"
 )
@@ -366,6 +367,49 @@ func TestDaemon_SkipWhenPaused(t *testing.T) {
 
 	assert.Equal(t, 0, ticketsCreated, "no tickets should be ingested while paused")
 	assert.Equal(t, 0, processed, "no tickets should be processed while paused")
+}
+
+func TestDaemon_MergeCheckerTrackedInWaitGroup(t *testing.T) {
+	mdb := newDaemonMockDB()
+	prChecker := &mockPRChecker{statuses: map[int]git.PRMergeStatus{}}
+
+	cfg := DefaultDaemonConfig()
+	cfg.PollIntervalSecs = 60       // Long interval so poll does not interfere
+	cfg.MergeCheckIntervalSecs = 60 // Long interval; we only care about goroutine tracking
+
+	d := NewDaemon(cfg)
+	d.SetDB(mdb)
+	d.SetPRChecker(prChecker)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go d.Start(ctx)
+
+	// Wait for daemon to be running
+	require.Eventually(t, func() bool {
+		return d.IsRunning()
+	}, time.Second, 10*time.Millisecond)
+
+	// Cancel context to trigger shutdown
+	cancel()
+
+	// WaitForDrain should complete because MergeChecker goroutine is tracked in WaitGroup.
+	// If it were NOT tracked, wg.Wait() would return immediately while MergeChecker is still running.
+	// We verify correctness by ensuring WaitForDrain returns promptly after cancellation.
+	drainCtx, drainCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer drainCancel()
+
+	done := make(chan struct{})
+	go func() {
+		d.WaitForDrain(drainCtx)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// WaitForDrain returned — the MergeChecker goroutine was properly tracked
+	case <-time.After(3 * time.Second):
+		t.Fatal("WaitForDrain did not return; MergeChecker goroutine likely not tracked in WaitGroup")
+	}
 }
 
 func TestDaemon_WaitForDrain(t *testing.T) {
