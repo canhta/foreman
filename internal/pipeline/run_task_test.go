@@ -461,6 +461,38 @@ func TestApplyChanges_MissingFileReturnsError(t *testing.T) {
 	assert.Contains(t, err.Error(), "nonexistent.go")
 }
 
+func TestApplyChanges_Atomic_SecondFileFails_FirstFileUnchanged(t *testing.T) {
+	workDir := t.TempDir()
+	originalA := "line1\nline2\nline3\n"
+	originalB := "foo\nbar\nbaz\n"
+	require.NoError(t, os.WriteFile(filepath.Join(workDir, "a.go"), []byte(originalA), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(workDir, "b.go"), []byte(originalB), 0o644))
+
+	r := &PipelineTaskRunner{config: TaskRunnerConfig{WorkDir: workDir, SearchReplaceSimilarity: 0.8}}
+	parsed := &ParsedOutput{
+		Files: []FileChange{
+			{
+				Path:    "a.go",
+				IsNew:   false,
+				Patches: []SearchReplace{{Search: "line1", Replace: "REPLACED1"}}, // valid
+			},
+			{
+				Path:    "b.go",
+				IsNew:   false,
+				Patches: []SearchReplace{{Search: "THIS_DOES_NOT_EXIST", Replace: "x"}}, // fails
+			},
+		},
+	}
+
+	err := r.applyChanges(parsed)
+	require.Error(t, err, "second file patch should fail")
+
+	// File a.go must be unchanged — writes should be all-or-nothing.
+	data, readErr := os.ReadFile(filepath.Join(workDir, "a.go"))
+	require.NoError(t, readErr)
+	assert.Equal(t, originalA, string(data), "a.go should be unchanged when b.go patch fails")
+}
+
 func TestApplyChanges_CreatesSubdirectory(t *testing.T) {
 	workDir := t.TempDir()
 	r := &PipelineTaskRunner{config: TaskRunnerConfig{WorkDir: workDir}}

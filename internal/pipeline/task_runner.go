@@ -286,17 +286,24 @@ func (r *PipelineTaskRunner) loadContextFiles(paths []string) map[string]string 
 }
 
 func (r *PipelineTaskRunner) applyChanges(parsed *ParsedOutput) error {
+	type pendingWrite struct {
+		path    string
+		mkdirs  string
+		content []byte
+		perm    os.FileMode
+	}
+	var writes []pendingWrite
+
+	// Phase 1: Compute all changes in memory. If ANY patch fails, return
+	// error without writing anything to disk.
 	for _, fc := range parsed.Files {
 		fullPath := filepath.Join(r.config.WorkDir, fc.Path)
 
 		if fc.IsNew {
-			dir := filepath.Dir(fullPath)
-			if err := os.MkdirAll(dir, 0o755); err != nil {
-				return fmt.Errorf("mkdir %s: %w", dir, err)
-			}
-			if err := os.WriteFile(fullPath, []byte(fc.Content), 0o644); err != nil {
-				return fmt.Errorf("write %s: %w", fc.Path, err)
-			}
+			writes = append(writes, pendingWrite{
+				path: fullPath, content: []byte(fc.Content), perm: 0o644,
+				mkdirs: filepath.Dir(fullPath),
+			})
 			continue
 		}
 
@@ -304,7 +311,6 @@ func (r *PipelineTaskRunner) applyChanges(parsed *ParsedOutput) error {
 		if err != nil {
 			return fmt.Errorf("read %s: %w", fc.Path, err)
 		}
-
 		result := string(content)
 		for i, sr := range fc.Patches {
 			applied, err := ApplySearchReplace(result, &sr, r.config.SearchReplaceSimilarity)
@@ -313,9 +319,18 @@ func (r *PipelineTaskRunner) applyChanges(parsed *ParsedOutput) error {
 			}
 			result = applied
 		}
+		writes = append(writes, pendingWrite{path: fullPath, content: []byte(result), perm: 0o644})
+	}
 
-		if err := os.WriteFile(fullPath, []byte(result), 0o644); err != nil {
-			return fmt.Errorf("write %s: %w", fc.Path, err)
+	// Phase 2: All patches validated — write to disk.
+	for _, w := range writes {
+		if w.mkdirs != "" {
+			if err := os.MkdirAll(w.mkdirs, 0o755); err != nil {
+				return fmt.Errorf("mkdir %s: %w", w.mkdirs, err)
+			}
+		}
+		if err := os.WriteFile(w.path, w.content, w.perm); err != nil {
+			return fmt.Errorf("write %s: %w", w.path, err)
 		}
 	}
 	return nil
