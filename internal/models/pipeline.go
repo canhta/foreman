@@ -35,6 +35,7 @@ const (
 	TaskStatusDone          TaskStatus = "done"
 	TaskStatusFailed        TaskStatus = "failed"
 	TaskStatusSkipped       TaskStatus = "skipped"
+	TaskStatusEscalated     TaskStatus = "escalated"
 )
 
 type StopReason string

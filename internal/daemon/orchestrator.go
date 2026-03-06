@@ -460,9 +460,12 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 		return returnErr
 	}
 
-	// Release file reservations.
+	// Release file reservations. Return the error directly (not via returnErr)
+	// so the deferred handler does not incorrectly mark the ticket as failed
+	// when the PR has already been created successfully.
 	if err := o.scheduler.Release(ctx, ticket.ID); err != nil {
-		log.Warn().Err(err).Msg("failed to release file reservations after PR")
+		log.Error().Err(err).Msg("failed to release file reservations after PR")
+		return fmt.Errorf("release reservations: %w", err)
 	}
 
 	o.notify(ctx, ticket, fmt.Sprintf("PR opened for ticket #%s: %s", ticket.ID, prResp.HTMLURL))
