@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/canhta/foreman/internal/models"
 	"github.com/gorilla/websocket"
@@ -11,7 +12,14 @@ import (
 )
 
 var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
+	CheckOrigin: func(r *http.Request) bool {
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			return true // Same-origin requests may not send Origin header
+		}
+		// Allow if Origin matches the request Host
+		return strings.HasSuffix(origin, "://"+r.Host)
+	},
 }
 
 func (a *API) handleWebSocket(w http.ResponseWriter, r *http.Request) {

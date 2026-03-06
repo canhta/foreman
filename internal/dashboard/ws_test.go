@@ -84,6 +84,34 @@ func TestWebSocketAuth_MissingToken(t *testing.T) {
 	}
 }
 
+func TestWebSocketCORS_CheckOrigin(t *testing.T) {
+	tests := []struct {
+		name    string
+		origin  string
+		host    string
+		allowed bool
+	}{
+		{"no origin header", "", "localhost:8080", true},
+		{"same origin", "http://localhost:8080", "localhost:8080", true},
+		{"same origin https", "https://example.com", "example.com", true},
+		{"cross origin", "http://evil.com", "localhost:8080", false},
+		{"cross origin partial match", "http://notlocalhost:8080", "localhost:8080", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := httptest.NewRequest("GET", "/ws/events", nil)
+			r.Host = tt.host
+			if tt.origin != "" {
+				r.Header.Set("Origin", tt.origin)
+			}
+			got := upgrader.CheckOrigin(r)
+			if got != tt.allowed {
+				t.Errorf("CheckOrigin(%q, host=%q) = %v, want %v", tt.origin, tt.host, got, tt.allowed)
+			}
+		})
+	}
+}
+
 func TestWebSocketAuth_InvalidToken(t *testing.T) {
 	db := &mockInvalidAuthDB{}
 	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
