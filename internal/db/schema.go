@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS tickets (
     tokens_output INTEGER DEFAULT 0,
     total_llm_calls INTEGER DEFAULT 0,
     clarification_requested_at TIMESTAMP,
+    channel_sender_id TEXT DEFAULT '',
     error_message TEXT,
     last_completed_task_seq INTEGER DEFAULT 0,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -129,6 +130,14 @@ CREATE TABLE IF NOT EXISTS auth_tokens (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     last_used_at TIMESTAMP,
     revoked BOOLEAN DEFAULT FALSE
+);
+
+CREATE TABLE IF NOT EXISTS pending_pairings (
+    code        TEXT PRIMARY KEY,
+    sender_id   TEXT NOT NULL,
+    channel     TEXT NOT NULL DEFAULT 'whatsapp',
+    expires_at  DATETIME NOT NULL,
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status);
