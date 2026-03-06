@@ -2,11 +2,10 @@ package daemon
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"fmt"
 
 	"github.com/canhta/foreman/internal/channel"
 	"github.com/canhta/foreman/internal/db"
@@ -15,6 +14,7 @@ import (
 	"github.com/canhta/foreman/internal/runner"
 	"github.com/canhta/foreman/internal/skills"
 	"github.com/canhta/foreman/internal/tracker"
+	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 )
 
@@ -301,6 +301,7 @@ func (d *Daemon) ingestFromTracker(ctx context.Context, database db.Database, tr
 			continue
 		}
 		dbTicket := &models.Ticket{
+			ID:                 uuid.New().String(),
 			ExternalID:         t.ExternalID,
 			Title:              t.Title,
 			Description:        t.Description,
