@@ -40,6 +40,7 @@ type DAGTaskRunnerFactory interface {
 
 // TaskRunnerFactoryInput holds the parameters needed to create a task runner.
 type TaskRunnerFactoryInput struct {
+	TicketID                 string
 	Models                   models.ModelsConfig
 	WorkDir                  string
 	CodebasePatterns         string
@@ -340,6 +341,7 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 	// Build task runner via factory.
 	codebasePatterns := formatCodebasePatterns(planResult.CodebasePatterns)
 	dagRunner := o.runnerFactory.Create(TaskRunnerFactoryInput{
+		TicketID:                 ticket.ID,
 		Models:                   o.config.Models,
 		WorkDir:                  o.config.WorkDir,
 		CodebasePatterns:         codebasePatterns,

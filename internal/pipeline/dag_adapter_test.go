@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/canhta/foreman/internal/daemon"
@@ -143,9 +144,10 @@ func TestDAGTaskAdapter_ImplementsDaemonInterface(t *testing.T) {
 func TestNewDAGTaskAdapter(t *testing.T) {
 	db := newMockAdapterDB(nil)
 	r := buildMinimalTaskRunner(db)
-	adapter := NewDAGTaskAdapter(r, db)
+	adapter := NewDAGTaskAdapter(r, db, "ticket-1")
 	require.NotNil(t, adapter)
 	assert.Same(t, r, adapter.runner)
+	assert.Equal(t, "ticket-1", adapter.ticketID)
 }
 
 // TestDAGTaskAdapter_findTask_FoundByID verifies findTask returns the matching task.
@@ -155,7 +157,7 @@ func TestDAGTaskAdapter_findTask_FoundByID(t *testing.T) {
 		{ID: "task-2", Title: "Second task"},
 	}
 	db := newMockAdapterDB(tasks)
-	adapter := &DAGTaskAdapter{runner: buildMinimalTaskRunner(db), db: db}
+	adapter := &DAGTaskAdapter{runner: buildMinimalTaskRunner(db), db: db, ticketID: "ticket-1"}
 
 	task, err := adapter.findTask(context.Background(), "task-2")
 	require.NoError(t, err)
@@ -163,42 +165,42 @@ func TestDAGTaskAdapter_findTask_FoundByID(t *testing.T) {
 	assert.Equal(t, "Second task", task.Title)
 }
 
-// TestDAGTaskAdapter_findTask_FallbackWhenNotFound verifies findTask returns a
-// minimal task (ID only) when the ID is absent from the list.
-func TestDAGTaskAdapter_findTask_FallbackWhenNotFound(t *testing.T) {
+// TestDAGTaskAdapter_findTask_ErrorWhenNotFound verifies findTask returns an
+// error when the task ID is absent from the list.
+func TestDAGTaskAdapter_findTask_ErrorWhenNotFound(t *testing.T) {
 	tasks := []models.Task{{ID: "task-1", Title: "Something"}}
 	db := newMockAdapterDB(tasks)
-	adapter := &DAGTaskAdapter{runner: buildMinimalTaskRunner(db), db: db}
+	adapter := &DAGTaskAdapter{runner: buildMinimalTaskRunner(db), db: db, ticketID: "ticket-1"}
 
 	task, err := adapter.findTask(context.Background(), "unknown-task")
-	require.NoError(t, err)
-	require.NotNil(t, task)
-	assert.Equal(t, "unknown-task", task.ID)
-	assert.Equal(t, "", task.Title, "fallback task should have empty title")
+	require.Error(t, err)
+	assert.Nil(t, task)
+	assert.Contains(t, err.Error(), "not found")
 }
 
-// TestDAGTaskAdapter_findTask_FallbackWhenDBError verifies findTask falls back
-// to a minimal task even when the DB returns an error.
-func TestDAGTaskAdapter_findTask_FallbackWhenDBError(t *testing.T) {
+// TestDAGTaskAdapter_findTask_ErrorWhenDBError verifies findTask returns an
+// error when the DB call fails.
+func TestDAGTaskAdapter_findTask_ErrorWhenDBError(t *testing.T) {
 	db := newMockAdapterDB(nil)
-	db.listErr = errors.New("db unavailable")
-	adapter := &DAGTaskAdapter{runner: buildMinimalTaskRunner(db), db: db}
+	db.listErr = fmt.Errorf("db unavailable")
+	adapter := &DAGTaskAdapter{runner: buildMinimalTaskRunner(db), db: db, ticketID: "ticket-1"}
 
 	task, err := adapter.findTask(context.Background(), "task-xyz")
-	require.NoError(t, err)
-	require.NotNil(t, task)
-	assert.Equal(t, "task-xyz", task.ID)
+	require.Error(t, err)
+	assert.Nil(t, task)
+	assert.Contains(t, err.Error(), "db unavailable")
 }
 
-// TestDAGTaskAdapter_findTask_FallbackWhenEmptyList verifies the empty-list branch.
-func TestDAGTaskAdapter_findTask_FallbackWhenEmptyList(t *testing.T) {
+// TestDAGTaskAdapter_findTask_ErrorWhenEmptyList verifies findTask returns an
+// error when no tasks exist for the ticket.
+func TestDAGTaskAdapter_findTask_ErrorWhenEmptyList(t *testing.T) {
 	db := newMockAdapterDB([]models.Task{})
-	adapter := &DAGTaskAdapter{runner: buildMinimalTaskRunner(db), db: db}
+	adapter := &DAGTaskAdapter{runner: buildMinimalTaskRunner(db), db: db, ticketID: "ticket-1"}
 
 	task, err := adapter.findTask(context.Background(), "task-abc")
-	require.NoError(t, err)
-	require.NotNil(t, task)
-	assert.Equal(t, "task-abc", task.ID)
+	require.Error(t, err)
+	assert.Nil(t, task)
+	assert.Contains(t, err.Error(), "not found")
 }
 
 // TestDAGTaskAdapter_Run_Success verifies a successful run produces Done status.
@@ -224,7 +226,7 @@ func TestDAGTaskAdapter_Run_Success(t *testing.T) {
 		EnableTDDVerification:    false,
 		SearchReplaceSimilarity:  0.8,
 	})
-	adapter := NewDAGTaskAdapter(r, db)
+	adapter := NewDAGTaskAdapter(r, db, "ticket-1")
 
 	result := adapter.Run(context.Background(), "task-1")
 	assert.Equal(t, "task-1", result.TaskID)
@@ -254,7 +256,7 @@ func TestDAGTaskAdapter_Run_EscalationReturnsFailed(t *testing.T) {
 		EnableTDDVerification:    false,
 		SearchReplaceSimilarity:  0.8,
 	})
-	adapter := NewDAGTaskAdapter(r, db)
+	adapter := NewDAGTaskAdapter(r, db, "ticket-1")
 
 	result := adapter.Run(context.Background(), "task-esc")
 	assert.Equal(t, "task-esc", result.TaskID)
@@ -289,7 +291,7 @@ func TestDAGTaskAdapter_Run_AllRetriesExhausted(t *testing.T) {
 		EnableTDDVerification:    false,
 		SearchReplaceSimilarity:  0.8,
 	})
-	adapter := NewDAGTaskAdapter(r, db)
+	adapter := NewDAGTaskAdapter(r, db, "ticket-1")
 
 	result := adapter.Run(context.Background(), "task-bad")
 	assert.Equal(t, "task-bad", result.TaskID)
@@ -297,39 +299,17 @@ func TestDAGTaskAdapter_Run_AllRetriesExhausted(t *testing.T) {
 	require.Error(t, result.Error)
 }
 
-// TestDAGTaskAdapter_Run_TaskNotFound_UsesFallback verifies that when the task
-// is absent from the DB, the adapter still delegates to RunTask using the
-// fallback minimal task rather than returning an immediate error.
-func TestDAGTaskAdapter_Run_TaskNotFound_UsesFallback(t *testing.T) {
+// TestDAGTaskAdapter_Run_TaskNotFound_ReturnsError verifies that when the task
+// is absent from the DB, the adapter returns a Failed result with an error.
+func TestDAGTaskAdapter_Run_TaskNotFound_ReturnsError(t *testing.T) {
 	db := newMockAdapterDB([]models.Task{})
 
-	// LLM returns unparseable output, so RunTask will fail after retries,
-	// but the key assertion is that findTask does NOT produce an error.
-	llm := &mockLLM{
-		responses: map[string]string{
-			"implementer": "not valid output",
-		},
-	}
-	g := &realMockGitProvider{diffOutput: "+x", commitSHA: "sha1"}
-	cmd := &realMockCmdRunner{exitCode: 0}
-
-	workDir := t.TempDir()
-	r := NewPipelineTaskRunner(llm, db, g, cmd, TaskRunnerConfig{
-		WorkDir:                  workDir,
-		MaxImplementationRetries: 0,
-		MaxLlmCallsPerTask:       8,
-		EnableTDDVerification:    false,
-		SearchReplaceSimilarity:  0.8,
-	})
-	adapter := NewDAGTaskAdapter(r, db)
+	r := buildMinimalTaskRunner(db)
+	adapter := NewDAGTaskAdapter(r, db, "ticket-1")
 
 	result := adapter.Run(context.Background(), "ghost-task")
-	// The run itself fails (unparseable LLM output), but the task ID must be preserved
-	// and the status must be a valid terminal state — not a missing "task not found" error.
 	assert.Equal(t, "ghost-task", result.TaskID)
-	assert.Contains(t,
-		[]models.TaskStatus{models.TaskStatusDone, models.TaskStatusFailed},
-		result.Status,
-		"status must be a valid terminal state",
-	)
+	assert.Equal(t, models.TaskStatusFailed, result.Status)
+	require.Error(t, result.Error)
+	assert.Contains(t, result.Error.Error(), "not found")
 }

@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/canhta/foreman/internal/daemon"
 	"github.com/canhta/foreman/internal/models"
@@ -11,13 +12,14 @@ import (
 // DAGTaskAdapter adapts PipelineTaskRunner to the daemon.TaskRunner interface,
 // bridging task ID lookups with the full pipeline execution.
 type DAGTaskAdapter struct {
-	runner *PipelineTaskRunner
-	db     TaskRunnerDB
+	runner   *PipelineTaskRunner
+	db       TaskRunnerDB
+	ticketID string
 }
 
 // NewDAGTaskAdapter creates an adapter that connects PipelineTaskRunner to DAGExecutor.
-func NewDAGTaskAdapter(runner *PipelineTaskRunner, db TaskRunnerDB) *DAGTaskAdapter {
-	return &DAGTaskAdapter{runner: runner, db: db}
+func NewDAGTaskAdapter(runner *PipelineTaskRunner, db TaskRunnerDB, ticketID string) *DAGTaskAdapter {
+	return &DAGTaskAdapter{runner: runner, db: db, ticketID: ticketID}
 }
 
 // Run implements daemon.TaskRunner. It looks up the task by ID from the DB
@@ -62,23 +64,16 @@ func (a *DAGTaskAdapter) Run(ctx context.Context, taskID string) daemon.TaskResu
 }
 
 func (a *DAGTaskAdapter) findTask(ctx context.Context, taskID string) (*models.Task, error) {
-	// The task ID is the DB task ID. We need to find which ticket it belongs to.
-	// Since tasks are created with known ticket IDs, we search across recent tickets.
-	// In practice, the orchestrator should pass the ticket ID when constructing the adapter.
-	//
-	// For now, iterate through the ticket's tasks. The adapter is constructed per-ticket,
-	// so the runner's config.WorkDir is already scoped to the right ticket.
-	tickets, err := a.db.ListTasks(ctx, "")
-	if err != nil || len(tickets) == 0 {
-		// Fallback: return a minimal task with just the ID.
-		return &models.Task{ID: taskID}, nil
+	tasks, err := a.db.ListTasks(ctx, a.ticketID)
+	if err != nil {
+		return nil, fmt.Errorf("listing tasks for ticket %s: %w", a.ticketID, err)
 	}
-	for i := range tickets {
-		if tickets[i].ID == taskID {
-			return &tickets[i], nil
+	for i := range tasks {
+		if tasks[i].ID == taskID {
+			return &tasks[i], nil
 		}
 	}
-	return &models.Task{ID: taskID}, nil
+	return nil, fmt.Errorf("task %s not found in ticket %s", taskID, a.ticketID)
 }
 
 // Compile-time check.

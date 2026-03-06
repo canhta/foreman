@@ -95,7 +95,7 @@ func (f *taskRunnerFactory) Create(input daemon.TaskRunnerFactoryInput) daemon.T
 			EnableTDDVerification:    input.EnableTDDVerification,
 		},
 	)
-	return pipeline.NewDAGTaskAdapter(tr, f.db)
+	return pipeline.NewDAGTaskAdapter(tr, f.db, input.TicketID)
 }
 
 func newStartCmd() *cobra.Command {
