@@ -280,6 +280,71 @@ func TestAPIGetStatus_DaemonStopped(t *testing.T) {
 	}
 }
 
+func TestAPIGetLlmCalls(t *testing.T) {
+	db := &mockDashboardDB{}
+	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
+	req := httptest.NewRequest("GET", "/api/tickets/t1/llm-calls", nil)
+	rec := httptest.NewRecorder()
+	api.handleGetLlmCalls(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestAPICostsMonth(t *testing.T) {
+	db := &mockDashboardDB{}
+	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
+	req := httptest.NewRequest("GET", "/api/costs/month", nil)
+	rec := httptest.NewRecorder()
+	api.handleCostsMonth(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var resp map[string]interface{}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if _, ok := resp["month"]; !ok {
+		t.Errorf("expected 'month' key in response, got %v", resp)
+	}
+	if _, ok := resp["cost_usd"]; !ok {
+		t.Errorf("expected 'cost_usd' key in response, got %v", resp)
+	}
+}
+
+func TestAPIRetryTicket_NotImplemented(t *testing.T) {
+	db := &mockDashboardDB{}
+	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
+	req := httptest.NewRequest("POST", "/api/tickets/t1/retry", nil)
+	rec := httptest.NewRecorder()
+	api.handleRetryTicket(rec, req)
+	if rec.Code != http.StatusNotImplemented {
+		t.Fatalf("expected 501, got %d", rec.Code)
+	}
+}
+
+func TestAPIDaemonPause(t *testing.T) {
+	db := &mockDashboardDB{}
+	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
+	req := httptest.NewRequest("POST", "/api/daemon/pause", nil)
+	rec := httptest.NewRecorder()
+	api.handleDaemonPause(rec, req)
+	if rec.Code != http.StatusNotImplemented {
+		t.Fatalf("expected 501, got %d", rec.Code)
+	}
+}
+
+func TestAPIDaemonResume(t *testing.T) {
+	db := &mockDashboardDB{}
+	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
+	req := httptest.NewRequest("POST", "/api/daemon/resume", nil)
+	rec := httptest.NewRecorder()
+	api.handleDaemonResume(rec, req)
+	if rec.Code != http.StatusNotImplemented {
+		t.Fatalf("expected 501, got %d", rec.Code)
+	}
+}
+
 func TestAPIHandleCostsBudgets(t *testing.T) {
 	db := &mockDashboardDB{}
 	api := NewAPI(db, nil, nil, models.CostConfig{
