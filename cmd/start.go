@@ -256,6 +256,7 @@ func newStartCmd() *cobra.Command {
 					host = "127.0.0.1"
 				}
 				srv := dashboard.NewServer(database, emitter, d, reg, cfg.Cost, "0.1.0", host, port)
+				srv.SetDaemonController(d)
 				go func() {
 					if err := srv.Start(); err != nil {
 						log.Error().Err(err).Msg("dashboard server error")

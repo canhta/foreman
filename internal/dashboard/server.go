@@ -27,9 +27,19 @@ type Server struct {
 	server *http.Server
 }
 
+// dbTicketRetrier resets a failed ticket to queued so the daemon picks it up.
+type dbTicketRetrier struct{ db DashboardDB }
+
+func (r *dbTicketRetrier) RetryTicket(ctx context.Context, id string) error {
+	return r.db.UpdateTicketStatus(ctx, id, models.TicketStatusQueued)
+}
+
 // NewServer creates a new dashboard Server and registers all HTTP routes.
 func NewServer(db DashboardDB, emitter EventSubscriber, statusProvider DaemonStatusProvider, reg *prometheus.Registry, costCfg models.CostConfig, version, host string, port int) *Server {
 	api := NewAPI(db, emitter, statusProvider, costCfg, version)
+
+	// Wire ticket retrier using DB — retry resets ticket to queued for daemon pickup.
+	api.SetTicketRetrier(&dbTicketRetrier{db: db})
 
 	mux := http.NewServeMux()
 
@@ -101,6 +111,16 @@ func NewServer(db DashboardDB, emitter EventSubscriber, statusProvider DaemonSta
 			IdleTimeout:  120 * time.Second,
 		},
 	}
+}
+
+// SetDaemonController wires pause/resume controls to the daemon.
+func (s *Server) SetDaemonController(c DaemonController) {
+	s.api.SetDaemonController(c)
+}
+
+// SetChannelHealth registers a channel health checker for the status endpoint.
+func (s *Server) SetChannelHealth(name string, h interface{ IsConnected() bool }) {
+	s.api.SetChannelHealth(name, h)
 }
 
 // Start begins listening for HTTP connections. Blocks until the server stops.

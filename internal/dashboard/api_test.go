@@ -69,6 +69,10 @@ func (m *mockDashboardDB) UpdateTaskStatus(_ context.Context, _ string, _ models
 	return nil
 }
 
+func (m *mockDashboardDB) UpdateTicketStatus(_ context.Context, _ string, _ models.TicketStatus) error {
+	return nil
+}
+
 func (m *mockDashboardDB) GetTeamStats(_ context.Context, _ time.Time) ([]models.TeamStat, error) {
 	return m.teamStats, nil
 }
