@@ -345,6 +345,38 @@ func TestAPIDaemonResume(t *testing.T) {
 	}
 }
 
+type mockChannelHealth struct {
+	connected bool
+}
+
+func (m *mockChannelHealth) IsConnected() bool { return m.connected }
+
+func TestAPIGetStatus_WithChannelHealth(t *testing.T) {
+	db := &mockDashboardDB{}
+	ch := &mockChannelHealth{connected: true}
+	api := NewAPI(db, nil, &mockDaemonStatus{running: true}, models.CostConfig{}, "1.0.0")
+	api.SetChannelHealth("whatsapp", ch)
+
+	req := httptest.NewRequest("GET", "/api/status", nil)
+	rec := httptest.NewRecorder()
+	api.handleStatus(rec, req)
+
+	var resp map[string]interface{}
+	json.NewDecoder(rec.Body).Decode(&resp)
+
+	channels, ok := resp["channels"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected channels key in response")
+	}
+	wa, ok := channels["whatsapp"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected whatsapp key in channels")
+	}
+	if wa["connected"] != true {
+		t.Errorf("expected connected=true, got %v", wa["connected"])
+	}
+}
+
 func TestAPIHandleCostsBudgets(t *testing.T) {
 	db := &mockDashboardDB{}
 	api := NewAPI(db, nil, nil, models.CostConfig{

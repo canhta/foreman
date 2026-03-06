@@ -42,8 +42,17 @@ type API struct {
 	db             DashboardDB
 	emitter        EventSubscriber
 	statusProvider DaemonStatusProvider
+	channelHealth  map[string]interface{ IsConnected() bool }
 	version        string
 	costCfg        models.CostConfig
+}
+
+// SetChannelHealth registers a HealthChecker for a named channel.
+func (a *API) SetChannelHealth(name string, h interface{ IsConnected() bool }) {
+	if a.channelHealth == nil {
+		a.channelHealth = make(map[string]interface{ IsConnected() bool })
+	}
+	a.channelHealth[name] = h
 }
 
 // NewAPI creates a new API instance.
@@ -69,12 +78,25 @@ func (a *API) handleStatus(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+
+	resp := map[string]interface{}{
 		"status":       "running",
 		"version":      a.version,
 		"uptime":       time.Since(a.startedAt).String(),
 		"daemon_state": daemonState,
-	})
+	}
+
+	if len(a.channelHealth) > 0 {
+		channels := make(map[string]interface{})
+		for name, h := range a.channelHealth {
+			channels[name] = map[string]interface{}{
+				"connected": h.IsConnected(),
+			}
+		}
+		resp["channels"] = channels
+	}
+
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (a *API) handleListTickets(w http.ResponseWriter, r *http.Request) {
