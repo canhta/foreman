@@ -166,6 +166,11 @@ func (p *PostgresDB) CreateTasks(ctx context.Context, ticketID string, tasks []m
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	// Clear any tasks from a previous plan attempt before inserting the new plan.
+	if _, clearErr := tx.ExecContext(ctx, `DELETE FROM tasks WHERE ticket_id = $1`, ticketID); clearErr != nil {
+		return fmt.Errorf("clear existing tasks: %w", clearErr)
+	}
+
 	stmt, err := tx.PrepareContext(ctx,
 		`INSERT INTO tasks (id, ticket_id, sequence, title, description, acceptance_criteria,
 		 files_to_read, files_to_modify, test_assertions, estimated_complexity, depends_on, status, created_at)
