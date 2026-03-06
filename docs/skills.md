@@ -15,6 +15,25 @@ Skills are triggered at one of four pipeline hook points:
 | `post_pr` | After PR is created and tracker is synced | Slack notifications, Jira automations |
 | `post_merge` | After PR is merged | Deployment triggers, cleanup tasks, metrics |
 
+```mermaid
+flowchart LR
+    LINT["Lint + Tests"] --> PL(["post_lint"]):::hook
+    PL --> SPEC["Spec Review"]
+    SPEC --> QUAL["Quality Review"]
+    QUAL --> COMMIT["Commit"]
+    COMMIT -. "... more tasks ..." .-> FR
+
+    FR["Final Review"] --> PPR(["pre_pr"]):::hook
+    PPR --> CREATEPR["Create PR\n+ sync tracker"]
+    CREATEPR --> POSTPR(["post_pr"]):::hook
+    POSTPR --> AWAIT["awaiting_merge"]
+    AWAIT --> MERGED["PR merged"]
+    MERGED --> PMG(["post_merge"]):::hook
+    PMG --> DONE["done"]
+
+    classDef hook fill:#fef9c3,stroke:#ca8a04,color:#78350f,font-weight:bold
+```
+
 Hook failures are **logged but do not block the pipeline**. A skill that errors or times out is recorded as a `hook_skill_failed` event and execution continues.
 
 Enable skills at hook points in your `foreman.toml`:
@@ -191,6 +210,30 @@ Embeds another skill as a step. Used for composition.
 ```
 
 The embedded skill runs with the same context as the parent. Output from the subskill's steps is namespaced under the subskill step ID.
+
+---
+
+## How Steps Chain Together
+
+Steps in a skill run sequentially. Each step can reference outputs from previous steps using template syntax (`{{ .Steps.<id>.output }}`). The diagram below shows how a typical multi-step skill builds up a result:
+
+```mermaid
+flowchart LR
+    CTX["Pipeline context\n.Ticket · .Diff · .WorkDir\n.Models · .BranchName"] --> S1
+
+    S1["git_diff\nid: get-diff"] -- ".Steps.get-diff.current_diff" --> S2
+    S2["agentsdk\nid: audit\noutput_format: json"] -- ".Steps.audit.result" --> S3
+    S3["llm_call\nid: summarise\nprompt_template uses audit result"] -- ".Steps.summarise.output" --> S4
+    S4["file_write\npath: .foreman/report.md\ncontent: {{ .Steps.summarise.output }}"]
+
+    style CTX fill:#f1f5f9,stroke:#94a3b8
+    style S1 fill:#e0f2fe,stroke:#0284c7
+    style S2 fill:#fef3c7,stroke:#d97706
+    style S3 fill:#e0f2fe,stroke:#0284c7
+    style S4 fill:#dcfce7,stroke:#16a34a
+```
+
+All step types share the same template variable scope — `llm_call`, `run_command`, `file_write`, `git_diff`, `agentsdk`, and `subskill` can all reference any previous step's output.
 
 ---
 
@@ -393,3 +436,12 @@ To contribute a skill to the `skills/community/` directory:
    - The skill YAML file in `skills/community/`
    - A brief description in the PR of what the skill does and when it's useful
    - Evidence that it was tested on at least one real ticket
+
+---
+
+## See Also
+
+- [Agent Runner](agent-runner.md) — the `AgentRunner` used by `agentsdk` steps
+- [Pipeline](pipeline.md) — where each hook point fires in the pipeline
+- [Configuration](configuration.md#pipeline-hooks) — `[pipeline.hooks]` config reference
+- [Development](development.md) — how to add a new skill step type

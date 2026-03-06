@@ -2,6 +2,25 @@
 
 This guide covers setting up a development environment, the project's conventions, testing strategy, and how to contribute changes.
 
+> **New contributor?** The fastest path to a first PR:
+> 1. Run `make setup-hooks && make setup-dev && make test` to verify your environment.
+> 2. Pick a [good first issue](https://github.com/canhta/foreman/issues?q=is%3Aopen+label%3A%22good+first+issue%22) or open a discussion for your idea.
+> 3. Branch from `main`, make your change, and submit a PR using the checklist at the bottom of this page.
+
+## Quick Reference
+
+| Command | What it does |
+|---|---|
+| `make build` | Build the `./foreman` binary |
+| `make test` | Run all tests with the race detector |
+| `make lint` | Run `go vet` + `golangci-lint` |
+| `make dev` | Hot-reload daemon on file changes (requires `make setup-dev`) |
+| `make debug` | Start Delve debugger on `:2345` (requires `make setup-dev`) |
+| `./foreman doctor` | Validate config and API credentials |
+| `./foreman run LOCAL-1` | Process a single ticket from the local tracker |
+
+---
+
 ## Prerequisites
 
 | Requirement | Version | Notes |
@@ -336,8 +355,16 @@ Avoid vague messages like `fix bug`, `update code`, `changes`.
 
 ## Pull Request Checklist
 
-- [ ] `make test` passes locally
+Before opening a PR, verify:
+
+- [ ] `make test` passes (all packages, race detector)
 - [ ] `make lint` passes with no new warnings
+- [ ] New or changed behaviour has a corresponding test
+- [ ] Bug fixes include a regression test
+- [ ] `foreman.example.toml` updated if new config keys were added
+- [ ] Relevant docs in `docs/` updated for any user-facing change
+- [ ] No secrets, credentials, or API keys in code or tests
+- [ ] PR description explains what changed, why, and links the relevant issue
 - [ ] New tests cover the changed behavior
 - [ ] Config changes are reflected in `foreman.example.toml`
 - [ ] Documentation updated (`docs/`) if user-facing behavior changed
@@ -369,13 +396,23 @@ git push origin v0.2.0
 
 ## Security
 
-- Never commit credentials, API keys, or secrets.
+- Never commit credentials, API keys, or secrets to the repository.
 - Do not post sensitive data in issues or PRs.
-- Report security vulnerabilities privately to the maintainers before opening a public issue.
+- To report a security vulnerability, follow the process in [SECURITY.md](../SECURITY.md) — please do not open a public issue.
 - All user input that reaches LLM prompts is treated as untrusted. The secrets scanner blocks known credential patterns before context assembly.
 
 ## Getting Help
 
-- Read the existing tests — they are the most accurate documentation of expected behavior.
+- Read the existing tests — they are the most accurate documentation of expected behaviour.
 - Check `docs/` for architecture, pipeline, and configuration references.
-- Open a GitHub Issue with a clear problem statement and reproduction steps.
+- Open a [GitHub Discussion](https://github.com/canhta/foreman/discussions) for questions or ideas.
+- Open a [GitHub Issue](https://github.com/canhta/foreman/issues) with a clear problem statement and reproduction steps for bugs.
+
+---
+
+## See Also
+
+- [Architecture](architecture.md) — package layout and design principles
+- [Pipeline](pipeline.md) — the full ticket state machine
+- [Configuration](configuration.md) — `foreman.toml` reference
+- [CONTRIBUTING.md](../CONTRIBUTING.md) — contribution agreement and process

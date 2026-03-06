@@ -4,6 +4,26 @@ Foreman is configured via a TOML file named `foreman.toml` in the working direct
 
 Environment variables can be interpolated using `${VAR_NAME}` syntax anywhere in the config. All secrets should use this form — never hardcode API keys in the config file.
 
+## Configuration Sections
+
+| Section | Purpose |
+|---|---|
+| `[daemon]` | Poll intervals, parallelism limits, working directory, log level |
+| `[dashboard]` | Web UI port, host binding, authentication token |
+| `[tracker]` | Issue tracker provider and credentials |
+| `[git]` | Repository clone URL, branch settings, PR options |
+| `[llm]` | LLM provider selection and API keys |
+| `[models]` | Per-role model routing (planner, implementer, reviewers…) |
+| `[cost]` | Per-ticket / per-day / per-month spend limits |
+| `[limits]` | Task counts, retry caps, token budgets, feature flags |
+| `[pipeline.hooks]` | YAML skill names to run at each hook point |
+| `[decompose]` | Automatic large-ticket decomposition settings |
+| `[secrets]` | Secrets scanner patterns and always-excluded files |
+| `[rate_limit]` | LLM request rate limiting and backoff |
+| `[runner]` | Local or Docker command runner |
+| `[database]` | SQLite or PostgreSQL connection |
+| `[agent_runner]` | Agent runner type (builtin / claudecode / copilot) |
+
 ---
 
 ## Daemon

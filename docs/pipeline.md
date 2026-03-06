@@ -4,97 +4,82 @@ This document describes the full lifecycle of a ticket as it flows through Forem
 
 ## State Machine Overview
 
+The diagram below shows all ticket states and how they transition. Steps like the decomposition check, clarification check, and file reservation check are processing steps that happen between states — observable states are in bold boxes.
+
+```mermaid
+stateDiagram-v2
+    [*] --> queued : ticket labelled foreman-ready
+
+    queued --> decomposing : oversized ticket
+    decomposing --> decomposed : child tickets created in tracker
+    decomposed --> done : all children merged
+
+    queued --> clarification_needed : ambiguous description
+    clarification_needed --> planning : author responds / label removed
+    clarification_needed --> blocked : clarification timeout
+
+    queued --> planning : ticket is clear
+    planning --> plan_validating
+    plan_validating --> planning : retry with validation errors (once)
+    plan_validating --> implementing : plan valid
+    plan_validating --> failed : second validation failure
+
+    implementing --> reviewing : all tasks complete
+    implementing --> partial : some tasks failed, partial PR enabled
+    implementing --> failed : all tasks failed
+
+    reviewing --> pr_created
+    partial --> pr_created
+
+    pr_created --> awaiting_merge
+
+    awaiting_merge --> merged : PR merged
+    awaiting_merge --> pr_closed : PR closed without merging
+
+    merged --> done
+    done --> [*]
+    failed --> [*]
+    blocked --> [*]
+    pr_closed --> [*]
 ```
-QUEUED
-  │
-  ▼
-DECOMPOSITION CHECK ──── oversized ──► DECOMPOSE (LLM) ──► create child tickets ──► DECOMPOSED
-  │
-  ▼ (fits in one PR)
-FILE RESERVATION CHECK ──── conflict ──► re-queue (retry on next poll)
-  │
-  ▼ (free)
-CLARIFICATION CHECK ──── ambiguous ──► ASK CLARIFY ──── timeout ──► BLOCKED
-  │                                          │
-  │                                     (author responds)
-  ▼                                          │
-PLANNING (LLM) ◄──────────────────────────┘
-  │
-  ▼
-PLAN VALIDATE ──── invalid ──► re-plan (max 1 retry) ──► FAILED
-  │
-  ▼ (valid)
-RESERVE FILES
-  │
-  ╔══════════════════════════════════════════════╗
-  ║  FOR EACH TASK (parallel, DAG-respecting)     ║
-  ╠══════════════════════════════════════════════╣
-  ║  SECRETS SCAN                                ║
-  ║    │                                         ║
-  ║    ▼                                         ║
-  ║  IMPLEMENT (TDD) ◄─── retry with feedback    ║
-  ║    │                                         ║
-  ║    ▼                                         ║
-  ║  TDD VERIFY ────── invalid red ──► retry     ║
-  ║    │                                         ║
-  ║    ▼ (pass)                                  ║
-  ║  LINT + TEST ──── fail ──► retry (max 2)     ║
-  ║    │                                         ║
-  ║    ▼ (pass)                                  ║
-  ║  HOOK: post_lint                             ║
-  ║    │                                         ║
-  ║    ▼                                         ║
-  ║  SPEC REVIEW ──── fail ──► retry (max 2)     ║
-  ║    │                                         ║
-  ║    ▼ (pass)                                  ║
-  ║  QUALITY REVIEW ── fail ──► retry (max 1)   ║
-  ║    │                                         ║
-  ║    ▼ (pass)                                  ║
-  ║  COMMIT                                      ║
-  ║    │                                         ║
-  ║    ▼                                         ║
-  ║  DEP CHANGE CHECK (reinstall if needed)      ║
-  ╚══════════════════════════════════════════════╝
-  │
-  │  (all tasks done, or partial failure)
-  ▼
-REBASE ──── conflict ──► AUTO-RESOLVE (LLM) ──► PR with warning if unresolved
-  │
-  ▼ (clean)
-FULL TESTS ──── fail ──► FAILED (or partial PR)
-  │
-  ▼ (pass)
-FINAL REVIEW (LLM)
-  │
-  ▼
-HOOK: pre_pr
-  │
-  ▼
-CREATE PR
-  │
-  ▼
-HOOK: post_pr
-  │
-  ▼
-RELEASE FILE RESERVATIONS
-  │
-  ▼
-AWAITING MERGE ◄───────────────────────────────────────────────
-  │                                                            │
-  ▼                                                            │
-MERGE CHECKER (polls PR status)                                │
-  │                                                            │
-  ├── merged ──► MERGED ──► HOOK: post_merge                   │
-  │                  │                                         │
-  │                  ▼ (child ticket?)                         │
-  │              CHECK PARENT COMPLETION                       │
-  │                  │                                         │
-  │                  ▼ (all children merged)                   │
-  │              PARENT → DONE                                 │
-  │                                                            │
-  └── closed (not merged) ──► PR_CLOSED                        │
-                                                               │
-DONE ◄─────────────────────────────────────────────────────────┘
+
+The **full processing pipeline** for a normal (non-decomposed) ticket follows this sequence:
+
+```mermaid
+flowchart TD
+    START([Ticket picked up]) --> DECOMP{Decomposition\ncheck}
+    DECOMP -- oversized --> DECOMPOSE[LLM generates\n3-6 child tickets]
+    DECOMPOSE --> DECOMPOSED([decomposed\nwaits for children])
+
+    DECOMP -- fits in one PR --> RESERVE{File reservation\ncheck}
+    RESERVE -- conflict --> REQUEUE([re-queue on\nnext poll cycle])
+    RESERVE -- free --> CLARIFY{Clarification\ncheck}
+
+    CLARIFY -- ambiguous --> ASKQ[Post clarification\ncomment + label]
+    ASKQ -- author responds --> PLAN
+    ASKQ -- timeout --> BLOCKED([blocked])
+
+    CLARIFY -- clear --> PLAN[Planning\nLLM call]
+    PLAN --> VALIDATE{Plan validation}
+    VALIDATE -- fail retry --> PLAN
+    VALIDATE -- fail 2nd time --> FAILED([failed])
+    VALIDATE -- valid --> TASKS
+
+    subgraph TASKS["Per-Task DAG  (parallel, max_parallel_tasks)"]
+        T1["Task 1"] & T2["Task 2"] & T3["..."]
+    end
+
+    TASKS --> REBASE[Rebase onto\ndefault branch]
+    REBASE -- conflict --> AUTORESOLVE[LLM auto-resolve\nconflicts]
+    AUTORESOLVE --> FULLTESTS
+    REBASE -- clean --> FULLTESTS{Full test suite}
+    FULLTESTS -- fail --> FAILED2([failed])
+    FULLTESTS -- pass --> FINALREV[Final Review\nLLM call]
+
+    FINALREV --> PREPR(["pre_pr hooks"])
+    PREPR --> CREATEPR[Create PR\n+ sync to tracker]
+    CREATEPR --> POSTPR(["post_pr hooks"])
+    POSTPR --> AWAIT([awaiting_merge])
 ```
 
 ---
@@ -102,6 +87,7 @@ DONE ◄────────────────────────
 ## Pipeline Stages
 
 ### 0. Decomposition Check
+
 
 Before entering the main pipeline, Foreman checks whether the ticket is too large for a single PR using deterministic heuristics:
 
@@ -119,6 +105,22 @@ If decomposition is triggered:
 5. The parent status changes to `decomposed` — it exits the pipeline and waits for all children to merge
 
 Decomposition is disabled by default (`decompose.enabled = false`). See [Configuration](configuration.md#decomposition) for settings.
+
+```mermaid
+flowchart TD
+    P["Parent Ticket"] --> HEUR{"NeedsDecomposition?\nword count · scope keywords\nvague + long"}
+    HEUR -- no --> NORMAL[Normal pipeline]
+    HEUR -- yes --> LLM["LLM: generate 3-6\nchild ticket specs"]
+    LLM --> C1["Child 1\nforeman-ready-pending"]
+    LLM --> C2["Child 2\nforeman-ready-pending"]
+    LLM --> CN["..."]
+    C1 & C2 & CN --> APPROVE["Awaiting human approval\n(label changed to foreman-ready)"]
+    APPROVE --> PIPES["Each child runs its\nown independent pipeline"]
+    PIPES --> CHECK{"All children\nmerged?"}
+    CHECK -- no --> WAIT([waiting...])
+    WAIT --> CHECK
+    CHECK -- yes --> DONE["Parent → done\nclosed in tracker"]
+```
 
 ### 1. Clarification Check
 
@@ -162,6 +164,40 @@ If validation fails, the planner is retried once with the validation errors as f
 Tasks execute in parallel using a coordinator/worker-pool DAG executor (`internal/daemon/dag_executor.go`). Tasks with no unmet dependencies start immediately; a task begins only when all entries in its `depends_on` list have completed successfully. The worker pool is bounded by `max_parallel_tasks` (default 3). Each task runs with an individual timeout (`task_timeout_minutes`, default 15 minutes).
 
 If a task fails, its entire transitive closure of dependents is marked `skipped` via BFS — independent branches continue executing. For partial outcomes, Foreman creates a PR with a GitHub-flavoured checklist distinguishing completed, failed, and skipped tasks.
+
+Each task moves through a fixed series of gates with targeted retry feedback at each stage:
+
+```mermaid
+flowchart TD
+    START([Task ready]) --> SCAN[Secrets Scan\nassemble context]
+    SCAN --> IMPL["Implement\nwrite tests + implementation\n(SEARCH/REPLACE blocks)"]
+
+    IMPL --> RED{"TDD — RED phase\napply tests only\nrun test suite"}
+    RED -- "compile / runtime error\n(invalid RED)" --> IMPL
+    RED -- "assertion failure\n(valid RED)" --> GREEN
+
+    GREEN["Apply implementation\nfiles"] --> GREENCHECK{"TDD — GREEN phase\nrun test suite"}
+    GREENCHECK -- "tests fail" --> IMPL
+    GREENCHECK -- "tests pass" --> LINT
+
+    LINT{"Lint + Tests"} -- "fail  (max 2 retries)" --> IMPL
+    LINT -- "pass" --> POSTLINT(["post_lint hook"])
+
+    POSTLINT --> SPEC{"Spec Review — LLM\nDoes diff satisfy\nacceptance criteria?"}
+    SPEC -- "fail — criterion violations\n(max 2 cycles)" --> IMPL
+    SPEC -- "pass" --> QUAL
+
+    QUAL{"Quality Review — LLM\nCorrectness · security\nperformance · maintainability"} -- "fail\n(max 1 cycle)" --> IMPL
+    QUAL -- "pass" --> COMMIT[Commit to working branch\nupdate last_completed_task_seq]
+    COMMIT --> DEPCHECK[Dependency change check\nreinstall if manifests changed]
+    DEPCHECK --> END([Task complete])
+
+    IMPL -- "LLM call cap reached\nmax_llm_calls_per_task = 8" --> TASKFAIL([Task failed])
+
+    style POSTLINT fill:#fef9c3,stroke:#ca8a04
+    style TASKFAIL fill:#fee2e2,stroke:#dc2626
+    style END fill:#dcfce7,stroke:#16a34a
+```
 
 #### Secrets Scan
 Before assembling any LLM context, Foreman scans the files relevant to the current task using pattern matching. Files matching secret patterns (`.env`, `*.key`, `*.pem`, known API key formats, private key headers) are excluded from context. Matched files are logged as security events.
@@ -338,3 +374,12 @@ LLM system prompts are Jinja2-compatible templates (`.md.j2`) rendered with `pon
 | `prompts/clarifier.md.j2` | Clarification question generation |
 
 Templates have access to all relevant context variables including ticket details, task descriptions, accumulated feedback, code diffs, and repo context summaries.
+
+---
+
+## See Also
+
+- [Architecture](architecture.md) — system design, concurrency model, and package layout
+- [Configuration](configuration.md) — tune limits, retry caps, token budgets, and feature flags
+- [Skills](skills.md) — extend pipeline hook points with custom YAML steps
+- [Features](features.md) — high-level capability overview

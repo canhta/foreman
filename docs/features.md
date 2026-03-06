@@ -1,6 +1,28 @@
 # Features
 
-Foreman is an autonomous software development daemon. The following is a complete overview of its capabilities.
+Foreman is an autonomous software development daemon that turns labelled issue tracker tickets into tested, reviewed pull requests with no human involvement in the implementation loop.
+
+## At a Glance
+
+| Capability | Summary |
+|---|---|
+| **Ticket-to-PR automation** | Plan, implement, review, and open a PR end-to-end |
+| **TDD-driven implementation** | Enforces RED → GREEN cycle with mechanical test verification |
+| **Parallel DAG execution** | Tasks within a ticket run in parallel, respecting dependencies |
+| **Tiered review gates** | Spec review, quality review, and final review at each stage |
+| **Tiered retry feedback** | Targeted error context is fed back on lint, test, and review failures |
+| **Ticket decomposition** | Oversized tickets auto-split into focused child tickets |
+| **Clarification requests** | Asks for detail on vague tickets; waits for author response |
+| **Partial PRs** | Creates a PR with completed work even when some tasks fail |
+| **Crash recovery** | Resumes from last committed task after a daemon restart |
+| **Cost control** | Per-ticket, per-day, and per-month LLM spend limits |
+| **Secrets scanner** | Redacts secret patterns from every LLM context assembly |
+| **YAML skills engine** | Extend the pipeline at four hook points without modifying Go code |
+| **Multi-provider LLM** | Anthropic, OpenAI, OpenRouter, local models; per-role routing |
+| **Multiple issue trackers** | Jira, GitHub Issues, Linear, local file |
+| **Built-in dashboard** | HTTP/WebSocket UI with REST API and Prometheus metrics |
+
+---
 
 ## Core Pipeline
 

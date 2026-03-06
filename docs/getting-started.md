@@ -1,11 +1,17 @@
 # Getting Started
 
+This guide walks you through installing Foreman, writing a minimal configuration, and processing your first ticket.
+
+> **Before you begin:** You need an API key for at least one LLM provider (Anthropic, OpenAI, or OpenRouter) and an issue tracker account (Jira, GitHub Issues, Linear, or a local file for testing without any external service).
+
 ## Requirements
 
-- **Go 1.25+** with a C toolchain (CGO is required by `go-sqlite3`)
-- **Git** (the `git` CLI must be available on `$PATH`)
-- An **LLM API key** for your chosen provider (Anthropic, OpenAI, or OpenRouter)
-- An **issue tracker** account (Jira, GitHub, Linear, or a local file for testing)
+| Requirement | Notes |
+|---|---|
+| Go 1.25+ | CGO is required by `go-sqlite3`; a C toolchain must be available |
+| Git | The `git` CLI must be on `$PATH` |
+| LLM API key | Anthropic, OpenAI, or OpenRouter |
+| Issue tracker | Jira, GitHub Issues, Linear, or local file (no account needed) |
 
 ## Installation
 
@@ -80,6 +86,25 @@ export FOREMAN_DASHBOARD_TOKEN=$(./foreman token generate)
 For a complete config reference, see [Configuration](configuration.md).
 
 ## First Run
+
+Here is the end-to-end path from install to running ticket:
+
+```mermaid
+flowchart TD
+    A([Install foreman\nbinary or build from source]) --> B["Copy foreman.example.toml\n→ foreman.toml"]
+    B --> C["Set environment variables\nGITHUB_TOKEN · ANTHROPIC_API_KEY\nFOREMAN_DASHBOARD_TOKEN"]
+    C --> D["./foreman doctor\nvalidate config + credentials"]
+    D -- "errors" --> C
+    D -- "all green" --> E{How do you\nwant to run?}
+
+    E -- "test one ticket" --> F["./foreman run PROJ-123\n(or --dry-run to plan only)"]
+    E -- "continuous daemon" --> G["./foreman start\nor ./foreman start --daemon"]
+
+    F --> H["Label a ticket foreman-ready\nin your issue tracker"]
+    G --> H
+    H --> I(["Foreman picks it up\nautomatically on next poll"])
+    I --> J["Monitor: ./foreman ps\nor open dashboard :3333"]
+```
 
 ### Health Check
 
@@ -178,6 +203,20 @@ EOF
 ```
 
 Once linked, start the daemon normally with `./foreman start`. You can send `/status`, `/pause`, `/resume`, `/cost` commands, or free-text ticket descriptions via WhatsApp DM.
+
+---
+
+## What's Next
+
+| Goal | Document |
+|---|---|
+| Understand all configuration options | [Configuration](configuration.md) |
+| Connect to Jira, GitHub Issues, Linear, or switch LLM providers | [Integrations](integrations.md) |
+| Add security scans, changelogs, or Slack notifications | [Skills](skills.md) |
+| Use Claude Code or GitHub Copilot as the agent | [Agent Runner](agent-runner.md) |
+| See what Foreman can do | [Features](features.md) |
+| Deploy to a server | [Deployment](deployment.md) |
+| Explore the web dashboard | [Dashboard](dashboard.md) |
 
 See [Configuration](configuration.md#messaging-channel-whatsapp) for all channel options.
 

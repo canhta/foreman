@@ -4,43 +4,38 @@
 
 Foreman is a single Go binary structured as a daemon with a pluggable, interface-first core. Every external dependency — LLM provider, issue tracker, git host, command runner, database — is hidden behind a Go interface. Implementations are swappable without touching the pipeline.
 
-```
-┌──────────────────────────────────────────────────────────┐
-│                        DAEMON                             │
-│  Runs 24/7. Polls issue tracker. Manages goroutine pool.  │
-│  File reservation layer. Crash recovery. Merge checker.   │
-└──────────────┬───────────────────────────────────────────┘
-               │  (up to N parallel)
-    ┌──────────┴──────────┐
-    ▼                     ▼
-┌──────────┐       ┌──────────┐
-│ Pipeline │       │ Pipeline │
-│ Ticket A │       │ Ticket B │  ...
-└──────┬───┘       └──────────┘
-       │
-       ▼
-┌─────────────────────────────────────────────────────────┐
-│                    PIPELINE (per ticket)                  │
-│                                                          │
-│  Issue Sync → Decompose Check → Planner → Validator      │
-│    → Per-Task [Implement → TDD → Lint → Reviews → Commit]│
-│    → Rebase → Full Tests → Final Review → PR             │
-│    → Merge Check → post_merge hooks → Parent Completion  │
-│                                                          │
-│  LLM Router ───────────────────────────────────────────  │
-│  Cost Controller ──────────────────────────────────────  │
-└─────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌──────────────────────────────────────────────────────────┐
-│    PERSISTENCE: SQLite (default) or PostgreSQL           │
-│    Git: code changes only. Filesystem: repo clones.      │
-└──────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌──────────────────────────────────────────────────────────┐
-│    DASHBOARD: HTTP Server, REST API, WebSocket, Auth     │
-└──────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    subgraph ext["External Systems"]
+        Tracker["Issue Tracker\njira · github · linear · local"]
+        GitHost["Git Host\ngithub — clone, push, PRs"]
+        LLMProv["LLM Provider\nanthropic · openai · openrouter · local"]
+    end
+
+    subgraph foreman["Foreman Daemon"]
+        direction TB
+        D["Scheduler\n24/7 poll · goroutine pool\nfile reservations · crash recovery"]
+        MC["Merge Checker\n(background goroutine)"]
+
+        subgraph pipelines["Parallel Pipelines  (up to max_parallel_tickets)"]
+            PA["Pipeline\nTicket A"]
+            PB["Pipeline\nTicket B"]
+            PC["..."]
+        end
+
+        DB[("SQLite / PostgreSQL\ntickets · tasks · llm_calls\nhandoffs · reservations · events")]
+        DASH["Dashboard\nHTTP · REST · WebSocket · Auth"]
+
+        D -- spawn --> pipelines
+        D <--> DB
+        MC <--> DB
+        DASH <--> DB
+    end
+
+    Tracker <-- poll labels · comments · status --> D
+    GitHost <-- clone · branch · commit · push · PR --> pipelines
+    LLMProv <-- Complete API --> pipelines
+    GitHost <-- PR status poll --> MC
 ```
 
 ## Design Principles
@@ -237,7 +232,29 @@ See [Pipeline](pipeline.md) for the detailed state machine.
 The daemon runs up to `max_parallel_tickets` pipelines concurrently. Each pipeline is a goroutine. A shared rate limiter (token bucket using `golang.org/x/time/rate`) prevents all workers from hammering the LLM provider simultaneously.
 
 ### DAG Executor (Per-Ticket Parallelism)
-Within each ticket, tasks execute in parallel via a coordinator/worker-pool DAG executor (`internal/daemon/dag_executor.go`). A single coordinator goroutine owns all mutable DAG state (adjacency list, in-degree map, results) — zero mutexes on DAG state. Workers pull task IDs from a `readyChan`, execute via the injected `TaskRunner` interface, and send results back on a `resultChan`. The coordinator decments in-degree counters and pushes newly-ready tasks. On failure, BFS prunes the transitive dependent closure (marking them `skipped`). The worker pool size is `max_parallel_tasks` (default 3); each task runs under a per-task `context.WithTimeout` (`task_timeout_minutes`, default 15 min).
+Within each ticket, tasks execute in parallel via a coordinator/worker-pool DAG executor (`internal/daemon/dag_executor.go`). A single coordinator goroutine owns all mutable DAG state (adjacency list, in-degree map, results) — zero mutexes on DAG state. Workers pull task IDs from a `readyChan`, execute via the injected `TaskRunner` interface, and send results back on a `resultChan`. The coordinator decrements in-degree counters and pushes newly-ready tasks. On failure, BFS prunes the transitive dependent closure (marking them `skipped`). The worker pool size is `max_parallel_tasks` (default 3); each task runs under a per-task `context.WithTimeout` (`task_timeout_minutes`, default 15 min).
+
+```mermaid
+flowchart TD
+    COORD["Coordinator Goroutine\nOwns: adjacency list · in-degree map · results\nZero mutexes on DAG state"]
+
+    subgraph workers["Worker Pool  (max_parallel_tasks = 3)"]
+        W1["Worker 1"]
+        W2["Worker 2"]
+        W3["Worker 3"]
+    end
+
+    COORD -- "push ready task IDs" --> RC(["readyChan"])
+    RC --> workers
+    workers -- "send result" --> RS(["resultChan"])
+    RS --> COORD
+    COORD -- "decrement in-degree\npush newly-ready tasks" --> COORD
+
+    FAIL(["task fails"]) -- "BFS prune\nmark transitive dependents skipped" --> COORD
+
+    style COORD fill:#dbeafe,stroke:#3b82f6
+    style workers fill:#dcfce7,stroke:#16a34a
+```
 
 ### SQLite Serialized Writer
 When using SQLite, all writes go through a single writer goroutine via a buffered channel. This prevents `SQLITE_BUSY` errors under concurrent load. Non-critical writes (events, metrics) are batched and flushed on a configurable interval. Reads go directly to the SQLite connection (WAL mode allows concurrent reads alongside a single writer).
@@ -275,3 +292,12 @@ File reservations are stored in the database, not in memory. Before a pipeline b
 | TOML | `github.com/BurntSushi/toml` |
 | TOML round-trip editing | `github.com/pelletier/go-toml` (v1) |
 | WhatsApp Web protocol | `go.mau.fi/whatsmeow` |
+
+---
+
+## See Also
+
+- [Pipeline](pipeline.md) — the full ticket state machine and per-task execution loop
+- [Agent Runner](agent-runner.md) — builtin runner, Claude Code, and Copilot
+- [Skills](skills.md) — YAML hook engine and built-in skills
+- [Development](development.md) — contributing, testing, and coding conventions

@@ -1,4 +1,8 @@
-# Foreman Production Deployment Guide
+# Deployment
+
+This guide covers production deployment using Docker Compose or as a native systemd service, plus SSL setup, observability, and common troubleshooting steps.
+
+> **First time?** Get Foreman running locally before deploying to production. See [Getting Started](getting-started.md).
 
 ## Prerequisites
 
@@ -150,3 +154,12 @@ sudo systemctl restart foreman
 | Dashboard not accessible | Ensure port 3333 is open in your firewall. Confirm `FOREMAN_DASHBOARD_TOKEN` is set. |
 | Daemon not picking up tickets | Check tracker configuration in `foreman.toml`. Verify `pickup_label` matches your issue labels. Run `foreman ps` to see current state. |
 | High costs | Run `foreman cost today` to inspect spend. Adjust token and cost limits in `foreman.toml`. |
+
+---
+
+## See Also
+
+- [Getting Started](getting-started.md) — local setup before deploying to a server
+- [Configuration](configuration.md) — full `foreman.toml` reference
+- [Dashboard](dashboard.md) — web UI, REST API, and authentication details
+- [Integrations](integrations.md) — connecting to issue trackers and LLM providers

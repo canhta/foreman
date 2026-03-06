@@ -1,6 +1,6 @@
 # Dashboard
 
-Foreman includes a built-in web dashboard with a REST API, WebSocket live updates, and a Prometheus metrics endpoint.
+Foreman includes a built-in web dashboard for monitoring pipeline state, inspecting LLM costs, and managing tickets. It exposes a REST API, WebSocket live event stream, and a Prometheus metrics endpoint.
 
 ## Starting the Dashboard
 
@@ -379,3 +379,11 @@ The UI provides:
 - Live event feed via WebSocket
 - Cost overview (today, week, month) with budget indicators
 - Active pipeline monitor
+
+---
+
+## See Also
+
+- [Configuration](configuration.md#dashboard) — `[dashboard]` config reference
+- [Deployment](deployment.md) — exposing the dashboard over HTTPS in production
+- [Getting Started](getting-started.md) — generating a dashboard token during initial setup

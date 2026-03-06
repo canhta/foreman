@@ -4,6 +4,26 @@ Foreman connects to three categories of external services: issue trackers (to so
 
 For the full TOML reference for every integration, see [Configuration](configuration.md).
 
+## Quick Comparison
+
+### Issue Trackers
+
+| Tracker | Auth | Notes |
+|---|---|---|
+| **GitHub Issues** | Personal access token (`repo` scope) | Easiest setup; recommended for OSS projects |
+| **Jira Cloud / Server** | API token + email | Requires mapping status names to your workflow |
+| **Linear** | API key | Requires a team ID |
+| **Local file** | None | JSON files in a directory; ideal for local testing |
+
+### LLM Providers
+
+| Provider | Best for | Structured output |
+|---|---|---|
+| **Anthropic** | Best overall quality; primary recommendation | Forced tool use (`tool_choice`) |
+| **OpenAI** | GPT-4o / o3-mini; good alternative | `response_format.json_schema` |
+| **OpenRouter** | Access any model via one API key | Inherits OpenAI tool use |
+| **Local (Ollama)** | Air-gapped or cost-sensitive setups | Degrades gracefully if tools unsupported |
+
 ---
 
 ## Issue Trackers
@@ -237,3 +257,11 @@ clarifier        = "anthropic:claude-haiku-4-5-20251001"
 [llm.outage]
 fallback_provider = "openai"
 ```
+
+---
+
+## See Also
+
+- [Configuration](configuration.md) \u2014 full TOML reference for every integration
+- [Getting Started](getting-started.md) \u2014 minimal working configuration examples
+- [Features](features.md#llm-provider-support) \u2014 LLM feature comparison (structured output, extended thinking, etc.)

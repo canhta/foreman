@@ -63,6 +63,32 @@ The builtin runner implements a multi-turn tool-use loop on top of Foreman's own
 3. Tool results are fed back to the model in the next turn.
 4. The loop continues until the model stops requesting tool calls or `max_turns` is reached.
 
+```mermaid
+sequenceDiagram
+    participant Skill as Skill (agentsdk step)
+    participant Runner as Builtin AgentRunner
+    participant LLM as LLM Provider
+    participant Tools as Tool Registry
+
+    Skill->>Runner: Run(AgentRequest)
+    Runner->>Runner: inject AGENTS.md + context into SystemPrompt
+
+    loop Until text response or max_turns reached
+        Runner->>LLM: Complete(messages + tool definitions)
+        LLM-->>Runner: response
+
+        alt tool_use blocks returned
+            Note over Runner,Tools: all tool calls execute in parallel (errgroup)
+            Runner->>Tools: execute tool calls concurrently
+            Tools-->>Runner: tool results
+            Runner->>Runner: inject reactive context if file-touching tools ran
+            Runner->>Runner: append tool results to messages
+        else text response
+            Runner-->>Skill: AgentResult{Output, Usage}
+        end
+    end
+```
+
 ### Parallel Tool Execution
 
 All tool calls within a single turn execute in parallel using `errgroup`. This matches the behaviour of the Anthropic SDK's `BetaToolRunner` and is typically 3× faster than sequential execution on multi-tool turns.
@@ -70,6 +96,23 @@ All tool calls within a single turn execute in parallel using `errgroup`. This m
 ### Two-Layer Context Injection
 
 The builtin runner injects project context through two mechanisms:
+
+```mermaid
+flowchart LR
+    subgraph L1["Layer 1 — Pre-assembly  (all runners)"]
+        A["AGENTS.md\n(repo root or .foreman/context.md)"]
+        B["Path-scoped .foreman-rules.md files"]
+        C["Ticket + task metadata"]
+    end
+
+    subgraph L2["Layer 2 — Reactive injection  (builtin runner only)"]
+        D["Progress patterns from DB\n(conventions from earlier tasks\nin the same ticket)"]
+        E["Directory-specific rules\nfor newly-accessed paths"]
+    end
+
+    L1 -- "prepended to SystemPrompt\nbefore first LLM call" --> SYS["System Prompt\n(sent with every turn)"]
+    L2 -- "injected as context message\nafter each file-touching tool call\n(Read · Edit · Write · GetDiff)" --> MID["Mid-turn Context\n(injected once per path, deduped)"]
+```
 
 **Layer 1 — Pre-assembly (all runners):** Before any runner is called, the skills engine pre-assembles:
 - `AGENTS.md` from the repo root (or `.foreman/context.md` as fallback)
@@ -331,3 +374,12 @@ DB_URL = "${DATABASE_URL}"
 ```
 
 **Scope boundaries (v1):** tools only — `resources` and `prompts` are not supported. HTTP/SSE transport is not implemented.
+
+---
+
+## See Also
+
+- [Skills](skills.md) — `agentsdk` step type that invokes the agent runner
+- [Architecture](architecture.md) — where the agent runner fits in the overall system
+- [Configuration](configuration.md#agent-runner) — `[agent_runner]` config reference
+- [Development](development.md) — how to add a new agent runner implementation
