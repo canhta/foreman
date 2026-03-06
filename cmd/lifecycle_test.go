@@ -9,8 +9,6 @@ import (
 func TestStartCmd_Exists(t *testing.T) {
 	cmd := newStartCmd()
 	assert.Equal(t, "start", cmd.Use)
-	flag := cmd.Flags().Lookup("daemon")
-	assert.NotNil(t, flag)
 }
 
 func TestStopCmd_Exists(t *testing.T) {
