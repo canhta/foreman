@@ -1,6 +1,9 @@
 package daemon
 
-import "github.com/canhta/foreman/internal/models"
+import (
+	"github.com/canhta/foreman/internal/models"
+	"github.com/rs/zerolog/log"
+)
 
 // RecoveryAction describes what to do with an in-progress ticket after a crash.
 type RecoveryAction string
@@ -43,6 +46,15 @@ func ClassifyRecovery(ticket *models.Ticket) RecoveryPlan {
 
 // TasksToReset returns tasks that were in progress at crash time and need resetting to pending.
 func TasksToReset(tasks []models.Task, lastCompletedSeq int) []models.Task {
+	// Validate bounds: clamp to [0, len(tasks)].
+	if lastCompletedSeq < 0 || lastCompletedSeq > len(tasks) {
+		log.Warn().
+			Int("last_completed_seq", lastCompletedSeq).
+			Int("task_count", len(tasks)).
+			Msg("lastCompletedSeq out of bounds, treating as 0 (full restart)")
+		lastCompletedSeq = 0
+	}
+
 	toReset := make([]models.Task, 0)
 	for _, task := range tasks {
 		if task.Sequence <= lastCompletedSeq {
