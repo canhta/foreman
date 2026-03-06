@@ -227,13 +227,17 @@ func (p *AnthropicProvider) Complete(ctx context.Context, req models.LlmRequest)
 
 	if httpResp.StatusCode == 401 || httpResp.StatusCode == 403 {
 		var apiErr anthropicError
-		_ = json.Unmarshal(respBody, &apiErr)
+		if unmarshalErr := json.Unmarshal(respBody, &apiErr); unmarshalErr != nil {
+			return nil, &AuthError{Message: fmt.Sprintf("status %d (unparseable body)", httpResp.StatusCode)}
+		}
 		return nil, &AuthError{Message: apiErr.Error.Message}
 	}
 
 	if httpResp.StatusCode != 200 {
 		var apiErr anthropicError
-		_ = json.Unmarshal(respBody, &apiErr)
+		if unmarshalErr := json.Unmarshal(respBody, &apiErr); unmarshalErr != nil {
+			return nil, fmt.Errorf("anthropic API error (status %d): failed to parse error response", httpResp.StatusCode)
+		}
 		return nil, fmt.Errorf("anthropic API error (status %d): %s", httpResp.StatusCode, apiErr.Error.Message)
 	}
 
