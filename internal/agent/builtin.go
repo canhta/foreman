@@ -172,7 +172,9 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 					return nil // tool errors become result content, not Go errors
 				})
 			}
-			_ = g.Wait()
+			if waitErr := g.Wait(); waitErr != nil {
+				return AgentResult{}, fmt.Errorf("builtin: tool execution: %w", waitErr)
+			}
 
 			// Collect all touched paths (after parallel completion — no data race)
 			var touchedPaths []string
