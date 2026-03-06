@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/canhta/foreman/internal/models"
+	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -172,6 +174,23 @@ func (s *SQLiteDB) SetLastCompletedTask(ctx context.Context, ticketID string, ta
 	return err
 }
 
+func marshalStringSlice(s []string) string {
+	if len(s) == 0 {
+		return "[]"
+	}
+	b, _ := json.Marshal(s)
+	return string(b)
+}
+
+func unmarshalStringSlice(s string) []string {
+	if s == "" || s == "[]" {
+		return nil
+	}
+	var out []string
+	_ = json.Unmarshal([]byte(s), &out)
+	return out
+}
+
 func (s *SQLiteDB) CreateTasks(ctx context.Context, ticketID string, tasks []models.Task) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -189,8 +208,17 @@ func (s *SQLiteDB) CreateTasks(ctx context.Context, ticketID string, tasks []mod
 	defer stmt.Close()
 
 	for _, t := range tasks {
-		_, err := stmt.ExecContext(ctx, t.ID, ticketID, t.Sequence, t.Title, t.Description,
-			"[]", "[]", "[]", "[]", t.EstimatedComplexity, "[]",
+		id := t.ID
+		if id == "" {
+			id = uuid.New().String()
+		}
+		_, err := stmt.ExecContext(ctx, id, ticketID, t.Sequence, t.Title, t.Description,
+			marshalStringSlice(t.AcceptanceCriteria),
+			marshalStringSlice(t.FilesToRead),
+			marshalStringSlice(t.FilesToModify),
+			marshalStringSlice(t.TestAssertions),
+			t.EstimatedComplexity,
+			marshalStringSlice(t.DependsOn),
 			string(models.TaskStatusPending), time.Now())
 		if err != nil {
 			return fmt.Errorf("insert task %q: %w", t.Title, err)
@@ -436,7 +464,8 @@ func (s *SQLiteDB) GetMonthlyCost(ctx context.Context, yearMonth string) (float6
 
 func (s *SQLiteDB) ListTasks(ctx context.Context, ticketID string) ([]models.Task, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, ticket_id, sequence, title, description, status, created_at
+		`SELECT id, ticket_id, sequence, title, description, status, created_at,
+		        acceptance_criteria, files_to_read, files_to_modify, test_assertions, depends_on
 		 FROM tasks WHERE ticket_id = ? ORDER BY sequence`,
 		ticketID)
 	if err != nil {
@@ -448,10 +477,17 @@ func (s *SQLiteDB) ListTasks(ctx context.Context, ticketID string) ([]models.Tas
 	for rows.Next() {
 		var t models.Task
 		var status string
-		if err := rows.Scan(&t.ID, &t.TicketID, &t.Sequence, &t.Title, &t.Description, &status, &t.CreatedAt); err != nil {
+		var acceptanceCriteria, filesToRead, filesToModify, testAssertions, dependsOn string
+		if err := rows.Scan(&t.ID, &t.TicketID, &t.Sequence, &t.Title, &t.Description, &status, &t.CreatedAt,
+			&acceptanceCriteria, &filesToRead, &filesToModify, &testAssertions, &dependsOn); err != nil {
 			return nil, err
 		}
 		t.Status = models.TaskStatus(status)
+		t.AcceptanceCriteria = unmarshalStringSlice(acceptanceCriteria)
+		t.FilesToRead = unmarshalStringSlice(filesToRead)
+		t.FilesToModify = unmarshalStringSlice(filesToModify)
+		t.TestAssertions = unmarshalStringSlice(testAssertions)
+		t.DependsOn = unmarshalStringSlice(dependsOn)
 		tasks = append(tasks, t)
 	}
 	return tasks, rows.Err()
