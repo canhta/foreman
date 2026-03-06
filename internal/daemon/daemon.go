@@ -6,6 +6,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"fmt"
+
+	"github.com/canhta/foreman/internal/channel"
 	"github.com/canhta/foreman/internal/db"
 	"github.com/canhta/foreman/internal/git"
 	"github.com/canhta/foreman/internal/models"
@@ -50,18 +53,20 @@ type DaemonStatus struct {
 
 // Daemon is the main 24/7 event loop.
 type Daemon struct {
-	startedAt    time.Time
-	db           db.Database
-	prChecker    git.PRChecker
-	hookRunner   *skills.HookRunner
-	tracker      tracker.IssueTracker
-	orchestrator TicketProcessor
-	config       DaemonConfig
-	mu           sync.Mutex
-	wg           sync.WaitGroup
-	running      atomic.Bool
-	paused       atomic.Bool
-	active       atomic.Int32
+	startedAt     time.Time
+	db            db.Database
+	prChecker     git.PRChecker
+	hookRunner    *skills.HookRunner
+	tracker       tracker.IssueTracker
+	orchestrator  TicketProcessor
+	channel       channel.Channel
+	channelRouter channel.InboundHandler
+	config        DaemonConfig
+	mu            sync.Mutex
+	wg            sync.WaitGroup
+	running       atomic.Bool
+	paused        atomic.Bool
+	active        atomic.Int32
 }
 
 // NewDaemon creates a new daemon.
@@ -102,6 +107,20 @@ func (d *Daemon) SetOrchestrator(tp TicketProcessor) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.orchestrator = tp
+}
+
+// SetChannel attaches a messaging channel to the daemon.
+func (d *Daemon) SetChannel(ch channel.Channel) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.channel = ch
+}
+
+// SetChannelRouter wires the channel router after construction.
+func (d *Daemon) SetChannelRouter(router channel.InboundHandler) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.channelRouter = router
 }
 
 // WaitForDrain blocks until all active pipelines finish or ctx expires.
@@ -166,6 +185,19 @@ func (d *Daemon) Start(ctx context.Context) {
 		go mc.Start(ctx, interval)
 	}
 
+	// Start channel listener
+	if d.channel != nil && d.channelRouter != nil {
+		ch := d.channel
+		router := d.channelRouter
+		d.wg.Add(1)
+		go func() {
+			defer d.wg.Done()
+			if err := ch.Start(ctx, router); err != nil {
+				log.Error().Err(err).Msg("channel stopped with error")
+			}
+		}()
+	}
+
 	pollInterval := time.Duration(d.config.PollIntervalSecs) * time.Second
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
@@ -173,6 +205,11 @@ func (d *Daemon) Start(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
+			if d.channel != nil {
+				if err := d.channel.Stop(); err != nil {
+					log.Error().Err(err).Msg("channel stop error")
+				}
+			}
 			return
 		case <-ticker.C:
 			if d.paused.Load() {
@@ -183,6 +220,13 @@ func (d *Daemon) Start(ctx context.Context) {
 			if database != nil && tr != nil {
 				checkClarificationTimeouts(ctx, log.Logger, database, tr,
 					d.config.ClarificationTimeoutHours, d.config.ClarificationLabel)
+			}
+
+			// Clean up expired pairings
+			if database != nil {
+				if err := database.DeleteExpiredPairings(ctx); err != nil {
+					log.Error().Err(err).Msg("failed to delete expired pairings")
+				}
 			}
 
 			// Fetch ready tickets from tracker and insert new ones as queued
@@ -296,4 +340,81 @@ func (d *Daemon) processQueuedTickets(ctx context.Context, database db.Database)
 			}
 		}(ticket)
 	}
+}
+
+// --- CommandHandler implementation (for channel commands) ---
+
+// DaemonCommandHandler wraps Daemon to implement channel.CommandHandler.
+type DaemonCommandHandler struct {
+	d *Daemon
+}
+
+// NewDaemonCommandHandler creates a CommandHandler adapter for the daemon.
+func NewDaemonCommandHandler(d *Daemon) *DaemonCommandHandler {
+	return &DaemonCommandHandler{d: d}
+}
+
+// Compile-time check.
+var _ channel.CommandHandler = (*DaemonCommandHandler)(nil)
+
+// Status returns a summary of active tickets.
+func (h *DaemonCommandHandler) Status(ctx context.Context) (string, error) {
+	h.d.mu.Lock()
+	database := h.d.db
+	h.d.mu.Unlock()
+	if database == nil {
+		return "Daemon has no database configured.", nil
+	}
+
+	tickets, err := database.ListTickets(ctx, models.TicketFilter{
+		StatusIn: []models.TicketStatus{
+			models.TicketStatusPlanning,
+			models.TicketStatusImplementing,
+			models.TicketStatusReviewing,
+		},
+	})
+	if err != nil {
+		return "", err
+	}
+	if len(tickets) == 0 {
+		return "No active tickets.", nil
+	}
+	result := fmt.Sprintf("%d active ticket(s):\n", len(tickets))
+	for _, t := range tickets {
+		result += fmt.Sprintf("  #%s %s (%s)\n", t.ID, t.Title, t.Status)
+	}
+	return result, nil
+}
+
+// Pause pauses the daemon.
+func (h *DaemonCommandHandler) Pause(_ context.Context) (string, error) {
+	h.d.paused.Store(true)
+	return "Daemon paused. No new tickets will be picked up.", nil
+}
+
+// Resume resumes the daemon.
+func (h *DaemonCommandHandler) Resume(_ context.Context) (string, error) {
+	h.d.paused.Store(false)
+	return "Daemon resumed. Picking up tickets again.", nil
+}
+
+// Cost returns daily and monthly cost.
+func (h *DaemonCommandHandler) Cost(ctx context.Context) (string, error) {
+	h.d.mu.Lock()
+	database := h.d.db
+	h.d.mu.Unlock()
+	if database == nil {
+		return "No database configured.", nil
+	}
+
+	now := time.Now()
+	daily, err := database.GetDailyCost(ctx, now.Format("2006-01-02"))
+	if err != nil {
+		return "", err
+	}
+	monthly, err := database.GetMonthlyCost(ctx, now.Format("2006-01"))
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("Today: $%.2f\nThis month: $%.2f", daily, monthly), nil
 }

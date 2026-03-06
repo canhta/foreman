@@ -10,6 +10,7 @@ import (
 
 	"github.com/rs/zerolog"
 
+	"github.com/canhta/foreman/internal/channel"
 	"github.com/canhta/foreman/internal/db"
 	"github.com/canhta/foreman/internal/git"
 	"github.com/canhta/foreman/internal/models"
@@ -113,6 +114,7 @@ type Orchestrator struct {
 	planner        TicketPlanner
 	clarityChecker ClarityChecker
 	runnerFactory  DAGTaskRunnerFactory
+	ch             channel.Channel
 	log            zerolog.Logger
 	config         OrchestratorConfig
 }
@@ -146,6 +148,20 @@ func NewOrchestrator(
 	}
 }
 
+// SetChannel attaches a messaging channel for lifecycle notifications.
+func (o *Orchestrator) SetChannel(ch channel.Channel) {
+	o.ch = ch
+}
+
+func (o *Orchestrator) notify(ctx context.Context, ticket models.Ticket, msg string) {
+	if o.ch == nil || ticket.ChannelSenderID == "" {
+		return
+	}
+	if err := o.ch.Send(ctx, ticket.ChannelSenderID, msg); err != nil {
+		o.log.Warn().Err(err).Str("ticket", ticket.ID).Msg("channel notify failed")
+	}
+}
+
 // ProcessTicket implements the full ticket lifecycle:
 // queued -> planning -> implementing -> PR -> awaiting_merge.
 func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) error {
@@ -159,6 +175,7 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 	defer func() {
 		if returnErr != nil {
 			log.Error().Err(returnErr).Msg("ticket processing failed")
+			o.notify(ctx, ticket, fmt.Sprintf("Ticket #%s failed: %s", ticket.ID, returnErr.Error()))
 
 			if dbErr := o.db.UpdateTicketStatus(ctx, ticket.ID, models.TicketStatusFailed); dbErr != nil {
 				log.Error().Err(dbErr).Msg("failed to update ticket status to failed")
@@ -184,6 +201,7 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 	if err := o.tracker.AddComment(ctx, ticket.ExternalID, "Foreman picked up this ticket"); err != nil {
 		log.Warn().Err(err).Msg("failed to add pickup comment")
 	}
+	o.notify(ctx, ticket, fmt.Sprintf("Ticket #%s picked up — planning...", ticket.ID))
 
 	// Check cost budgets.
 	if returnErr = o.checkCostBudgets(ctx); returnErr != nil {
@@ -218,6 +236,7 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 				"Foreman needs more detail to proceed. Please add a clearer description or acceptance criteria."); err != nil {
 				log.Warn().Err(err).Msg("failed to add clarification comment")
 			}
+			o.notify(ctx, ticket, fmt.Sprintf("Question about ticket #%s: needs more detail to proceed.", ticket.ID))
 			// Not an error — will be retried after clarification.
 			returnErr = nil
 			return nil
@@ -288,6 +307,8 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 		returnErr = fmt.Errorf("update status to implementing: %w", implErr)
 		return returnErr
 	}
+
+	o.notify(ctx, ticket, fmt.Sprintf("Implementing %d tasks for ticket #%s...", len(tasks), ticket.ID))
 
 	// Reload tasks from DB to get assigned IDs.
 	dbTasks, err := o.db.ListTasks(ctx, ticket.ID)
@@ -415,6 +436,8 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 	if err := o.scheduler.Release(ctx, ticket.ID); err != nil {
 		log.Warn().Err(err).Msg("failed to release file reservations after PR")
 	}
+
+	o.notify(ctx, ticket, fmt.Sprintf("PR opened for ticket #%s: %s", ticket.ID, prResp.HTMLURL))
 
 	// Comment with PR URL.
 	prComment := fmt.Sprintf("Foreman created a PR: %s", prResp.HTMLURL)
