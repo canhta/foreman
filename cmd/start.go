@@ -238,6 +238,10 @@ func newStartCmd() *cobra.Command {
 				d.SetChannelRouter(router)
 			}
 
+			// 9c. Wire event emitter to orchestrator (always, even without dashboard).
+			emitter := telemetry.NewEventEmitter(database)
+			orch.SetEventEmitter(emitter)
+
 			// 10. Signal context.
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
@@ -246,7 +250,6 @@ func newStartCmd() *cobra.Command {
 			if cfg.Dashboard.Enabled {
 				reg := prometheus.NewRegistry()
 				_ = telemetry.NewMetrics(reg)
-				emitter := telemetry.NewEventEmitter(database)
 				port := cfg.Dashboard.Port
 				if port == 0 {
 					port = 3333

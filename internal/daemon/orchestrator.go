@@ -115,6 +115,7 @@ type Orchestrator struct {
 	clarityChecker ClarityChecker
 	runnerFactory  DAGTaskRunnerFactory
 	ch             channel.Channel
+	emitter        *telemetry.EventEmitter
 	log            zerolog.Logger
 	config         OrchestratorConfig
 }
@@ -153,6 +154,19 @@ func (o *Orchestrator) SetChannel(ch channel.Channel) {
 	o.ch = ch
 }
 
+// SetEventEmitter attaches an event emitter for dashboard event streaming.
+func (o *Orchestrator) SetEventEmitter(e *telemetry.EventEmitter) {
+	o.emitter = e
+}
+
+// emitEvent broadcasts a lifecycle event to the dashboard (no-op if emitter not set).
+func (o *Orchestrator) emitEvent(ctx context.Context, ticketID, eventType, severity, message string) {
+	if o.emitter == nil {
+		return
+	}
+	o.emitter.Emit(ctx, ticketID, "", eventType, severity, message, nil)
+}
+
 func (o *Orchestrator) notify(ctx context.Context, ticket models.Ticket, msg string) {
 	if o.ch == nil || ticket.ChannelSenderID == "" {
 		return
@@ -175,6 +189,7 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 	defer func() {
 		if returnErr != nil {
 			log.Error().Err(returnErr).Msg("ticket processing failed")
+			o.emitEvent(ctx, ticket.ID, "ticket_failed", "error", returnErr.Error())
 			o.notify(ctx, ticket, fmt.Sprintf("Ticket #%s failed: %s", ticket.ID, returnErr.Error()))
 
 			if dbErr := o.db.UpdateTicketStatus(ctx, ticket.ID, models.TicketStatusFailed); dbErr != nil {
@@ -202,6 +217,7 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 		log.Warn().Err(err).Msg("failed to add pickup comment")
 	}
 	o.notify(ctx, ticket, fmt.Sprintf("Ticket #%s picked up — planning...", ticket.ID))
+	o.emitEvent(ctx, ticket.ID, "ticket_picked_up", "info", fmt.Sprintf("Ticket %q picked up — planning...", ticket.Title))
 
 	// Check cost budgets.
 	if returnErr = o.checkCostBudgets(ctx); returnErr != nil {
@@ -213,6 +229,7 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 		returnErr = fmt.Errorf("ensure repo: %w", err)
 		return returnErr
 	}
+	o.emitEvent(ctx, ticket.ID, "repo_ready", "info", "Repository ready")
 
 	// Check ticket clarity (if enabled).
 	if o.config.EnableClarification {
@@ -251,6 +268,7 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 	}
 
 	// Plan the ticket.
+	o.emitEvent(ctx, ticket.ID, "planning_started", "info", "Planning ticket...")
 	planResult, err := o.planner.Plan(ctx, o.config.WorkDir, &ticket)
 	if err != nil {
 		returnErr = fmt.Errorf("planning: %w", err)
@@ -261,6 +279,7 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 		returnErr = fmt.Errorf("planner returned non-OK status: %s — %s", planResult.Status, planResult.Message)
 		return returnErr
 	}
+	o.emitEvent(ctx, ticket.ID, "planning_done", "info", fmt.Sprintf("Plan ready: %d tasks", len(planResult.Tasks)))
 
 	// Convert PlannedTask -> models.Task and persist.
 	tasks := make([]models.Task, len(planResult.Tasks))
@@ -309,6 +328,7 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 	}
 
 	o.notify(ctx, ticket, fmt.Sprintf("Implementing %d tasks for ticket #%s...", len(tasks), ticket.ID))
+	o.emitEvent(ctx, ticket.ID, "implementing_started", "info", fmt.Sprintf("Starting implementation of %d tasks", len(tasks)))
 
 	// Reload tasks from DB to get assigned IDs.
 	dbTasks, err := o.db.ListTasks(ctx, ticket.ID)
@@ -361,6 +381,12 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 	if failedCount > 0 && !o.config.EnablePartialPR {
 		returnErr = fmt.Errorf("%d of %d tasks failed and partial PRs are disabled", failedCount, totalCount)
 		return returnErr
+	}
+
+	if failedCount > 0 {
+		o.emitEvent(ctx, ticket.ID, "tasks_partial", "warning", fmt.Sprintf("%d/%d tasks succeeded (partial)", doneCount, totalCount))
+	} else {
+		o.emitEvent(ctx, ticket.ID, "tasks_done", "success", fmt.Sprintf("All %d tasks completed", doneCount))
 	}
 
 	// Rebase if configured.
@@ -438,6 +464,7 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 	}
 
 	o.notify(ctx, ticket, fmt.Sprintf("PR opened for ticket #%s: %s", ticket.ID, prResp.HTMLURL))
+	o.emitEvent(ctx, ticket.ID, "pr_created", "success", fmt.Sprintf("PR created: %s", prResp.HTMLURL))
 
 	// Comment with PR URL.
 	prComment := fmt.Sprintf("Foreman created a PR: %s", prResp.HTMLURL)

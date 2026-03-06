@@ -20,7 +20,7 @@ func TestEventEmitter_Emit(t *testing.T) {
 	db := &mockDB{}
 	emitter := NewEventEmitter(db)
 
-	emitter.Emit(context.Background(), "ticket-1", "task-1", "task_started", map[string]string{
+	emitter.Emit(context.Background(), "ticket-1", "task-1", "task_started", "info", "Task started", map[string]string{
 		"task_title": "Add login",
 	})
 
@@ -42,7 +42,7 @@ func TestEventEmitter_Subscribe(t *testing.T) {
 	ch := emitter.Subscribe()
 	defer emitter.Unsubscribe(ch)
 
-	go emitter.Emit(context.Background(), "t1", "", "ticket_picked_up", nil)
+	go emitter.Emit(context.Background(), "t1", "", "ticket_picked_up", "info", "Ticket picked up", nil)
 
 	evt := <-ch
 	if evt.EventType != "ticket_picked_up" {

@@ -19,6 +19,9 @@ func NewNativeGitProvider() *NativeGitProvider {
 }
 
 func (g *NativeGitProvider) EnsureRepo(ctx context.Context, workDir string) error {
+	if err := os.MkdirAll(workDir, 0o755); err != nil {
+		return fmt.Errorf("create work dir: %w", err)
+	}
 	_, err := g.run(ctx, workDir, "git", "status")
 	return err
 }

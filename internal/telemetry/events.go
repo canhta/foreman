@@ -40,8 +40,9 @@ func newID() string {
 }
 
 // Emit records an event in the store and broadcasts it to all subscribers.
+// severity should be one of: "info", "success", "warning", "error".
 // metadata is marshalled to JSON and stored in the Details field.
-func (e *EventEmitter) Emit(ctx context.Context, ticketID, taskID, eventType string, metadata map[string]string) {
+func (e *EventEmitter) Emit(ctx context.Context, ticketID, taskID, eventType, severity, message string, metadata map[string]string) {
 	var details string
 	if metadata != nil {
 		b, _ := json.Marshal(metadata)
@@ -53,6 +54,8 @@ func (e *EventEmitter) Emit(ctx context.Context, ticketID, taskID, eventType str
 		TicketID:  ticketID,
 		TaskID:    taskID,
 		EventType: eventType,
+		Severity:  severity,
+		Message:   message,
 		Details:   details,
 		CreatedAt: time.Now(),
 	}
