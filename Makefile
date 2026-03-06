@@ -14,8 +14,8 @@ setup-dev:
 
 # Hot-reload: rebuilds and restarts on file changes (requires air).
 # Run 'make setup-dev' once to install. Pass CMD to change sub-command:
-#   make dev CMD=start
-CMD ?= run
+#   make dev CMD="run LOCAL-1"
+CMD ?= start
 dev:
 	$(GOBIN)/air -- $(CMD)
 

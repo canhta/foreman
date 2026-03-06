@@ -99,11 +99,11 @@ log_format = "pretty" # pretty is easier to read during development
 # Install air + dlv (once)
 make setup-dev
 
-# Start with hot reload (runs `foreman run` by default)
+# Start the daemon with hot reload (default)
 make dev
 
-# Run a different sub-command, e.g. start the daemon
-make dev CMD=start
+# Run a single ticket with hot reload
+make dev CMD="run LOCAL-1"
 ```
 
 > **Note:** CGO is required by `go-sqlite3`. The `.air.toml` sets `CGO_ENABLED=1` explicitly so air works out of the box on macOS and Linux.
