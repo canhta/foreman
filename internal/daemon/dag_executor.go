@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/canhta/foreman/internal/models"
@@ -77,8 +78,11 @@ func (e *DAGExecutor) Execute(ctx context.Context, tasks []DAGTask) map[string]T
 	workerCtx, workerCancel := context.WithCancel(ctx)
 	defer workerCancel()
 
+	var workerWg sync.WaitGroup
 	for i := 0; i < e.maxWorkers; i++ {
+		workerWg.Add(1)
 		go func() {
+			defer workerWg.Done()
 			for {
 				select {
 				case <-workerCtx.Done():
@@ -143,6 +147,7 @@ func (e *DAGExecutor) Execute(ctx context.Context, tasks []DAGTask) map[string]T
 
 	workerCancel()
 	close(readyChan)
+	workerWg.Wait()
 
 	return results
 }
