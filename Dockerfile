@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM golang:1.26-bookworm AS builder
+FROM golang:1.25-bookworm AS builder
 WORKDIR /src
 
 # go-sqlite3 requires CGO-enabled builds.

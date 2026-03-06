@@ -250,7 +250,7 @@ File reservations are stored in the database, not in memory. Before a pipeline b
 
 | Layer | Technology |
 |---|---|
-| Language | Go 1.26+ |
+| Language | Go 1.25+ |
 | CLI framework | cobra + viper |
 | Database (default) | SQLite via `go-sqlite3` (CGO required) |
 | Database (optional) | PostgreSQL via `pgx/v5` |

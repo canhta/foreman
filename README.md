@@ -1,14 +1,14 @@
 # Foreman
 
 [![GitHub stars](https://img.shields.io/github/stars/canhta/foreman?style=social)](https://github.com/canhta/foreman/stargazers)
-[![Go Version](https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go)](https://go.dev/)
+[![Go Version](https://img.shields.io/badge/Go-1.25%2B-00ADD8?logo=go)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 Foreman polls your issue tracker, breaks tickets into granular tasks, writes code with LLM-guided TDD, runs deterministic quality checks, and opens pull requests — autonomously.
 
 ## Quick Start
 
-**Requirements:** Go 1.26+ and a C toolchain (CGO is required for SQLite).
+**Requirements:** Go 1.25+ and a C toolchain (CGO is required for SQLite).
 
 ```bash
 make build
