@@ -1,4 +1,4 @@
-.PHONY: build test lint clean setup-hooks
+.PHONY: build test lint clean setup-hooks coverage
 
 BINARY := foreman
 
@@ -17,6 +17,18 @@ clean:
 
 setup-hooks:
 	git config core.hooksPath .githooks
+
+.PHONY: coverage
+coverage:
+	go test -coverprofile=coverage.out ./...
+	go tool cover -func=coverage.out
+	@total=$$(go tool cover -func=coverage.out | grep "^total:" | awk '{print $$3}' | tr -d '%'); \
+	echo "Total coverage: $$total%"; \
+	if [ "$$(echo "$$total < 80" | bc -l)" = "1" ]; then \
+		echo "FAIL: coverage $$total% is below 80% threshold"; \
+		exit 1; \
+	fi
+	@echo "PASS: coverage meets 80% threshold"
 
 # Cross-platform builds
 PLATFORMS := linux-amd64 linux-arm64 darwin-amd64 darwin-arm64 windows-amd64
