@@ -1,0 +1,32 @@
+[Unit]
+Description=Foreman Autonomous Coding Daemon
+Documentation=https://github.com/canhta/foreman
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=foreman
+Group=foreman
+WorkingDirectory=/var/lib/foreman
+ExecStart=/usr/local/bin/foreman start
+Restart=always
+RestartSec=10
+EnvironmentFile=-/etc/foreman/env
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/foreman
+ReadWritePaths=/tmp
+StateDirectory=foreman
+LogsDirectory=foreman
+PrivateTmp=true
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=foreman
+
+[Install]
+WantedBy=multi-user.target
