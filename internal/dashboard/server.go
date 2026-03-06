@@ -86,9 +86,9 @@ func NewServer(db DashboardDB, emitter EventSubscriber, statusProvider DaemonSta
 		http.NotFound(w, r)
 	})))
 
-	// Metrics endpoint (no auth — Prometheus scraper)
+	// Metrics endpoint
 	if reg != nil {
-		mux.Handle("/api/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
+		mux.Handle("/api/metrics", auth(promhttp.HandlerFor(reg, promhttp.HandlerOpts{})))
 	}
 
 	// WebSocket (auth via token query param)
