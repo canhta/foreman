@@ -1,0 +1,60 @@
+#!/bin/sh
+# Pre-commit hook: format, vet, lint
+# Skip with: SKIP_HOOKS=1 git commit
+
+set -e
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BOLD='\033[1m'
+RESET='\033[0m'
+
+pass() { printf "  ${GREEN}✓${RESET} %s\n" "$1"; }
+fail() { printf "  ${RED}✗${RESET} %s\n" "$1"; }
+info() { printf "${BOLD}%s${RESET}\n" "$1"; }
+
+if [ "${SKIP_HOOKS}" = "1" ]; then
+  printf "${YELLOW}⚠ Skipping pre-commit hooks (SKIP_HOOKS=1)${RESET}\n"
+  exit 0
+fi
+
+info "pre-commit"
+
+# gofmt — only staged Go files
+STAGED=$(git diff --cached --name-only --diff-filter=ACMR | grep '\.go$' || true)
+if [ -n "$STAGED" ]; then
+  UNFORMATTED=$(echo "$STAGED" | xargs gofmt -l 2>/dev/null || true)
+  if [ -n "$UNFORMATTED" ]; then
+    fail "gofmt"
+    printf "    Unformatted files:\n"
+    echo "$UNFORMATTED" | sed 's/^/      /'
+    printf "    Fix: ${BOLD}gofmt -w .${RESET}\n"
+    exit 1
+  fi
+  pass "gofmt"
+else
+  pass "gofmt (no Go files staged)"
+fi
+
+# go vet
+if ! go vet ./... 2>/tmp/govet_out; then
+  fail "go vet"
+  cat /tmp/govet_out | sed 's/^/    /'
+  exit 1
+fi
+pass "go vet"
+
+# golangci-lint
+if ! command -v golangci-lint > /dev/null 2>&1; then
+  printf "  ${YELLOW}⚠${RESET} golangci-lint not found, skipping\n"
+else
+  if ! golangci-lint run 2>/tmp/lint_out; then
+    fail "golangci-lint"
+    cat /tmp/lint_out | sed 's/^/    /'
+    exit 1
+  fi
+  pass "golangci-lint"
+fi
+
+printf "${GREEN}${BOLD}All checks passed.${RESET}\n"

@@ -29,6 +29,9 @@ apt-get install -y build-essential
 git clone https://github.com/canhta/foreman.git
 cd foreman
 
+# Install git hooks (run once)
+make setup-hooks
+
 # Build the binary
 make build
 
@@ -47,6 +50,7 @@ cp foreman.example.toml foreman.toml
 | `make test` | Run all tests with `-race` flag |
 | `make lint` | Run `go vet` + `golangci-lint` |
 | `make clean` | Remove `./foreman` binary |
+| `make setup-hooks` | Install git hooks from `.githooks/` (run once after cloning) |
 | `make release` | Cross-compile for linux/darwin/windows amd64+arm64 |
 | `make docker` | Build Docker image `foreman:latest` |
 
@@ -211,6 +215,26 @@ Tests that require a database use the SQLite in-memory driver. No external servi
 2. Define the YAML schema in the step type documentation.
 3. Update `docs/skills.md`.
 
+## Git Hooks
+
+Hooks live in `.githooks/` and are version-controlled. Activate them once after cloning:
+
+```bash
+make setup-hooks
+```
+
+| Hook | Trigger | Checks |
+|---|---|---|
+| `pre-commit` | `git commit` | `gofmt` (staged files only), `go vet`, `golangci-lint` |
+| `pre-push` | `git push` | `go test ./... -race` |
+
+To bypass in emergencies:
+
+```bash
+SKIP_HOOKS=1 git commit -m "..."
+SKIP_HOOKS=1 git push
+```
+
 ## Commit Messages
 
 Use imperative, specific messages:
@@ -231,7 +255,7 @@ Avoid vague messages like `fix bug`, `update code`, `changes`.
    - `fix/<short-description>`
    - `chore/<short-description>`
 2. Keep changes scoped to a single concern per PR.
-3. Run `make test` and `make lint` locally before pushing.
+3. Run `make setup-hooks` once so the pre-commit and pre-push checks run automatically.
 4. Open a PR with:
    - A clear summary of what changed and why
    - Linked issue or ticket when applicable

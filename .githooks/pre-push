@@ -1,0 +1,36 @@
+#!/bin/sh
+# Pre-push hook: run full test suite with race detector
+# Skip with: SKIP_HOOKS=1 git push
+
+set -e
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BOLD='\033[1m'
+RESET='\033[0m'
+
+pass() { printf "  ${GREEN}✓${RESET} %s\n" "$1"; }
+fail() { printf "  ${RED}✗${RESET} %s\n" "$1"; }
+info() { printf "${BOLD}%s${RESET}\n" "$1"; }
+
+if [ "${SKIP_HOOKS}" = "1" ]; then
+  printf "${YELLOW}⚠ Skipping pre-push hooks (SKIP_HOOKS=1)${RESET}\n"
+  exit 0
+fi
+
+info "pre-push"
+
+START=$(date +%s)
+
+if ! go test ./... -race 2>/tmp/test_out; then
+  fail "go test"
+  cat /tmp/test_out | sed 's/^/    /'
+  exit 1
+fi
+
+END=$(date +%s)
+ELAPSED=$((END - START))
+pass "go test (${ELAPSED}s)"
+
+printf "${GREEN}${BOLD}All checks passed.${RESET}\n"
