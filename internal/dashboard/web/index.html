@@ -15,31 +15,33 @@
             <span class="status-dot" :class="daemonDotClass"></span>
             <span x-text="daemonLabel"></span>
             <template x-if="whatsapp !== null">
-                <span>
+                <span class="header-meta">
                     <span class="divider">|</span>
                     <span class="status-dot" :class="whatsapp ? 'running' : 'disconnected'"></span>
                     <span :class="whatsapp ? '' : 'over-budget'" x-text="whatsapp ? 'WA: OK' : 'WA: DOWN'"></span>
                 </span>
             </template>
-            <span class="divider">|</span>
-            <span x-text="costLabel" :class="costOverBudget ? 'over-budget' : ''"></span>
-            <span class="divider">|</span>
-            <span x-text="'ACTIVE: ' + activeCount"></span>
+            <span class="divider header-meta">|</span>
+            <span class="header-meta" x-text="costLabel" :class="costOverBudget ? 'over-budget' : ''"></span>
+            <span class="divider header-meta">|</span>
+            <span class="header-meta" x-text="'ACTIVE: ' + activeCount"></span>
             <span class="divider">|</span>
             <button class="header-btn" x-show="daemonState === 'running'" @click="pauseDaemon()">PAUSE</button>
             <button class="header-btn" x-show="daemonState !== 'running'" @click="resumeDaemon()">RESUME</button>
         </div>
     </header>
 
-    <main>
+    <main :data-panel="activePanel">
         <!-- Left: Ticket List Sidebar -->
         <section id="tickets-panel">
-            <div class="panel-header">TICKETS (<span x-text="filteredTickets.length"></span>)</div>
+            <div class="panel-header">
+                <span>TICKETS (<span x-text="filteredTickets.length"></span>)</span>
+            </div>
             <div class="ticket-filters">
                 <input type="text" x-model="search" placeholder="Search tickets..." class="search-input">
                 <div class="filter-tabs">
                     <button :class="filter === 'all' ? 'active' : ''" @click="filter = 'all'">ALL <span x-text="tickets.length"></span></button>
-                    <button :class="filter === 'active' ? 'active' : ''" @click="filter = 'active'">ACTIVE <span x-text="countByFilter('active')"></span></button>
+                    <button :class="filter === 'active' ? 'active' : ''" @click="filter = 'active'">ACT <span x-text="countByFilter('active')"></span></button>
                     <button :class="filter === 'done' ? 'active' : ''" @click="filter = 'done'">DONE <span x-text="countByFilter('done')"></span></button>
                     <button :class="filter === 'fail' ? 'active' : ''" @click="filter = 'fail'">FAIL <span x-text="countByFilter('fail')"></span></button>
                 </div>
@@ -76,9 +78,9 @@
                         <div class="summary-body">
                             <div>
                                 <span x-text="todayStats.total + ' tickets'"></span>
-                                <span x-text="' \u2713' + todayStats.merged + ' merged'"></span>
-                                <span x-text="' \u2717' + todayStats.failed + ' failed'"></span>
-                                <span x-text="' \u2699' + todayStats.active + ' active'"></span>
+                                <span class="stat-success" x-text="'  \u2713 ' + todayStats.merged + ' merged'"></span>
+                                <span class="stat-danger" x-text="'  \u2717 ' + todayStats.failed + ' failed'"></span>
+                                <span class="stat-muted" x-text="'  \u2699 ' + todayStats.active + ' active'"></span>
                             </div>
                             <div class="budget-bar">
                                 <div x-text="'Daily: $' + ($root.dailyCost || 0).toFixed(2) + ' / $' + Math.round($root.dailyBudget || 0)"></div>
@@ -95,10 +97,10 @@
                                 <div class="bar-chart-row">
                                     <span class="bar-chart-label" x-text="dayLabel(day.date)"></span>
                                     <span class="bar-chart-bar" x-text="barWidth(day.cost_usd || 0)"></span>
-                                    <span x-text="'$' + (day.cost_usd || 0).toFixed(2)"></span>
+                                    <span class="bar-chart-cost" x-text="'$' + (day.cost_usd || 0).toFixed(2)"></span>
                                 </div>
                             </template>
-                            <div style="margin-top: 0.3rem; color: var(--muted);" x-text="'Total: $' + ($root.weeklyCost || 0).toFixed(2)"></div>
+                            <div class="stat-muted" style="margin-top: 0.3rem;" x-text="'Total: $' + ($root.weeklyCost || 0).toFixed(2)"></div>
                         </div>
                     </div>
 
@@ -108,10 +110,10 @@
                         <div class="summary-body">
                             <template x-for="stat in teamStats" :key="stat.channel_sender_id">
                                 <div class="team-row">
-                                    <span x-text="formatSender(stat.channel_sender_id)"></span>
+                                    <span class="team-name" x-text="formatSender(stat.channel_sender_id)"></span>
                                     <span x-text="stat.ticket_count + ' tickets'"></span>
                                     <span x-text="'$' + stat.cost_usd.toFixed(2)"></span>
-                                    <span x-show="stat.failed_count > 0" style="color: var(--danger);" x-text="'\u2717' + stat.failed_count"></span>
+                                    <span class="team-fail" x-show="stat.failed_count > 0" x-text="'\u2717' + stat.failed_count"></span>
                                 </div>
                             </template>
                         </div>
@@ -124,7 +126,7 @@
                             <template x-for="pr in recentPRs" :key="pr.ID">
                                 <div class="pr-row">
                                     <a :href="pr.PRURL" target="_blank" x-text="'#' + pr.PRNumber + ' ' + pr.Title"></a>
-                                    <span x-text="pr.Status + ' ' + formatRelative(pr.UpdatedAt)"></span>
+                                    <span class="pr-meta" x-text="pr.Status + ' ' + formatRelative(pr.UpdatedAt)"></span>
                                 </div>
                             </template>
                         </div>
@@ -136,12 +138,12 @@
                         <div class="summary-body">
                             <template x-for="t in ($root.needsAttention || [])" :key="t.ID">
                                 <div class="attention-item" @click="$root.selectTicket(t)">
-                                    <span>
-                                        <span x-show="['failed','blocked','partial'].indexOf(t.Status) !== -1" style="color: var(--danger);">&#10007;</span>
-                                        <span x-show="t.Status === 'clarification_needed'" style="color: var(--accent);">&#10067;</span>
+                                    <span class="attention-label">
+                                        <span class="stat-danger" x-show="['failed','blocked','partial'].indexOf(t.Status) !== -1">&#10007; </span>
+                                        <span class="stat-success" x-show="t.Status === 'clarification_needed'">&#10067; </span>
                                         <span x-text="t.Title"></span>
                                     </span>
-                                    <span style="color: var(--muted);" x-text="t.Status + ' \u00B7 ' + formatSender(t.ChannelSenderID)"></span>
+                                    <span class="attention-meta" x-text="t.Status + ' \u00B7 ' + formatSender(t.ChannelSenderID)"></span>
                                 </div>
                             </template>
                         </div>
@@ -155,16 +157,16 @@
                     <div class="detail-header">
                         <div class="detail-title" x-text="ticketDetail?.Title || selectedTicket.Title"></div>
                         <div class="detail-meta">
-                            <span x-text="selectedTicket.Status"></span>
+                            <span x-text="selectedTicket.Status.toUpperCase()"></span>
                             <span x-text="' \u00B7 ' + formatSender(selectedTicket.ChannelSenderID)"></span>
-                            <span x-text="' \u00B7 started ' + formatRelative(selectedTicket.StartedAt || selectedTicket.CreatedAt)"></span>
+                            <span x-text="' \u00B7 ' + formatRelative(selectedTicket.StartedAt || selectedTicket.CreatedAt)"></span>
                         </div>
                         <div class="detail-pr" x-show="ticketDetail?.PRURL">
-                            PR: <a :href="ticketDetail?.PRURL" target="_blank" x-text="'#' + (ticketDetail?.PRNumber || '')"></a>
+                            PR: <a :href="ticketDetail?.PRURL" target="_blank" x-text="'#' + (ticketDetail?.PRNumber || ticketDetail?.PRURL)"></a>
                         </div>
                         <button class="retry-btn"
                                 x-show="isFailed(selectedTicket) || selectedTicket.Status === 'partial'"
-                                @click="retryTicket(selectedTicket.ID)">RETRY TICKET</button>
+                                @click="retryTicket(selectedTicket.ID)">&#8635; RETRY TICKET</button>
                     </div>
 
                     <!-- Clarification -->
@@ -173,7 +175,7 @@
                         <div class="detail-section-body">
                             <div class="clarification-q" x-text="'\u2753 ' + (ticketDetail?.ErrorMessage || 'Clarification requested')"></div>
                             <template x-if="ticketDetail?.Comments && ticketDetail.Comments.length > 0">
-                                <div class="clarification-a" x-text="'\uD83D\uDCAC ' + ticketDetail.Comments[ticketDetail.Comments.length - 1].Body"></div>
+                                <div class="clarification-a" x-text="ticketDetail.Comments[ticketDetail.Comments.length - 1].Body"></div>
                             </template>
                         </div>
                     </div>
@@ -189,7 +191,7 @@
                                 <div>
                                     <div class="task-item" @click="toggleTask(task.ID)">
                                         <span class="task-icon" :class="taskIconClass(task.Status)" x-text="taskIcon(task.Status)"></span>
-                                        <span x-text="task.Sequence + '. ' + task.Title"></span>
+                                        <span class="task-label" x-text="task.Sequence + '. ' + task.Title"></span>
                                         <span class="task-complexity" x-text="task.EstimatedComplexity"></span>
                                         <button class="retry-task-btn"
                                                 x-show="task.Status === 'failed'"
@@ -200,7 +202,7 @@
                                             <span x-show="task.ImplementationAttempts > 0" x-text="' (attempt ' + task.ImplementationAttempts + ')'"></span>
                                         </div>
                                         <div x-show="task.FilesToModify && task.FilesToModify.length">Files: <span x-text="(task.FilesToModify || []).join(', ')"></span></div>
-                                        <div x-show="task.ErrorMessage" style="color: var(--danger);">Error: <span x-text="task.ErrorMessage"></span></div>
+                                        <div class="task-error" x-show="task.ErrorMessage">Error: <span x-text="task.ErrorMessage"></span></div>
                                         <div>Cost: $<span x-text="(task.CostUSD || 0).toFixed(2)"></span></div>
                                     </div>
                                 </div>
@@ -224,9 +226,10 @@
                                     </span>
                                 </div>
                             </template>
-                            <div style="margin-top: 0.5rem; color: var(--muted); font-size: 0.7rem;">
-                                <span x-text="'Model: ' + llmSummary().model"></span> |
-                                <span x-text="Math.round(llmSummary().totalTokens / 1000) + 'k tokens'"></span> |
+                            <div class="llm-summary">
+                                <span x-text="'Model: ' + llmSummary().model"></span><br>
+                                <span x-text="Math.round(llmSummary().totalTokens / 1000) + 'k tokens'"></span>
+                                <span class="divider"> | </span>
                                 <span x-text="llmSummary().totalCalls + ' calls (' + llmSummary().ok + ' ok, ' + llmSummary().retried + ' retried)'"></span>
                             </div>
                         </div>
@@ -235,13 +238,13 @@
                     <!-- Events for this ticket -->
                     <div class="detail-section">
                         <div class="detail-section-header">EVENTS</div>
-                        <div class="detail-section-body">
+                        <div class="detail-section-body" style="padding: 0;">
                             <template x-for="evt in ticketEvents.slice(0, 20)" :key="evt.ID">
                                 <div class="event-entry">
                                     <span class="event-time" x-text="formatTime(evt.CreatedAt)"></span>
                                     <span class="event-severity" :class="'severity-' + evt.Severity" x-text="severityIcon(evt.Severity)"></span>
                                     <span class="event-type" x-text="evt.EventType"></span>
-                                    <span class="event-message" x-text="evt.Message" x-show="evt.Message"></span>
+                                    <div class="event-message" x-text="evt.Message" x-show="evt.Message"></div>
                                 </div>
                             </template>
                         </div>
@@ -277,6 +280,20 @@
             </div>
         </section>
     </main>
+
+    <!-- Mobile tab bar -->
+    <nav class="mobile-tabs">
+        <button class="mobile-tab" :class="activePanel === 'tickets' ? 'active' : ''" @click="activePanel = 'tickets'">
+            &#9776; TICKETS<br><span x-text="tickets.length"></span>
+        </button>
+        <button class="mobile-tab" :class="activePanel === 'detail' ? 'active' : ''" @click="activePanel = 'detail'">
+            &#9654; DETAIL<br><span x-show="selectedTicket" x-text="selectedTicket ? selectedTicket.Status.toUpperCase() : ''"></span>
+            <span x-show="!selectedTicket" class="stat-muted">--</span>
+        </button>
+        <button class="mobile-tab" :class="activePanel === 'feed' ? 'active' : ''" @click="activePanel = 'feed'">
+            &#9889; FEED<br><span x-text="events.length"></span>
+        </button>
+    </nav>
 
     <footer>
         <span x-text="'DAILY: $' + dailyCost.toFixed(2) + ' / $' + dailyBudget.toFixed(0)"></span>

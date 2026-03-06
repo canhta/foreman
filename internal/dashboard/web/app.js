@@ -68,6 +68,7 @@ function foreman() {
         search: '',
         feedCollapsed: localStorage.getItem('feed_collapsed') === 'true',
         expandedTasks: {},
+        activePanel: 'tickets', // mobile panel: tickets | detail | feed
 
         // Header state
         daemonState: 'stopped',
@@ -229,6 +230,10 @@ function foreman() {
         selectTicket: function (t) {
             this.selectedTicket = t;
             this.loadTicketDetail(t.ID);
+            // On mobile, auto-navigate to detail panel
+            if (window.innerWidth < 768) {
+                this.activePanel = 'detail';
+            }
         },
 
         selectTicketById: function (id) {
