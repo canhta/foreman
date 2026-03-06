@@ -265,7 +265,7 @@ func (r *PipelineTaskRunner) runQualityReview(
 		return fmt.Errorf("quality review: %w", err)
 	}
 
-	if !result.Approved && result.HasCritical {
+	if !result.Approved {
 		feedback.AddQualityFeedback(result.IssuesText())
 		return &reviewRejectedError{reviewer: "quality"}
 	}

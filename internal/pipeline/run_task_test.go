@@ -342,17 +342,17 @@ func (m *implCountingLLM) ProviderName() string                { return "mock" }
 func (m *implCountingLLM) HealthCheck(_ context.Context) error { return nil }
 
 // =============================================
-// RunTask: quality review with only MINOR issues approves
+// RunTask: quality review with only MINOR issues now rejects
 // =============================================
 
-func TestRunTask_QualityReview_MinorOnly_Approves(t *testing.T) {
+func TestRunTask_QualityReview_MinorOnly_Rejects(t *testing.T) {
 	db := newMockTaskRunnerDB()
 	g := &realMockGitProvider{diffOutput: "+quality", commitSHA: "sha6"}
 	cmd := &realMockCmdRunner{exitCode: 0}
 	llm := &mockLLM{
 		responses: map[string]string{
 			"implementer": buildNewFileResponse("y.go", "package main\n"),
-			// CHANGES_REQUESTED but no CRITICAL — should still approve.
+			// CHANGES_REQUESTED with only MINOR issues should still reject.
 			"quality_reviewer": "STATUS: CHANGES_REQUESTED\nISSUES:\n- [MINOR] naming: rename foo to bar",
 		},
 	}
@@ -364,8 +364,8 @@ func TestRunTask_QualityReview_MinorOnly_Approves(t *testing.T) {
 	})
 
 	err := r.RunTask(context.Background(), simpleTask("t10", "Minor quality issues"))
-	require.NoError(t, err)
-	assert.Equal(t, models.TaskStatusDone, db.statuses["t10"])
+	require.Error(t, err, "CHANGES_REQUESTED should cause rejection regardless of severity")
+	assert.Equal(t, models.TaskStatusFailed, db.statuses["t10"])
 }
 
 // =============================================
@@ -728,6 +728,33 @@ func TestRunQualityReview_CriticalIssue_ReturnsSentinel(t *testing.T) {
 	_, ok := err.(*reviewRejectedError)
 	assert.True(t, ok, "expected *reviewRejectedError")
 	assert.True(t, feedback.HasFeedback())
+}
+
+// =============================================
+// RunTask: quality review with IMPORTANT issues (no CRITICAL) should reject
+// =============================================
+
+func TestRunQualityReview_ImportantOnly_ReturnsRejection(t *testing.T) {
+	db := newMockTaskRunnerDB()
+	llm := &mockLLM{
+		responses: map[string]string{
+			// CHANGES_REQUESTED with only IMPORTANT issues, no CRITICAL.
+			"quality_reviewer": "STATUS: CHANGES_REQUESTED\nISSUES:\n- [IMPORTANT] missing error handling in handler",
+		},
+	}
+	r := &PipelineTaskRunner{
+		db:              db,
+		qualityReviewer: NewQualityReviewer(llm),
+		config:          TaskRunnerConfig{MaxLlmCallsPerTask: 8},
+	}
+	feedback := NewFeedbackAccumulator()
+
+	err := r.runQualityReview(context.Background(), "qr-important", "+diff", feedback)
+	require.Error(t, err, "CHANGES_REQUESTED with IMPORTANT issues should be rejected")
+
+	_, ok := err.(*reviewRejectedError)
+	assert.True(t, ok, "expected *reviewRejectedError")
+	assert.True(t, feedback.HasFeedback(), "feedback should contain quality issues")
 }
 
 // =============================================
