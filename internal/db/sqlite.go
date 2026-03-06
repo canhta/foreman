@@ -345,7 +345,7 @@ func (s *SQLiteDB) ReserveFiles(ctx context.Context, ticketID string, paths []st
 
 	for _, p := range paths {
 		_, err := tx.ExecContext(ctx,
-			`INSERT INTO file_reservations (file_path, ticket_id, reserved_at) VALUES (?, ?, ?)`,
+			`INSERT OR IGNORE INTO file_reservations (file_path, ticket_id, reserved_at) VALUES (?, ?, ?)`,
 			p, ticketID, time.Now())
 		if err != nil {
 			return err
@@ -393,9 +393,11 @@ func (s *SQLiteDB) TryReserveFiles(ctx context.Context, ticketID string, paths [
 	}
 
 	// No conflicts — insert reservations within the same transaction.
+	// INSERT OR IGNORE handles the case where this ticket already holds the reservation
+	// (e.g. replanning after a crash that left old reservations unreleased).
 	for _, p := range paths {
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO file_reservations (file_path, ticket_id, reserved_at) VALUES (?, ?, ?)`,
+			`INSERT OR IGNORE INTO file_reservations (file_path, ticket_id, reserved_at) VALUES (?, ?, ?)`,
 			p, ticketID, time.Now()); err != nil {
 			return nil, fmt.Errorf("insert reservation for %q: %w", p, err)
 		}

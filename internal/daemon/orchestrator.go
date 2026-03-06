@@ -380,6 +380,17 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 		Int("total", totalCount).
 		Msg("DAG execution complete")
 
+	// Log individual task failures to surface the root cause.
+	for _, t := range dbTasks {
+		if res, ok := results[t.ID]; ok && res.Status == models.TaskStatusFailed && res.Error != nil {
+			log.Error().
+				Str("task_id", t.ID).
+				Str("task_title", t.Title).
+				Err(res.Error).
+				Msg("task failed")
+		}
+	}
+
 	isPartial := failedCount > 0 && doneCount > 0
 
 	if doneCount == 0 {
