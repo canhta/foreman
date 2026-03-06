@@ -93,7 +93,11 @@ func (m *MergeChecker) handleMerged(ctx context.Context, ticket *models.Ticket) 
 	// Fire post_merge hooks
 	if m.hookRunner != nil {
 		sCtx := &skills.SkillContext{Ticket: ticket}
-		m.hookRunner.RunHook(ctx, "post_merge", sCtx)
+		for _, hr := range m.hookRunner.RunHook(ctx, "post_merge", sCtx) {
+			if hr.Error != nil {
+				m.log.Warn().Err(hr.Error).Str("ticket", ticket.ID).Str("skill", hr.SkillID).Msg("post_merge hook failed")
+			}
+		}
 	}
 
 	// Check parent completion if this is a child ticket
