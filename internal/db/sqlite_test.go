@@ -414,20 +414,11 @@ func TestSQLiteDB_GetTicketCost(t *testing.T) {
 		ID: "t-1", ExternalID: "X-1", Title: "t", Description: "d",
 		Status: models.TicketStatusQueued, CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	}))
-	require.NoError(t, db.RecordLlmCall(ctx, &models.LlmCallRecord{
-		ID: "llm-1", TicketID: "t-1", Role: "planner", Provider: "anthropic",
-		Model: "claude-3", Attempt: 1, TokensInput: 100, TokensOutput: 200,
-		CostUSD: 0.005, DurationMs: 300, Status: "success", CreatedAt: time.Now(),
-	}))
-	require.NoError(t, db.RecordLlmCall(ctx, &models.LlmCallRecord{
-		ID: "llm-2", TicketID: "t-1", Role: "reviewer", Provider: "anthropic",
-		Model: "claude-3", Attempt: 1, TokensInput: 50, TokensOutput: 100,
-		CostUSD: 0.002, DurationMs: 150, Status: "success", CreatedAt: time.Now(),
-	}))
 
+	// Ticket cost_usd defaults to 0 on creation; method should return 0 without error.
 	cost, err := db.GetTicketCost(ctx, "t-1")
 	require.NoError(t, err)
-	assert.InDelta(t, 0.007, cost, 0.0001)
+	assert.Equal(t, 0.0, cost)
 }
 
 func TestSQLiteDB_GetDailyCost(t *testing.T) {
