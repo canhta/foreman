@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -35,11 +36,32 @@ type PlannedTask struct {
 	DependsOn           []string `yaml:"depends_on"`
 }
 
+// normalizeNumericDepsOn resolves numeric index strings in depends_on (e.g. "0", "1")
+// to the corresponding task title. The LLM occasionally uses 0-based indices instead
+// of task titles; this normalizes them so TopologicalSort can match by title.
+func normalizeNumericDepsOn(result *PlannerResult) {
+	if result == nil {
+		return
+	}
+	for i, task := range result.Tasks {
+		normalized := make([]string, 0, len(task.DependsOn))
+		for _, dep := range task.DependsOn {
+			if idx, err := strconv.Atoi(dep); err == nil && idx >= 0 && idx < len(result.Tasks) {
+				normalized = append(normalized, result.Tasks[idx].Title)
+			} else {
+				normalized = append(normalized, dep)
+			}
+		}
+		result.Tasks[i].DependsOn = normalized
+	}
+}
+
 // ParsePlannerOutput parses LLM planner output using a strict to permissive to partial fallback chain.
 func ParsePlannerOutput(raw string) (*PlannerResult, error) {
 	// Strategy 1: Strict YAML parse
 	result, err := parseStrictYAML(raw)
 	if err == nil && result.Status != "" {
+		normalizeNumericDepsOn(result)
 		return result, nil
 	}
 
@@ -47,12 +69,14 @@ func ParsePlannerOutput(raw string) (*PlannerResult, error) {
 	if fenced := extractFencedYAML(raw); fenced != "" {
 		result, err = parseStrictYAML(fenced)
 		if err == nil && result.Status != "" {
+			normalizeNumericDepsOn(result)
 			return result, nil
 		}
 		// Strategy 3: Look for status field inside fenced content
 		if idx := strings.Index(fenced, "status:"); idx != -1 {
 			result, err = parseStrictYAML(fenced[idx:])
 			if err == nil && result.Status != "" {
+				normalizeNumericDepsOn(result)
 				return result, nil
 			}
 		}
@@ -63,6 +87,7 @@ func ParsePlannerOutput(raw string) (*PlannerResult, error) {
 	if idx := strings.Index(cleaned, "status:"); idx != -1 {
 		result, err = parseStrictYAML(cleaned[idx:])
 		if err == nil && result.Status != "" {
+			normalizeNumericDepsOn(result)
 			return result, nil
 		}
 	}

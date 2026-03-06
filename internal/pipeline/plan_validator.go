@@ -69,8 +69,21 @@ func ValidatePlan(plan *PlannerResult, workDir string, config *models.LimitsConf
 	}
 
 	// 2. Check file paths exist
+	// Build set of files that will be created by tasks in this plan
+	newFilesInPlan := map[string]bool{}
+	for _, task := range plan.Tasks {
+		for _, path := range task.FilesToModify {
+			if isNewFile(path) {
+				newFilesInPlan[stripNewSuffix(path)] = true
+			}
+		}
+	}
+
 	for _, task := range plan.Tasks {
 		for _, path := range task.FilesToRead {
+			if newFilesInPlan[path] {
+				continue // Will be created by another task in this plan
+			}
 			if !fileExistsAt(workDir, path) {
 				v.addError("Task '%s' references non-existent file: %s", task.Title, path)
 			}
@@ -78,6 +91,9 @@ func ValidatePlan(plan *PlannerResult, workDir string, config *models.LimitsConf
 		for _, path := range task.FilesToModify {
 			if isNewFile(path) {
 				continue // New files don't need to exist
+			}
+			if newFilesInPlan[path] {
+				continue // Will be created by another task in this plan
 			}
 			if !fileExistsAt(workDir, path) {
 				v.addError("Task '%s' modifies non-existent file: %s", task.Title, path)

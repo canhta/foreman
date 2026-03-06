@@ -72,7 +72,7 @@ tasks:
     files_to_modify:
       - "<path> (new)" or "<existing path>"
     estimated_complexity: "simple|medium|complex"
-    depends_on: []
+    depends_on: []  # list of task TITLES this task depends on; use exact titles, never numbers or indices
 
 Do NOT wrap the YAML in markdown fences. Output ONLY the YAML.`
 
