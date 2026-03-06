@@ -441,3 +441,12 @@ WhatsApp sessions are stored in a local SQLite database (default `~/.foreman/wha
 - **MCP HTTP/SSE transport** is not implemented. Only stdio subprocess transport is supported.
 - **MCP resources and prompts** are not supported. Tools only.
 - **Community skills** (`skills/community/`) are defined but the submission and review process for community contributions is not yet documented.
+
+---
+
+## See Also
+
+- [Pipeline](pipeline.md) — detailed state machine and per-task execution flow
+- [Configuration](configuration.md) — tune every feature with `foreman.toml`
+- [Skills](skills.md) — extend the pipeline with YAML hook steps
+- [Integrations](integrations.md) — issue tracker and LLM provider setup

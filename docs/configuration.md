@@ -525,3 +525,12 @@ See [Context Generate](getting-started.md#generating-agentsmd) for usage.
 | `GITLAB_TOKEN` | `[git.gitlab] token` |
 | `FOREMAN_DASHBOARD_TOKEN` | `[dashboard] auth_token` |
 | `DATABASE_URL` | `[database.postgres] url` |
+
+---
+
+## See Also
+
+- [Integrations](integrations.md) — setup guides for each issue tracker and LLM provider
+- [Getting Started](getting-started.md) — minimal working configuration examples
+- [Skills](skills.md) — `[pipeline.hooks]` and skill YAML reference
+- [Agent Runner](agent-runner.md) — `[agent_runner]` options for builtin, Claude Code, and Copilot
