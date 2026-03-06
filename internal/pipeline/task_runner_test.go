@@ -142,6 +142,41 @@ func TestReviewRejectedError(t *testing.T) {
 	assert.Equal(t, "spec review rejected", err.Error())
 }
 
+func TestQualityReviewPassesTaskID(t *testing.T) {
+	db := newMockTaskRunnerDB()
+	// Pre-seed call count so next increment exceeds cap.
+	taskID := "qr-task-42"
+	db.callCounts[taskID] = 8
+
+	llm := &mockLLM{
+		responses: map[string]string{
+			"quality_reviewer": "STATUS: APPROVED\nISSUES:\n- None",
+		},
+	}
+	r := &PipelineTaskRunner{
+		db:              db,
+		qualityReviewer: NewQualityReviewer(llm),
+		config: TaskRunnerConfig{
+			WorkDir:            "/some/filesystem/path",
+			MaxLlmCallsPerTask: 8,
+		},
+	}
+	feedback := NewFeedbackAccumulator()
+
+	err := r.runQualityReview(context.Background(), taskID, "+diff", feedback)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "call cap")
+
+	// The DB must have been called with the task ID, not the WorkDir path.
+	var capErr *CallCapExceededError
+	require.True(t, errors.As(err, &capErr))
+	assert.Equal(t, taskID, capErr.TaskID, "CheckTaskCallCap must receive the task ID, not a filesystem path")
+
+	// WorkDir should never appear as a key in call counts.
+	_, usedPath := db.callCounts["/some/filesystem/path"]
+	assert.False(t, usedPath, "DB must not be called with WorkDir as task ID")
+}
+
 func TestTaskRunnerConfig_Defaults(t *testing.T) {
 	config := TaskRunnerConfig{
 		MaxImplementationRetries: 2,

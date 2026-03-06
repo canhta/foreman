@@ -608,7 +608,7 @@ func TestRunQualityReview_Approved(t *testing.T) {
 	}
 	feedback := NewFeedbackAccumulator()
 
-	err := r.runQualityReview(context.Background(), "+diff", feedback)
+	err := r.runQualityReview(context.Background(), "qr-approved", "+diff", feedback)
 	assert.NoError(t, err)
 }
 
@@ -626,7 +626,7 @@ func TestRunQualityReview_CriticalIssue_ReturnsSentinel(t *testing.T) {
 	}
 	feedback := NewFeedbackAccumulator()
 
-	err := r.runQualityReview(context.Background(), "+bad", feedback)
+	err := r.runQualityReview(context.Background(), "qr-critical", "+bad", feedback)
 	require.Error(t, err)
 
 	_, ok := err.(*reviewRejectedError)

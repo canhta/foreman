@@ -168,7 +168,7 @@ func (r *PipelineTaskRunner) RunTask(ctx context.Context, task *models.Task) err
 		}
 
 		// Quality review.
-		qualityErr := r.runQualityReview(ctx, diff, feedback)
+		qualityErr := r.runQualityReview(ctx, task.ID, diff, feedback)
 		if qualityErr != nil {
 			if _, ok := qualityErr.(*reviewRejectedError); ok {
 				continue
@@ -238,10 +238,11 @@ func (r *PipelineTaskRunner) runSpecReview(
 
 func (r *PipelineTaskRunner) runQualityReview(
 	ctx context.Context,
+	taskID string,
 	diff string,
 	feedback *FeedbackAccumulator,
 ) error {
-	if err := CheckTaskCallCap(ctx, r.db, r.config.WorkDir, r.config.MaxLlmCallsPerTask); err != nil {
+	if err := CheckTaskCallCap(ctx, r.db, taskID, r.config.MaxLlmCallsPerTask); err != nil {
 		return fmt.Errorf("call cap: %w", err)
 	}
 
