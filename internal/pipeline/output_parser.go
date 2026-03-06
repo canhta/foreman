@@ -34,7 +34,7 @@ var (
 	endBlockRe   = regexp.MustCompile(`>>>>`)
 )
 
-func ParseImplementerOutput(raw string, similarityThreshold float64, minContextLines int) (*ParsedOutput, error) {
+func ParseImplementerOutput(raw string, similarityThreshold float64) (*ParsedOutput, error) {
 	// Strategy 1: strict
 	result, err := parseStrict(raw)
 	if err == nil && len(result.Files) > 0 {

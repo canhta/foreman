@@ -127,7 +127,6 @@ func (r *PipelineTaskRunner) RunTask(ctx context.Context, task *models.Task) err
 		parsed, err := ParseImplementerOutput(
 			result.Response.Content,
 			r.config.SearchReplaceSimilarity,
-			0,
 		)
 		if err != nil {
 			feedback.AddLintError(fmt.Sprintf("Failed to parse output: %s", err))

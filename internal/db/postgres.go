@@ -161,7 +161,7 @@ func (p *PostgresDB) SetLastCompletedTask(ctx context.Context, ticketID string, 
 func (p *PostgresDB) CreateTasks(ctx context.Context, ticketID string, tasks []models.Task) error {
 	tx, err := p.db.BeginTxx(ctx, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("begin transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
@@ -170,7 +170,7 @@ func (p *PostgresDB) CreateTasks(ctx context.Context, ticketID string, tasks []m
 		 files_to_read, files_to_modify, test_assertions, estimated_complexity, depends_on, status, created_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`)
 	if err != nil {
-		return err
+		return fmt.Errorf("prepare insert tasks: %w", err)
 	}
 	defer stmt.Close()
 
@@ -179,10 +179,13 @@ func (p *PostgresDB) CreateTasks(ctx context.Context, ticketID string, tasks []m
 			"[]", "[]", "[]", "[]", t.EstimatedComplexity, "[]",
 			string(models.TaskStatusPending), time.Now())
 		if err != nil {
-			return err
+			return fmt.Errorf("insert task %q: %w", t.Title, err)
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit tasks: %w", err)
+	}
+	return nil
 }
 
 func (p *PostgresDB) UpdateTaskStatus(ctx context.Context, id string, status models.TaskStatus) error {
@@ -303,7 +306,7 @@ func (p *PostgresDB) ReserveFiles(ctx context.Context, ticketID string, paths []
 func (p *PostgresDB) TryReserveFiles(ctx context.Context, ticketID string, paths []string) ([]string, error) {
 	tx, err := p.db.BeginTxx(ctx, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("begin transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
@@ -311,20 +314,20 @@ func (p *PostgresDB) TryReserveFiles(ctx context.Context, ticketID string, paths
 	rows, err := tx.QueryContext(ctx,
 		`SELECT file_path, ticket_id FROM file_reservations WHERE released_at IS NULL`)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("query reservations: %w", err)
 	}
 	reserved := make(map[string]string)
 	for rows.Next() {
 		var path, owner string
 		if err := rows.Scan(&path, &owner); err != nil {
 			rows.Close()
-			return nil, err
+			return nil, fmt.Errorf("scan reservation row: %w", err)
 		}
 		reserved[path] = owner
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("iterate reservation rows: %w", err)
 	}
 
 	// Check for conflicts.
@@ -348,7 +351,7 @@ func (p *PostgresDB) TryReserveFiles(ctx context.Context, ticketID string, paths
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("commit reservations: %w", err)
 	}
 	return nil, nil
 }

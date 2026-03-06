@@ -14,7 +14,7 @@ export function hello(): string {
 }
 === END FILE ===`
 
-	result, err := ParseImplementerOutput(raw, 0.92, 3)
+	result, err := ParseImplementerOutput(raw, 0.92)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -44,7 +44,7 @@ const app = express();
 >>>>
 === END FILE ===`
 
-	result, err := ParseImplementerOutput(raw, 0.92, 3)
+	result, err := ParseImplementerOutput(raw, 0.92)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -68,7 +68,7 @@ test content
 impl content
 === END FILE ===`
 
-	result, err := ParseImplementerOutput(raw, 0.92, 3)
+	result, err := ParseImplementerOutput(raw, 0.92)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestParseImplementerOutput_PermissiveParsing(t *testing.T) {
 	// LLM wraps in markdown fences
 	raw := "```\n=== NEW FILE: src/hello.ts ===\nhello content\n=== END FILE ===\n```"
 
-	result, err := ParseImplementerOutput(raw, 0.92, 3)
+	result, err := ParseImplementerOutput(raw, 0.92)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

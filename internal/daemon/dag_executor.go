@@ -145,7 +145,6 @@ func (e *DAGExecutor) Execute(ctx context.Context, tasks []DAGTask) map[string]T
 		}
 	}
 
-	workerCancel()
 	close(readyChan)
 	workerWg.Wait()
 
