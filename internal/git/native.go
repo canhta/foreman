@@ -43,7 +43,11 @@ func (g *NativeGitProvider) EnsureRepo(ctx context.Context, workDir string) erro
 }
 
 func (g *NativeGitProvider) CreateBranch(ctx context.Context, workDir, branchName string) error {
-	_, err := g.run(ctx, workDir, "git", "checkout", "-b", branchName)
+	// Try to create the branch; if it already exists just check it out.
+	if _, err := g.run(ctx, workDir, "git", "checkout", "-b", branchName); err == nil {
+		return nil
+	}
+	_, err := g.run(ctx, workDir, "git", "checkout", branchName)
 	return err
 }
 
