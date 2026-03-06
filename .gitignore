@@ -17,6 +17,13 @@ foreman.toml
 # Work directory
 .foreman/
 
+# Local tickets (local_file tracker)
+tickets/
+
+# Environment variables
+.env
+.env.*
+
 # Go
 vendor/
 *.test
