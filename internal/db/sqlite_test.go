@@ -287,3 +287,175 @@ func TestSQLiteDB_SetLastCompletedTask(t *testing.T) {
 	require.NoError(t, db.SetLastCompletedTask(ctx, "t-1", 3))
 	// No error = success; method has no return value to inspect beyond error
 }
+
+func TestSQLiteDB_UpdateTaskStatus(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	require.NoError(t, db.CreateTicket(ctx, &models.Ticket{
+		ID: "t-1", ExternalID: "X-1", Title: "t", Description: "d",
+		Status: models.TicketStatusQueued, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}))
+	require.NoError(t, db.CreateTasks(ctx, "t-1", []models.Task{
+		{ID: "task-1", TicketID: "t-1", Sequence: 1, Title: "Do it", Description: "desc"},
+	}))
+
+	require.NoError(t, db.UpdateTaskStatus(ctx, "task-1", models.TaskStatusDone))
+
+	tasks, err := db.ListTasks(ctx, "t-1")
+	require.NoError(t, err)
+	require.Len(t, tasks, 1)
+	assert.Equal(t, models.TaskStatusDone, tasks[0].Status)
+}
+
+func TestSQLiteDB_IncrementTaskLlmCalls(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	require.NoError(t, db.CreateTicket(ctx, &models.Ticket{
+		ID: "t-1", ExternalID: "X-1", Title: "t", Description: "d",
+		Status: models.TicketStatusQueued, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}))
+	require.NoError(t, db.CreateTasks(ctx, "t-1", []models.Task{
+		{ID: "task-1", TicketID: "t-1", Sequence: 1, Title: "Do it", Description: "desc"},
+	}))
+
+	count, err := db.IncrementTaskLlmCalls(ctx, "task-1")
+	require.NoError(t, err)
+	assert.Equal(t, 1, count)
+
+	count, err = db.IncrementTaskLlmCalls(ctx, "task-1")
+	require.NoError(t, err)
+	assert.Equal(t, 2, count)
+}
+
+func TestSQLiteDB_SetAndGetHandoffs(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	require.NoError(t, db.CreateTicket(ctx, &models.Ticket{
+		ID: "t-1", ExternalID: "X-1", Title: "t", Description: "d",
+		Status: models.TicketStatusQueued, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}))
+
+	h := &models.HandoffRecord{
+		ID: "h-1", TicketID: "t-1", FromRole: "planner", ToRole: "implementer",
+		Key: "plan", Value: `{"tasks":[]}`, CreatedAt: time.Now(),
+	}
+	require.NoError(t, db.SetHandoff(ctx, h))
+
+	got, err := db.GetHandoffs(ctx, "t-1", "implementer")
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, "plan", got[0].Key)
+	assert.Equal(t, `{"tasks":[]}`, got[0].Value)
+}
+
+func TestSQLiteDB_SaveAndGetProgressPatterns(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	require.NoError(t, db.CreateTicket(ctx, &models.Ticket{
+		ID: "t-1", ExternalID: "X-1", Title: "t", Description: "d",
+		Status: models.TicketStatusQueued, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}))
+
+	p := &models.ProgressPattern{
+		ID: "pp-1", TicketID: "t-1", PatternKey: "test_command",
+		PatternValue: "go test ./...", DiscoveredByTask: "task-1", CreatedAt: time.Now(),
+	}
+	require.NoError(t, db.SaveProgressPattern(ctx, p))
+
+	patterns, err := db.GetProgressPatterns(ctx, "t-1", nil)
+	require.NoError(t, err)
+	require.Len(t, patterns, 1)
+	assert.Equal(t, "test_command", patterns[0].PatternKey)
+	assert.Equal(t, "go test ./...", patterns[0].PatternValue)
+}
+
+func TestSQLiteDB_ReserveAndReleaseFiles(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	require.NoError(t, db.CreateTicket(ctx, &models.Ticket{
+		ID: "t-1", ExternalID: "X-1", Title: "t", Description: "d",
+		Status: models.TicketStatusQueued, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}))
+
+	paths := []string{"internal/foo/bar.go", "internal/baz/qux.go"}
+	require.NoError(t, db.ReserveFiles(ctx, "t-1", paths))
+
+	reserved, err := db.GetReservedFiles(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "t-1", reserved["internal/foo/bar.go"])
+	assert.Equal(t, "t-1", reserved["internal/baz/qux.go"])
+
+	require.NoError(t, db.ReleaseFiles(ctx, "t-1"))
+
+	reserved, err = db.GetReservedFiles(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, reserved)
+}
+
+func TestSQLiteDB_GetTicketCost(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	require.NoError(t, db.CreateTicket(ctx, &models.Ticket{
+		ID: "t-1", ExternalID: "X-1", Title: "t", Description: "d",
+		Status: models.TicketStatusQueued, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}))
+	require.NoError(t, db.RecordLlmCall(ctx, &models.LlmCallRecord{
+		ID: "llm-1", TicketID: "t-1", Role: "planner", Provider: "anthropic",
+		Model: "claude-3", Attempt: 1, TokensInput: 100, TokensOutput: 200,
+		CostUSD: 0.005, DurationMs: 300, Status: "success", CreatedAt: time.Now(),
+	}))
+	require.NoError(t, db.RecordLlmCall(ctx, &models.LlmCallRecord{
+		ID: "llm-2", TicketID: "t-1", Role: "reviewer", Provider: "anthropic",
+		Model: "claude-3", Attempt: 1, TokensInput: 50, TokensOutput: 100,
+		CostUSD: 0.002, DurationMs: 150, Status: "success", CreatedAt: time.Now(),
+	}))
+
+	cost, err := db.GetTicketCost(ctx, "t-1")
+	require.NoError(t, err)
+	assert.InDelta(t, 0.007, cost, 0.0001)
+}
+
+func TestSQLiteDB_GetDailyCost(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	require.NoError(t, db.RecordDailyCost(ctx, "2026-03-06", 7.50))
+
+	cost, err := db.GetDailyCost(ctx, "2026-03-06")
+	require.NoError(t, err)
+	assert.InDelta(t, 7.50, cost, 0.01)
+
+	// Non-existent date returns 0, not error
+	cost, err = db.GetDailyCost(ctx, "2026-01-01")
+	require.NoError(t, err)
+	assert.Equal(t, 0.0, cost)
+}
+
+func TestSQLiteDB_CreateAndValidateAuthToken(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	require.NoError(t, db.CreateAuthToken(ctx, "hashed-token-abc", "CI token"))
+
+	valid, err := db.ValidateAuthToken(ctx, "hashed-token-abc")
+	require.NoError(t, err)
+	assert.True(t, valid)
+
+	valid, err = db.ValidateAuthToken(ctx, "wrong-hash")
+	require.NoError(t, err)
+	assert.False(t, valid)
+}
