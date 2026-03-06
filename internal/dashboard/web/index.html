@@ -192,7 +192,7 @@
             <template x-if="selectedTicket">
                 <div id="ticket-detail">
                     <div class="detail-header">
-                        <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.4rem;">
+                        <div class="detail-actions">
                             <button class="back-btn" @click="selectedTicket = null; activePanel = 'tickets'">&#8592; BACK</button>
                             <button class="delete-btn" @click="deleteTicket(selectedTicket.ID)">&#10007; DELETE</button>
                         </div>

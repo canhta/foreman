@@ -167,7 +167,7 @@ footer {
 .filter-tabs button {
     background: none;
     border: none;
-    border-right: 2px solid #222;
+    border-right: 2px solid #333;
     color: var(--muted);
     font-family: monospace;
     font-size: 0.65rem;
@@ -260,10 +260,11 @@ footer {
 }
 
 .progress-bar-container {
+    display: block;
     flex: 1;
     height: 6px;
     background: #2a2a2a;
-    border: 1px solid #333;
+    border: 2px solid #333;
 }
 .progress-bar-fill {
     display: block;
@@ -318,7 +319,7 @@ footer {
     font-size: 0.75rem;
     color: var(--muted);
     margin-bottom: 0.5rem;
-    border-top: 1px solid #2a2a2a;
+    border-top: 2px solid #2a2a2a;
     padding-top: 0.4rem;
 }
 
@@ -329,11 +330,18 @@ footer {
 .detail-pr a { color: var(--accent); text-decoration: none; font-weight: bold; }
 .detail-pr a:hover { text-decoration: underline; }
 
+.detail-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.4rem;
+}
+
 .back-btn {
     display: inline-block;
     background: none;
     color: var(--muted);
-    border: 2px solid #333;
+    border: 2px solid var(--muted);
     padding: 0.2rem 0.6rem;
     font-family: monospace;
     font-size: 0.7rem;
@@ -397,7 +405,7 @@ footer {
 .detail-section {
     border: 2px solid var(--border);
     margin-bottom: 1rem;
-    box-shadow: 2px 2px 0 #FFE600;
+    box-shadow: var(--shadow);
 }
 .detail-section-header {
     padding: 0.4rem 0.75rem;
@@ -418,7 +426,7 @@ footer {
 /* Tasks */
 .task-item {
     padding: 0.35rem 0;
-    border-bottom: 2px solid #1e1e1e;
+    border-bottom: 2px solid #252525;
     cursor: pointer;
     display: flex;
     align-items: baseline;
@@ -467,7 +475,7 @@ footer {
     flex: 1;
     height: 8px;
     background: #2a2a2a;
-    border: 1px solid #333;
+    border: 2px solid #333;
 }
 .cost-bar-fill {
     height: 100%;
@@ -507,6 +515,7 @@ footer {
     border-left: 3px solid var(--accent);
     margin-bottom: 0.75rem;
     background: var(--surface);
+    box-shadow: 2px 2px 0 var(--accent);
 }
 .summary-header {
     padding: 0.35rem 0.75rem;
@@ -776,7 +785,7 @@ footer {
     .mobile-tab.active {
         color: var(--accent);
         background: var(--accent-muted);
-        border-bottom: 2px solid var(--accent);
+        border-top: 2px solid var(--accent);
     }
     .mobile-tab:hover:not(.active) { color: var(--text); background: #1a1a1a; }
 
