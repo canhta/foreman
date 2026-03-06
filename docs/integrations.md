@@ -173,6 +173,44 @@ When the `git` CLI is not available, Foreman falls back to a pure Go git impleme
 
 ---
 
+## Messaging Channels
+
+### WhatsApp
+
+Foreman integrates with WhatsApp via the Web multi-device protocol (whatsmeow). This provides a bidirectional messaging channel: operators can send commands and ticket descriptions via DM, and Foreman sends proactive notifications at pipeline milestones.
+
+**Setup:**
+
+1. Add the `[channel]` section to `foreman.toml`:
+   ```toml
+   [channel]
+   provider = "whatsapp"
+
+   [channel.whatsapp]
+   session_db      = "~/.foreman/whatsapp.db"
+   dm_policy       = "allowlist"
+   allowed_numbers = ["+84123456789"]
+   ```
+
+2. Link your WhatsApp account:
+   ```bash
+   ./foreman channel login --phone +84123456789
+   # Or: ./foreman channel login --mode qr
+   ```
+
+3. Start the daemon as usual — the channel connects automatically.
+
+**Behaviour:**
+
+- Messages starting with `/status`, `/pause`, `/resume`, or `/cost` execute daemon commands.
+- Free-text messages from allowed senders are classified by the LLM and can create new tickets.
+- The orchestrator sends notifications when tickets are picked up, need clarification, start implementation, have PRs created, or fail.
+- Per-sender rate limiting (5 messages/60 seconds) prevents abuse.
+
+**Pairing mode:** Set `dm_policy = "pairing"` to allow unknown senders to request access. They receive a time-limited code; an operator approves with `foreman pairing approve <CODE>`.
+
+---
+
 ## Connecting to Multiple Providers
 
 You can configure multiple LLM providers simultaneously and route different pipeline roles to different ones:

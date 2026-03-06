@@ -381,6 +381,33 @@ After each task commit, Foreman diffs package/dependency manifest files (`go.mod
 
 ---
 
+## Messaging Channel (WhatsApp)
+
+### Bidirectional WhatsApp Integration
+Foreman can connect to WhatsApp via the WhatsApp Web multi-device protocol (whatsmeow). Once linked, Foreman accepts commands and free-text ticket descriptions via DM, and sends proactive notifications at key pipeline stages (ticket picked up, clarification needed, implementation started, PR created, failure).
+
+### Command Routing
+Messages starting with `/status`, `/pause`, `/resume`, or `/cost` are routed to the daemon's command handler. Responses are sent back as WhatsApp replies.
+
+### LLM-Based Message Classification
+Non-command messages from allowed senders are classified by the configured LLM into `new_ticket`, `clarification_reply`, or `unknown`. New tickets are created in the database; clarification replies are attached to the relevant active ticket.
+
+### Allowlist and Pairing
+Two DM policies control who can interact:
+- **Allowlist mode**: Only pre-configured phone numbers (E.164 format) can send messages. Unknown senders are silently dropped.
+- **Pairing mode**: Unknown senders receive a time-limited pairing code (valid 10 minutes). An operator approves the code via `foreman pairing approve <CODE>`, which permanently adds the sender to the config file's allowlist.
+
+### Rate Limiting
+Per-sender rate limiting (5 messages per 60-second window) prevents abuse. Excess messages are silently dropped.
+
+### Proactive Notifications
+The orchestrator sends WhatsApp notifications to a ticket's `channel_sender_id` at five pipeline events: planning started, clarification needed, implementation started, PR created, and failure.
+
+### Session Management
+WhatsApp sessions are stored in a local SQLite database (default `~/.foreman/whatsapp.db`). The `foreman channel login` command handles initial device linking via pairing code or QR scan. Sessions persist across daemon restarts.
+
+---
+
 ## Known Limitations and Gaps
 
 > These are areas identified in design documents where behaviour may differ from the descriptions above or where features are partially implemented.

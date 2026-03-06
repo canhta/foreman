@@ -363,6 +363,59 @@ max_connections = 10
 
 ---
 
+## Messaging Channel (WhatsApp)
+
+Foreman supports a bidirectional WhatsApp channel for receiving tickets and sending notifications via direct message.
+
+```toml
+[channel]
+provider = "whatsapp"   # Currently only "whatsapp" is supported; omit to disable
+
+[channel.whatsapp]
+session_db      = "~/.foreman/whatsapp.db"   # SQLite session storage for whatsmeow
+dm_policy       = "allowlist"                 # allowlist | pairing
+allowed_numbers = ["+84123456789"]            # E.164 phone numbers allowed to send commands/tickets
+```
+
+### DM Policy
+
+- **`allowlist`** (default): Only numbers in `allowed_numbers` can interact. Unknown senders are silently ignored.
+- **`pairing`**: Unknown senders receive a pairing code. An operator approves via `foreman pairing approve <CODE>`, which adds the number to `allowed_numbers` in the config file.
+
+### Setup
+
+```bash
+# Link your WhatsApp account (pairing code mode):
+./foreman channel login --phone +84123456789
+
+# Or scan a QR code:
+./foreman channel login --mode qr
+
+# Check connection status:
+./foreman channel status
+```
+
+### Supported Commands (via WhatsApp DM)
+
+| Command | Action |
+|---------|--------|
+| `/status` | Show active tickets |
+| `/pause` | Pause the daemon |
+| `/resume` | Resume the daemon |
+| `/cost` | Show daily/monthly spend |
+
+Any non-command message from an allowed sender is classified (via LLM) and can create a new ticket.
+
+### Pairing Management
+
+```bash
+./foreman pairing list              # Show pending pairing requests
+./foreman pairing approve <CODE>    # Approve and add to allowlist
+./foreman pairing revoke <PHONE>    # Remove from allowlist
+```
+
+---
+
 ## Agent Runner
 
 ```toml

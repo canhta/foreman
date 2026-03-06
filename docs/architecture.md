@@ -66,8 +66,10 @@ Partial success is better than total failure. If 4 of 5 tasks succeed, Foreman c
 
 ```
 internal/
-├── config/         TOML config loading, validation, env-var substitution
-├── daemon/         Event loop, scheduler, DAG executor (coordinator/worker-pool), merge checker, file reservations, crash recovery
+├── channel/        Messaging channel abstraction (Channel, Router, Classifier, Pairing)
+│   └── whatsapp/   WhatsApp implementation via whatsmeow (Web multi-device protocol)
+├── config/         TOML config loading, validation, env-var substitution, round-trip TOML editing
+├── daemon/         Event loop, scheduler, DAG executor (coordinator/worker-pool), merge checker, file reservations, crash recovery, channel command handler
 ├── db/             Database interface + SQLite and PostgreSQL implementations
 ├── pipeline/       State machine orchestrator — all pipeline stages
 ├── context/        Context assembly: file selection, token budgets, secrets scanning; AGENTS.md generator
@@ -196,7 +198,8 @@ Implementations: `builtin.go`, `claudecode.go`, `copilot.go`.
 2. Open database, run schema migrations
 3. Recover any interrupted pipelines from `last_completed_task_seq`
 4. Start the HTTP dashboard server
-5. Begin polling the issue tracker
+5. If configured, connect the WhatsApp channel and start listening for inbound messages
+6. Begin polling the issue tracker
 
 ### 2. Ticket Pickup
 1. Fetch tickets with the pickup label from the issue tracker
@@ -270,3 +273,5 @@ File reservations are stored in the database, not in memory. Before a pipeline b
 | UUID | `google/uuid` |
 | YAML | `gopkg.in/yaml.v3` |
 | TOML | `github.com/BurntSushi/toml` |
+| TOML round-trip editing | `github.com/pelletier/go-toml` (v1) |
+| WhatsApp Web protocol | `go.mau.fi/whatsmeow` |

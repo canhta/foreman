@@ -161,6 +161,36 @@ export FOREMAN_DASHBOARD_TOKEN=your-token
 
 The default `docker-compose.yml` maps the dashboard to port `3333`. The config file `foreman.example.toml` is mounted as `/app/foreman.toml` inside the container — replace it with your own `foreman.toml`.
 
+## WhatsApp Channel (Optional)
+
+If you want to interact with Foreman via WhatsApp DM:
+
+```bash
+# 1. Add channel config to foreman.toml
+cat >> foreman.toml << 'EOF'
+
+[channel]
+provider = "whatsapp"
+
+[channel.whatsapp]
+session_db      = "~/.foreman/whatsapp.db"
+dm_policy       = "allowlist"
+allowed_numbers = ["+84123456789"]   # Your phone number
+EOF
+
+# 2. Link your WhatsApp account
+./foreman channel login --phone +84123456789
+
+# 3. Verify the link
+./foreman channel status
+```
+
+Once linked, start the daemon normally with `./foreman start`. You can send `/status`, `/pause`, `/resume`, `/cost` commands, or free-text ticket descriptions via WhatsApp DM.
+
+See [Configuration](configuration.md#messaging-channel-whatsapp) for all channel options.
+
+---
+
 ## Adding Project Context
 
 ### Generating AGENTS.md

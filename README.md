@@ -39,6 +39,7 @@ See [docs/getting-started.md](docs/getting-started.md) for a full walkthrough in
 | [Agent Runner](docs/agent-runner.md) | Builtin runner, Claude Code, Copilot, MCP |
 | [Skills](docs/skills.md) | YAML skill engine and hook points |
 | [Dashboard](docs/dashboard.md) | Web UI, REST API, and auth |
+| [WhatsApp Channel](docs/configuration.md#messaging-channel-whatsapp) | Bidirectional WhatsApp messaging |
 | [Development](docs/development.md) | Contributing and local setup |
 
 ## Star History
