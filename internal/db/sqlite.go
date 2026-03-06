@@ -398,7 +398,7 @@ func (s *SQLiteDB) GetReservedFiles(ctx context.Context) (map[string]string, err
 
 func (s *SQLiteDB) GetTicketCost(ctx context.Context, ticketID string) (float64, error) {
 	var cost float64
-	err := s.db.QueryRowContext(ctx, `SELECT cost_usd FROM tickets WHERE id = ?`, ticketID).Scan(&cost)
+	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(cost_usd), 0) FROM llm_calls WHERE ticket_id = ?`, ticketID).Scan(&cost)
 	return cost, err
 }
 
