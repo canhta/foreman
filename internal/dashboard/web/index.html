@@ -5,29 +5,119 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FOREMAN</title>
     <link rel="stylesheet" href="/style.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
 </head>
-<body>
+<body x-data="foreman()" x-init="init()">
     <header>
         <span class="wordmark">FOREMAN</span>
         <div class="header-right">
-            <span id="status-dot" class="status-dot"></span>
-            <span id="status-text">CONNECTING</span>
+            <span class="status-dot" :class="daemonDotClass"></span>
+            <span x-text="daemonLabel"></span>
+            <template x-if="whatsapp !== null">
+                <span>
+                    <span class="divider">|</span>
+                    <span class="status-dot" :class="whatsapp ? 'running' : 'disconnected'"></span>
+                    <span :class="whatsapp ? '' : 'over-budget'" x-text="whatsapp ? 'WA: OK' : 'WA: DOWN'"></span>
+                </span>
+            </template>
             <span class="divider">|</span>
-            <span id="cost-display">COST: --</span>
+            <span x-text="costLabel" :class="costOverBudget ? 'over-budget' : ''"></span>
             <span class="divider">|</span>
-            <span id="active-display">ACTIVE: --</span>
+            <span x-text="'ACTIVE: ' + activeCount"></span>
+            <span class="divider">|</span>
+            <button class="header-btn" x-show="daemonState === 'running'" @click="pauseDaemon()">PAUSE</button>
+            <button class="header-btn" x-show="daemonState !== 'running'" @click="resumeDaemon()">RESUME</button>
         </div>
     </header>
+
     <main>
+        <!-- Left: Ticket List Sidebar -->
         <section id="tickets-panel">
-            <div class="panel-header">TICKETS (<span id="ticket-count">0</span>)</div>
-            <div id="tickets"></div>
+            <div class="panel-header">TICKETS (<span x-text="filteredTickets.length"></span>)</div>
+            <div class="ticket-filters">
+                <input type="text" x-model="search" placeholder="Search tickets..." class="search-input">
+                <div class="filter-tabs">
+                    <button :class="filter === 'all' ? 'active' : ''" @click="filter = 'all'">ALL <span x-text="tickets.length"></span></button>
+                    <button :class="filter === 'active' ? 'active' : ''" @click="filter = 'active'">ACTIVE <span x-text="countByFilter('active')"></span></button>
+                    <button :class="filter === 'done' ? 'active' : ''" @click="filter = 'done'">DONE <span x-text="countByFilter('done')"></span></button>
+                    <button :class="filter === 'fail' ? 'active' : ''" @click="filter = 'fail'">FAIL <span x-text="countByFilter('fail')"></span></button>
+                </div>
+            </div>
+            <div id="tickets" class="ticket-list">
+                <template x-for="t in filteredTickets" :key="t.ID">
+                    <div class="ticket" :class="selectedTicket?.ID === t.ID ? 'selected' : ''" @click="selectTicket(t)">
+                        <div class="ticket-title" x-text="t.Title || t.ID"></div>
+                        <div class="ticket-meta">
+                            <span class="ticket-status" :class="'status-' + t.Status" x-text="t.Status.toUpperCase()"></span>
+                            <span class="ticket-submitter" x-text="t.ChannelSenderID ? formatSender(t.ChannelSenderID) : ''"></span>
+                        </div>
+                        <div class="ticket-progress" x-show="t.tasks_total > 0">
+                            <span class="progress-bar-container">
+                                <span class="progress-bar-fill" :style="'width:' + (t.tasks_done / t.tasks_total * 100) + '%'"></span>
+                            </span>
+                            <span class="progress-text" x-text="'$' + (t.CostUSD || 0).toFixed(2) + '  ' + t.tasks_done + '/' + t.tasks_total"></span>
+                        </div>
+                        <span class="ticket-marker" x-show="isFailed(t)">&#10007;</span>
+                        <span class="ticket-marker clarification" x-show="t.Status === 'clarification_needed'">&#10067;</span>
+                    </div>
+                </template>
+            </div>
         </section>
-        <section id="events-panel">
-            <div class="panel-header">LIVE EVENTS</div>
-            <div id="event-log"></div>
+
+        <!-- Center: Detail or Team Summary -->
+        <section id="detail-panel">
+            <!-- Team Summary (no ticket selected) -->
+            <template x-if="!selectedTicket">
+                <div id="team-summary" x-data="teamSummary()" x-init="load()">
+                    <!-- Content filled in Task 10 -->
+                </div>
+            </template>
+
+            <!-- Ticket Detail (ticket selected) -->
+            <template x-if="selectedTicket">
+                <div id="ticket-detail">
+                    <!-- Content filled in Task 10 -->
+                </div>
+            </template>
+        </section>
+
+        <!-- Right: Live Feed (collapsible) -->
+        <section id="feed-panel" :class="feedCollapsed ? 'collapsed' : ''">
+            <div class="panel-header">
+                <span x-show="!feedCollapsed">LIVE FEED</span>
+                <button class="collapse-btn" @click="feedCollapsed = !feedCollapsed" x-text="feedCollapsed ? '&#9654;' : '&#9664;'"></button>
+            </div>
+            <div class="feed-content" x-show="!feedCollapsed">
+                <template x-for="evt in events" :key="evt.ID">
+                    <div class="event-entry" :class="evt.isNew ? 'event-new' : ''">
+                        <span class="event-time" x-text="formatTime(evt.CreatedAt)"></span>
+                        <span class="event-severity" :class="'severity-' + evt.Severity" x-text="severityIcon(evt.Severity)"></span>
+                        <span class="event-type" x-text="evt.event_type || evt.EventType"></span>
+                        <div class="event-message" x-text="evt.Message" x-show="evt.Message"></div>
+                        <div class="event-ticket-ref" x-show="evt.ticket_title || evt.TicketTitle">
+                            <span class="event-ticket-link" @click.stop="selectTicketById(evt.ticket_id || evt.TicketID)" x-text="'[' + (evt.ticket_title || evt.TicketTitle || evt.TicketID) + ']'"></span>
+                            <span class="event-submitter" x-text="formatSender(evt.submitter || evt.Submitter || '')"></span>
+                        </div>
+                    </div>
+                </template>
+            </div>
+            <div class="feed-dots" x-show="feedCollapsed">
+                <template x-for="evt in events.slice(0, 50)" :key="evt.ID">
+                    <span class="feed-dot" :class="'severity-' + evt.Severity"></span>
+                </template>
+            </div>
         </section>
     </main>
+
+    <footer>
+        <span x-text="'DAILY: $' + dailyCost.toFixed(2) + ' / $' + dailyBudget.toFixed(0)"></span>
+        <span class="divider">|</span>
+        <span x-text="'WEEKLY: $' + weeklyCost.toFixed(2)"></span>
+        <span class="divider">|</span>
+        <span x-text="'MONTHLY: $' + monthlyCost.toFixed(2) + ' / $' + monthlyBudget.toFixed(0)"></span>
+    </footer>
+
     <script src="/app.js"></script>
 </body>
 </html>
