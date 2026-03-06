@@ -556,3 +556,131 @@ func (p *PostgresDB) FindActiveClarification(ctx context.Context, senderID strin
 	t.Status = models.TicketStatus(status)
 	return &t, nil
 }
+
+func (p *PostgresDB) GetTeamStats(ctx context.Context, since time.Time) ([]models.TeamStat, error) {
+	rows, err := p.db.QueryContext(ctx,
+		`SELECT channel_sender_id,
+		        COUNT(*) as ticket_count,
+		        COALESCE(SUM(cost_usd), 0) as cost_usd,
+		        SUM(CASE WHEN status IN ('failed', 'blocked', 'partial') THEN 1 ELSE 0 END) as failed_count
+		 FROM tickets
+		 WHERE channel_sender_id != '' AND created_at >= $1
+		 GROUP BY channel_sender_id
+		 ORDER BY ticket_count DESC`, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var stats []models.TeamStat
+	for rows.Next() {
+		var st models.TeamStat
+		if err := rows.Scan(&st.ChannelSenderID, &st.TicketCount, &st.CostUSD, &st.FailedCount); err != nil {
+			return nil, err
+		}
+		stats = append(stats, st)
+	}
+	return stats, rows.Err()
+}
+
+func (p *PostgresDB) GetRecentPRs(ctx context.Context, limit int) ([]models.Ticket, error) {
+	rows, err := p.db.QueryContext(ctx,
+		`SELECT id, external_id, title, description, status, parent_ticket_id, channel_sender_id, decompose_depth, created_at, updated_at
+		 FROM tickets
+		 WHERE pr_url != ''
+		 ORDER BY updated_at DESC
+		 LIMIT $1`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tickets []models.Ticket
+	for rows.Next() {
+		var t models.Ticket
+		var status string
+		if err := rows.Scan(&t.ID, &t.ExternalID, &t.Title, &t.Description, &status,
+			&t.ParentTicketID, &t.ChannelSenderID, &t.DecomposeDepth, &t.CreatedAt, &t.UpdatedAt); err != nil {
+			return nil, err
+		}
+		t.Status = models.TicketStatus(status)
+		tickets = append(tickets, t)
+	}
+	return tickets, rows.Err()
+}
+
+func (p *PostgresDB) GetTicketSummaries(ctx context.Context, filter models.TicketFilter) ([]models.TicketSummary, error) {
+	query := `SELECT t.id, t.external_id, t.title, t.description, t.status,
+	                 t.parent_ticket_id, t.channel_sender_id, t.decompose_depth,
+	                 t.cost_usd, t.created_at, t.updated_at,
+	                 COALESCE(task_counts.total, 0),
+	                 COALESCE(task_counts.done, 0)
+	          FROM tickets t
+	          LEFT JOIN (
+	              SELECT ticket_id,
+	                     COUNT(*) as total,
+	                     SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END) as done
+	              FROM tasks GROUP BY ticket_id
+	          ) task_counts ON task_counts.ticket_id = t.id
+	          WHERE 1=1`
+	var args []interface{}
+	paramIdx := 1
+
+	if len(filter.StatusIn) > 0 {
+		placeholders := ""
+		for i, st := range filter.StatusIn {
+			if i > 0 {
+				placeholders += ","
+			}
+			placeholders += fmt.Sprintf("$%d", paramIdx)
+			paramIdx++
+			args = append(args, st)
+		}
+		query += ` AND t.status IN (` + placeholders + `)`
+	}
+	query += ` ORDER BY t.updated_at DESC`
+
+	rows, err := p.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var summaries []models.TicketSummary
+	for rows.Next() {
+		var ts models.TicketSummary
+		var status string
+		if err := rows.Scan(&ts.ID, &ts.ExternalID, &ts.Title, &ts.Description, &status,
+			&ts.ParentTicketID, &ts.ChannelSenderID, &ts.DecomposeDepth,
+			&ts.CostUSD, &ts.CreatedAt, &ts.UpdatedAt,
+			&ts.TasksTotal, &ts.TasksDone); err != nil {
+			return nil, err
+		}
+		ts.Status = models.TicketStatus(status)
+		summaries = append(summaries, ts)
+	}
+	return summaries, rows.Err()
+}
+
+func (p *PostgresDB) GetGlobalEvents(ctx context.Context, limit, offset int) ([]models.EventRecord, error) {
+	rows, err := p.db.QueryContext(ctx,
+		`SELECT id, ticket_id, task_id, event_type, severity, message, details, created_at
+		 FROM events ORDER BY created_at DESC LIMIT $1 OFFSET $2`, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var events []models.EventRecord
+	for rows.Next() {
+		var e models.EventRecord
+		var taskID, details sql.NullString
+		if err := rows.Scan(&e.ID, &e.TicketID, &taskID, &e.EventType, &e.Severity, &e.Message, &details, &e.CreatedAt); err != nil {
+			return nil, err
+		}
+		e.TaskID = taskID.String
+		e.Details = details.String
+		events = append(events, e)
+	}
+	return events, rows.Err()
+}

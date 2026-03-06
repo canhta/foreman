@@ -145,6 +145,22 @@ func (m *daemonMockDB) CreateTicket(_ context.Context, t *models.Ticket) error {
 	return nil
 }
 
+func (m *daemonMockDB) GetTeamStats(_ context.Context, _ time.Time) ([]models.TeamStat, error) {
+	return nil, nil
+}
+
+func (m *daemonMockDB) GetRecentPRs(_ context.Context, _ int) ([]models.Ticket, error) {
+	return nil, nil
+}
+
+func (m *daemonMockDB) GetTicketSummaries(_ context.Context, _ models.TicketFilter) ([]models.TicketSummary, error) {
+	return nil, nil
+}
+
+func (m *daemonMockDB) GetGlobalEvents(_ context.Context, _, _ int) ([]models.EventRecord, error) {
+	return nil, nil
+}
+
 // daemonMockTracker is a mock tracker for daemon-level ingestion tests.
 type daemonMockTracker struct {
 	orchMockTracker

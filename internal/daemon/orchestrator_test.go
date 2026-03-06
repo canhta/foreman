@@ -153,6 +153,18 @@ func (m *orchMockDB) DeleteExpiredPairings(_ context.Context) error { return nil
 func (m *orchMockDB) FindActiveClarification(_ context.Context, _ string) (*models.Ticket, error) {
 	return nil, nil
 }
+func (m *orchMockDB) GetTeamStats(_ context.Context, _ time.Time) ([]models.TeamStat, error) {
+	return nil, nil
+}
+func (m *orchMockDB) GetRecentPRs(_ context.Context, _ int) ([]models.Ticket, error) {
+	return nil, nil
+}
+func (m *orchMockDB) GetTicketSummaries(_ context.Context, _ models.TicketFilter) ([]models.TicketSummary, error) {
+	return nil, nil
+}
+func (m *orchMockDB) GetGlobalEvents(_ context.Context, _, _ int) ([]models.EventRecord, error) {
+	return nil, nil
+}
 func (m *orchMockDB) Close() error { return nil }
 
 func (m *orchMockDB) lastStatus(id string) models.TicketStatus {

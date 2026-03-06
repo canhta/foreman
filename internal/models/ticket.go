@@ -121,3 +121,18 @@ type TicketFilter struct {
 	Status   string
 	StatusIn []TicketStatus
 }
+
+// TeamStat represents aggregated ticket stats per submitter.
+type TeamStat struct {
+	ChannelSenderID string  `json:"channel_sender_id"`
+	TicketCount     int     `json:"ticket_count"`
+	CostUSD         float64 `json:"cost_usd"`
+	FailedCount     int     `json:"failed_count"`
+}
+
+// TicketSummary is a Ticket with aggregated task counts for list views.
+type TicketSummary struct {
+	Ticket
+	TasksTotal int `json:"tasks_total"`
+	TasksDone  int `json:"tasks_done"`
+}
