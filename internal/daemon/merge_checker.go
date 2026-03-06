@@ -55,7 +55,7 @@ func (m *MergeChecker) Start(ctx context.Context, interval time.Duration) {
 
 func (m *MergeChecker) checkAll(ctx context.Context) {
 	tickets, err := m.db.ListTickets(ctx, models.TicketFilter{
-		Status: string(models.TicketStatusAwaitingMerge),
+		StatusIn: []models.TicketStatus{models.TicketStatusAwaitingMerge},
 	})
 	if err != nil {
 		m.log.Warn().Err(err).Msg("failed to list awaiting_merge tickets")
@@ -75,9 +75,9 @@ func (m *MergeChecker) checkAll(ctx context.Context) {
 		}
 
 		switch status.State {
-		case "merged":
+		case git.PRStateMerged:
 			m.handleMerged(ctx, ticket)
-		case "closed":
+		case git.PRStateClosed:
 			m.handleClosed(ctx, ticket)
 		}
 	}
@@ -136,6 +136,8 @@ func (m *MergeChecker) checkParentCompletion(ctx context.Context, parentExternal
 	}
 
 	if m.tracker != nil {
-		_ = m.tracker.UpdateStatus(ctx, parent.ExternalID, "done")
+		if err := m.tracker.UpdateStatus(ctx, parent.ExternalID, "done"); err != nil {
+			m.log.Warn().Err(err).Str("parent", parent.ExternalID).Msg("failed to update tracker status for parent ticket")
+		}
 	}
 }

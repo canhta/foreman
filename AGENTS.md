@@ -2,7 +2,7 @@
 
 Foreman is an autonomous software development daemon written in Go (1.23+). It polls issue trackers (Jira, GitHub Issues, Linear), decomposes tickets into tasks, generates code via LLM using TDD, runs reviews, and creates pull requests — all autonomously.
 
-**Status:** Core pipeline, daemon, tracker integrations, LLM providers, agent runner, and skills engine are all implemented and working.
+**Status:** Core pipeline, daemon, tracker integrations, LLM providers, agent runner, skills engine, ticket decomposition, and PR merge lifecycle are all implemented and working.
 
 ## Build & Development Commands
 
@@ -51,11 +51,15 @@ CGO is required (go-sqlite3). Ensure a C toolchain is available.
 ### Pipeline Flow
 
 ```
-Ticket → Clarification Check → Planning (LLM) → Plan Validation →
-  Per-Task (parallel DAG, bounded by max_parallel_tasks):
-    [Implement (TDD) → Lint → Spec Review → Quality Review → Commit] →
-  Rebase → Full Test Suite → Final Review → PR Creation
+Ticket → Decomposition Check (NeedsDecomposition) → [if large] Decompose into child tickets → await approval
+         ↓ (normal or approved child)
+         Clarification Check → Planning (LLM) → Plan Validation →
+           Per-Task (parallel DAG, bounded by max_parallel_tasks):
+             [Implement (TDD) → Lint → Spec Review → Quality Review → Commit] →
+           Rebase → Full Test Suite → Final Review → PR Creation → awaiting_merge
 ```
+
+**PR Merge Lifecycle:** A dedicated `MergeChecker` goroutine polls `awaiting_merge` tickets at a configurable interval, updates status to `merged` or `pr_closed`, fires `post_merge` skill hooks, and auto-closes parent tickets when all children merge.
 
 Key constraints: max 8 LLM calls per task, tiered retry strategy, file reservations prevent parallel conflicts.
 
@@ -69,9 +73,15 @@ The `agent` package provides `AgentRunner`, an interface for executing bounded a
 
 The builtin runner uses a `tools.Registry` that is constructed separately and wired via two-phase init to avoid circular dependencies with the `Subagent` tool.
 
+### Ticket Decomposition
+
+`pipeline.Decomposer` detects oversized tickets (`NeedsDecomposition`) and uses an LLM to generate 3–6 focused child ticket specs, creates them in the tracker with an approval label, and comments on the parent. Children are processed as independent tickets; when all children reach `merged` status the parent is automatically closed.
+
+Config key: `[decompose]` in `foreman.toml` — `enabled`, `max_ticket_words`, `max_scope_keywords`, `approval_label`, `parent_label`.
+
 ### YAML Skills
 
-Extensible workflow hooks in `skills/` — composable YAML files triggered at `post_lint`, `pre_pr`, or `post_pr` hook points.
+Extensible workflow hooks in `skills/` — composable YAML files triggered at `post_lint`, `pre_pr`, `post_pr`, or `post_merge` hook points.
 
 Step types: `llm_call`, `run_command`, `file_write`, `git_diff`, `agentsdk`, `subskill`.
 

@@ -16,8 +16,8 @@ func TestNeedsDecomposition(t *testing.T) {
 	}
 
 	tests := []struct {
-		name   string
 		ticket *models.Ticket
+		name   string
 		want   bool
 	}{
 		{

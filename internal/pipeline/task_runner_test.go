@@ -13,10 +13,10 @@ import (
 // --- Mocks ---
 
 type mockTaskRunnerDB struct {
-	tasks       map[string]*models.Task
-	callCounts  map[string]int
-	statuses    map[string]models.TaskStatus
-	updateErr   error
+	tasks      map[string]*models.Task
+	callCounts map[string]int
+	statuses   map[string]models.TaskStatus
+	updateErr  error
 }
 
 func newMockTaskRunnerDB() *mockTaskRunnerDB {
@@ -46,41 +46,6 @@ func (m *mockTaskRunnerDB) UpdateTaskStatus(_ context.Context, id string, status
 func (m *mockTaskRunnerDB) IncrementTaskLlmCalls(_ context.Context, id string) (int, error) {
 	m.callCounts[id]++
 	return m.callCounts[id], nil
-}
-
-type mockGitProvider struct {
-	diffOutput string
-	commitSHA  string
-	commitErr  error
-}
-
-func (m *mockGitProvider) EnsureRepo(_ context.Context, _ string) error                    { return nil }
-func (m *mockGitProvider) CreateBranch(_ context.Context, _, _ string) error                { return nil }
-func (m *mockGitProvider) Commit(_ context.Context, _, _ string) (string, error)            { return m.commitSHA, m.commitErr }
-func (m *mockGitProvider) Diff(_ context.Context, _, _, _ string) (string, error)           { return m.diffOutput, nil }
-func (m *mockGitProvider) DiffWorking(_ context.Context, _ string) (string, error)          { return m.diffOutput, nil }
-func (m *mockGitProvider) Push(_ context.Context, _, _ string) error                        { return nil }
-func (m *mockGitProvider) RebaseOnto(_ context.Context, _, _ string) (*gitRebaseResult, error) { return nil, nil }
-func (m *mockGitProvider) FileTree(_ context.Context, _ string) ([]gitFileEntry, error)     { return nil, nil }
-func (m *mockGitProvider) Log(_ context.Context, _ string, _ int) ([]gitCommitEntry, error) { return nil, nil }
-func (m *mockGitProvider) StageAll(_ context.Context, _ string) error                       { return nil }
-
-// Type aliases to satisfy git.GitProvider without importing the git package in tests.
-type gitRebaseResult = struct {
-	ConflictDiff  string
-	ConflictFiles []string
-	Success       bool
-}
-type gitFileEntry = struct {
-	Path      string
-	IsDir     bool
-	SizeBytes int64
-}
-type gitCommitEntry = struct {
-	Date    interface{}
-	SHA     string
-	Message string
-	Author  string
 }
 
 // --- Tests ---
@@ -182,7 +147,7 @@ func TestTaskRunnerConfig_Defaults(t *testing.T) {
 		MaxImplementationRetries: 2,
 		MaxSpecReviewCycles:      2,
 		MaxQualityReviewCycles:   1,
-		MaxLlmCallsPerTask:      8,
+		MaxLlmCallsPerTask:       8,
 		EnableTDDVerification:    true,
 		SearchReplaceSimilarity:  0.92,
 	}

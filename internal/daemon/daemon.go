@@ -17,11 +17,11 @@ import (
 
 // DaemonConfig holds daemon configuration.
 type DaemonConfig struct {
-	RunnerMode           string
-	PollIntervalSecs     int
-	IdlePollIntervalSecs int
-	MaxParallelTickets   int
-	MaxParallelTasks     int
+	RunnerMode             string
+	PollIntervalSecs       int
+	IdlePollIntervalSecs   int
+	MaxParallelTickets     int
+	MaxParallelTasks       int
 	TaskTimeoutMinutes     int
 	MergeCheckIntervalSecs int
 }
@@ -29,10 +29,10 @@ type DaemonConfig struct {
 // DefaultDaemonConfig returns sensible defaults.
 func DefaultDaemonConfig() DaemonConfig {
 	return DaemonConfig{
-		PollIntervalSecs:     60,
-		IdlePollIntervalSecs: 300,
-		MaxParallelTickets:   3,
-		MaxParallelTasks:     3,
+		PollIntervalSecs:       60,
+		IdlePollIntervalSecs:   300,
+		MaxParallelTickets:     3,
+		MaxParallelTasks:       3,
 		TaskTimeoutMinutes:     15,
 		MergeCheckIntervalSecs: 300,
 	}
@@ -105,6 +105,9 @@ func (d *Daemon) Start(ctx context.Context) {
 	d.mu.Lock()
 	database := d.db
 	runnerMode := d.config.RunnerMode
+	prChecker := d.prChecker
+	hookRunner := d.hookRunner
+	tr := d.tracker
 	d.mu.Unlock()
 
 	if database != nil && runnerMode == "docker" {
@@ -131,8 +134,8 @@ func (d *Daemon) Start(ctx context.Context) {
 	}
 
 	// Start merge checker goroutine
-	if d.prChecker != nil && database != nil {
-		mc := NewMergeChecker(database, d.prChecker, d.hookRunner, d.tracker, log.Logger)
+	if prChecker != nil && database != nil {
+		mc := NewMergeChecker(database, prChecker, hookRunner, tr, log.Logger)
 		interval := time.Duration(d.config.MergeCheckIntervalSecs) * time.Second
 		go mc.Start(ctx, interval)
 	}

@@ -8,8 +8,8 @@ type Ticket struct {
 	ClarificationRequestedAt *time.Time
 	CompletedAt              *time.Time
 	StartedAt                *time.Time
-	Assignee                 string
-	RepoURL                  string
+	PRURL                    string
+	ErrorMessage             string
 	ID                       string
 	Reporter                 string
 	ExternalID               string
@@ -17,23 +17,23 @@ type Ticket struct {
 	ExternalStatus           string
 	Priority                 string
 	BranchName               string
-	PRURL                    string
+	Assignee                 string
 	Title                    string
 	Description              string
 	AcceptanceCriteria       string
-	ErrorMessage             string
-	Labels                   []string
+	RepoURL                  string
+	ParentTicketID           string
 	Comments                 []TicketComment
+	Labels                   []string
+	ChildTicketIDs           []string
 	TotalLlmCalls            int
 	TokensOutput             int
 	TokensInput              int
 	LastCompletedTaskSeq     int
 	CostUSD                  float64
 	PRNumber                 int
-	IsPartial                bool
-	ParentTicketID           string
-	ChildTicketIDs           []string
 	DecomposeDepth           int
+	IsPartial                bool
 }
 
 type TicketComment struct {

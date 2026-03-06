@@ -9,11 +9,18 @@ import (
 	"time"
 )
 
+// PR state constants.
+const (
+	PRStateOpen   = "open"
+	PRStateMerged = "merged"
+	PRStateClosed = "closed"
+)
+
 // PRMergeStatus holds the merge state of a pull request.
 type PRMergeStatus struct {
-	State    string     // "open", "merged", "closed"
 	MergedAt *time.Time
 	ClosedAt *time.Time
+	State    string
 }
 
 // PRChecker checks the merge status of pull requests.
@@ -42,10 +49,10 @@ func NewGitHubPRChecker(baseURL, token, owner, repo string) *GitHubPRChecker {
 }
 
 type ghPRStatusResponse struct {
-	State    string     `json:"state"`
-	Merged   bool       `json:"merged"`
 	MergedAt *time.Time `json:"merged_at"`
 	ClosedAt *time.Time `json:"closed_at"`
+	State    string     `json:"state"`
+	Merged   bool       `json:"merged"`
 }
 
 // GetPRStatus returns the current merge status of a pull request.
@@ -79,11 +86,11 @@ func (g *GitHubPRChecker) GetPRStatus(ctx context.Context, prNumber int) (PRMerg
 		ClosedAt: pr.ClosedAt,
 	}
 	if pr.Merged {
-		status.State = "merged"
+		status.State = PRStateMerged
 	} else if pr.State == "closed" {
-		status.State = "closed"
+		status.State = PRStateClosed
 	} else {
-		status.State = "open"
+		status.State = PRStateOpen
 	}
 
 	return status, nil

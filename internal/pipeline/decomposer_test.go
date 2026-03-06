@@ -25,9 +25,9 @@ func (m *decomposeMockLLM) HealthCheck(_ context.Context) error { return nil }
 
 // mockTracker records CreateTicket calls.
 type mockTracker struct {
-	created  []tracker.CreateTicketRequest
 	labels   map[string][]string
 	comments map[string][]string
+	created  []tracker.CreateTicketRequest
 }
 
 func newMockTracker() *mockTracker {
@@ -58,11 +58,11 @@ func (m *mockTracker) FetchReadyTickets(_ context.Context) ([]tracker.Ticket, er
 func (m *mockTracker) GetTicket(_ context.Context, _ string) (*tracker.Ticket, error) {
 	return nil, nil
 }
-func (m *mockTracker) UpdateStatus(_ context.Context, _, _ string) error  { return nil }
-func (m *mockTracker) AttachPR(_ context.Context, _, _ string) error      { return nil }
-func (m *mockTracker) RemoveLabel(_ context.Context, _, _ string) error   { return nil }
+func (m *mockTracker) UpdateStatus(_ context.Context, _, _ string) error     { return nil }
+func (m *mockTracker) AttachPR(_ context.Context, _, _ string) error         { return nil }
+func (m *mockTracker) RemoveLabel(_ context.Context, _, _ string) error      { return nil }
 func (m *mockTracker) HasLabel(_ context.Context, _, _ string) (bool, error) { return false, nil }
-func (m *mockTracker) ProviderName() string                               { return "mock" }
+func (m *mockTracker) ProviderName() string                                  { return "mock" }
 
 func TestDecomposer_Execute(t *testing.T) {
 	result := DecompositionResult{

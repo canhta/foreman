@@ -31,9 +31,9 @@ func TestCheckTicketClarity_ClarificationEnabled(t *testing.T) {
 	})
 
 	tests := []struct {
-		name    string
-		ticket  *models.Ticket
-		wantOK  bool
+		name   string
+		ticket *models.Ticket
+		wantOK bool
 	}{
 		{
 			name: "clear ticket with long description",

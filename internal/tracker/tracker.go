@@ -29,12 +29,12 @@ type TicketComment struct {
 
 // CreateTicketRequest describes a new ticket to create in the tracker.
 type CreateTicketRequest struct {
+	Metadata           map[string]string
 	Title              string
 	Description        string
 	AcceptanceCriteria string
-	Labels             []string
 	ParentID           string
-	Metadata           map[string]string
+	Labels             []string
 }
 
 // IssueTracker abstracts Jira, GitHub Issues, Linear, etc.

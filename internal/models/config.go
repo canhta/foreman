@@ -1,23 +1,23 @@
 package models
 
 type Config struct {
-	Models    ModelsConfig    `mapstructure:"models"`
-	Runner    RunnerConfig    `mapstructure:"runner"`
-	Pipeline  PipelineConfig  `mapstructure:"pipeline"`
-	Tracker   TrackerConfig   `mapstructure:"tracker"`
-	MCP       MCPConfig       `mapstructure:"mcp"`
-	LLM       LLMConfig       `mapstructure:"llm"`
-	Git       GitConfig       `mapstructure:"git"`
-	Secrets   SecretsConfig   `mapstructure:"secrets"`
-	Dashboard DashboardConfig `mapstructure:"dashboard"`
-	Database  DatabaseConfig  `mapstructure:"database"`
-	Cost      CostConfig      `mapstructure:"cost"`
-	Daemon    DaemonConfig    `mapstructure:"daemon"`
-	Skills    SkillsConfig    `mapstructure:"skills"`
-	Limits    LimitsConfig    `mapstructure:"limits"`
-	RateLimit RateLimitConfig  `mapstructure:"rate_limit"`
-	Decompose DecomposeConfig  `mapstructure:"decompose"`
+	Models    ModelsConfig      `mapstructure:"models"`
+	Decompose DecomposeConfig   `mapstructure:"decompose"`
+	Runner    RunnerConfig      `mapstructure:"runner"`
+	Pipeline  PipelineConfig    `mapstructure:"pipeline"`
+	Tracker   TrackerConfig     `mapstructure:"tracker"`
+	MCP       MCPConfig         `mapstructure:"mcp"`
 	Agents    []AgentRoleConfig `mapstructure:"agents"`
+	LLM       LLMConfig         `mapstructure:"llm"`
+	Git       GitConfig         `mapstructure:"git"`
+	Secrets   SecretsConfig     `mapstructure:"secrets"`
+	Dashboard DashboardConfig   `mapstructure:"dashboard"`
+	Database  DatabaseConfig    `mapstructure:"database"`
+	Cost      CostConfig        `mapstructure:"cost"`
+	Daemon    DaemonConfig      `mapstructure:"daemon"`
+	Skills    SkillsConfig      `mapstructure:"skills"`
+	Limits    LimitsConfig      `mapstructure:"limits"`
+	RateLimit RateLimitConfig   `mapstructure:"rate_limit"`
 }
 
 // AgentRoleConfig defines a custom named agent with specific tools, model, and prompt.
@@ -25,10 +25,10 @@ type AgentRoleConfig struct {
 	Name         string   `mapstructure:"name"`
 	Model        string   `mapstructure:"model"`
 	SystemPrompt string   `mapstructure:"system_prompt"`
+	Trigger      string   `mapstructure:"trigger"`
 	AllowedTools []string `mapstructure:"allowed_tools"`
 	MaxTurns     int      `mapstructure:"max_turns"`
 	TimeoutSecs  int      `mapstructure:"timeout_secs"`
-	Trigger      string   `mapstructure:"trigger"`
 }
 
 // MCPConfig holds configuration for MCP (Model Context Protocol) servers.
@@ -49,13 +49,13 @@ type MCPServerEntry struct {
 }
 
 type DaemonConfig struct {
-	WorkDir              string `mapstructure:"work_dir"`
-	LogLevel             string `mapstructure:"log_level"`
-	LogFormat            string `mapstructure:"log_format"`
-	PollIntervalSecs     int    `mapstructure:"poll_interval_secs"`
-	IdlePollIntervalSecs int    `mapstructure:"idle_poll_interval_secs"`
-	MaxParallelTickets   int    `mapstructure:"max_parallel_tickets"`
-	MaxParallelTasks     int    `mapstructure:"max_parallel_tasks"`
+	WorkDir                string `mapstructure:"work_dir"`
+	LogLevel               string `mapstructure:"log_level"`
+	LogFormat              string `mapstructure:"log_format"`
+	PollIntervalSecs       int    `mapstructure:"poll_interval_secs"`
+	IdlePollIntervalSecs   int    `mapstructure:"idle_poll_interval_secs"`
+	MaxParallelTickets     int    `mapstructure:"max_parallel_tickets"`
+	MaxParallelTasks       int    `mapstructure:"max_parallel_tasks"`
 	TaskTimeoutMinutes     int    `mapstructure:"task_timeout_minutes"`
 	MergeCheckIntervalSecs int    `mapstructure:"merge_check_interval_secs"`
 }
@@ -159,11 +159,11 @@ type RateLimitConfig struct {
 }
 
 type DecomposeConfig struct {
-	Enabled          bool   `mapstructure:"enabled"`
-	MaxTicketWords   int    `mapstructure:"max_ticket_words"`
-	MaxScopeKeywords int    `mapstructure:"max_scope_keywords"`
 	ApprovalLabel    string `mapstructure:"approval_label"`
 	ParentLabel      string `mapstructure:"parent_label"`
+	MaxTicketWords   int    `mapstructure:"max_ticket_words"`
+	MaxScopeKeywords int    `mapstructure:"max_scope_keywords"`
+	Enabled          bool   `mapstructure:"enabled"`
 }
 
 type RunnerConfig struct {
@@ -209,8 +209,8 @@ type PipelineConfig struct {
 }
 
 type HooksConfig struct {
-	PostLint []string `mapstructure:"post_lint"`
-	PrePR    []string `mapstructure:"pre_pr"`
+	PostLint  []string `mapstructure:"post_lint"`
+	PrePR     []string `mapstructure:"pre_pr"`
 	PostPR    []string `mapstructure:"post_pr"`
 	PostMerge []string `mapstructure:"post_merge"`
 }

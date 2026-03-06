@@ -24,16 +24,16 @@ func (e *EscalationError) Error() string {
 
 // TaskRunnerConfig holds configuration for the pipeline task runner.
 type TaskRunnerConfig struct {
+	Models                   models.ModelsConfig
 	WorkDir                  string
+	CodebasePatterns         string
+	TestCommand              string
 	MaxImplementationRetries int
 	MaxSpecReviewCycles      int
 	MaxQualityReviewCycles   int
 	MaxLlmCallsPerTask       int
-	EnableTDDVerification    bool
 	SearchReplaceSimilarity  float64
-	CodebasePatterns         string
-	TestCommand              string
-	Models                   models.ModelsConfig
+	EnableTDDVerification    bool
 }
 
 // TaskRunnerDB is the subset of db.Database needed by the task runner.
@@ -47,16 +47,14 @@ type TaskRunnerDB interface {
 // PipelineTaskRunner implements daemon.TaskRunner by orchestrating the full
 // per-task pipeline: implement → parse → apply → TDD verify → test → spec review → quality review → commit.
 type PipelineTaskRunner struct {
-	llm       LLMProvider
-	db        TaskRunnerDB
-	git       git.GitProvider
-	cmdRunner runner.CommandRunner
-	config    TaskRunnerConfig
-
-	// Pipeline components (created once, reused across tasks).
+	llm             LLMProvider
+	db              TaskRunnerDB
+	git             git.GitProvider
+	cmdRunner       runner.CommandRunner
 	implementer     *Implementer
 	specReviewer    *SpecReviewer
 	qualityReviewer *QualityReviewer
+	config          TaskRunnerConfig
 }
 
 // NewPipelineTaskRunner creates a task runner that wires all pipeline stages together.
@@ -125,15 +123,15 @@ func (r *PipelineTaskRunner) RunTask(ctx context.Context, task *models.Task) err
 		}
 
 		// Apply file changes.
-		if err := r.applyChanges(parsed); err != nil {
-			feedback.AddLintError(fmt.Sprintf("Failed to apply changes: %s", err))
+		if applyErr := r.applyChanges(parsed); applyErr != nil {
+			feedback.AddLintError(fmt.Sprintf("Failed to apply changes: %s", applyErr))
 			continue
 		}
 
 		// TDD verification.
 		if r.config.EnableTDDVerification {
-			if err := r.db.UpdateTaskStatus(ctx, task.ID, models.TaskStatusTDDVerifying); err != nil {
-				return fmt.Errorf("update task status: %w", err)
+			if statusErr := r.db.UpdateTaskStatus(ctx, task.ID, models.TaskStatusTDDVerifying); statusErr != nil {
+				return fmt.Errorf("update task status: %w", statusErr)
 			}
 			tddResult := r.runTDDVerification(ctx, parsed)
 			if !tddResult.Valid {
@@ -143,8 +141,8 @@ func (r *PipelineTaskRunner) RunTask(ctx context.Context, task *models.Task) err
 		}
 
 		// Run tests.
-		if err := r.db.UpdateTaskStatus(ctx, task.ID, models.TaskStatusTesting); err != nil {
-			return fmt.Errorf("update task status: %w", err)
+		if statusErr := r.db.UpdateTaskStatus(ctx, task.ID, models.TaskStatusTesting); statusErr != nil {
+			return fmt.Errorf("update task status: %w", statusErr)
 		}
 		testOutput, testPassed := r.runTests(ctx)
 		if !testPassed {
@@ -179,8 +177,8 @@ func (r *PipelineTaskRunner) RunTask(ctx context.Context, task *models.Task) err
 		}
 
 		// All checks passed — stage and commit.
-		if err := r.git.StageAll(ctx, r.config.WorkDir); err != nil {
-			return fmt.Errorf("git stage: %w", err)
+		if stageErr := r.git.StageAll(ctx, r.config.WorkDir); stageErr != nil {
+			return fmt.Errorf("git stage: %w", stageErr)
 		}
 		commitMsg := fmt.Sprintf("feat: %s", task.Title)
 		_, err = r.git.Commit(ctx, r.config.WorkDir, commitMsg)

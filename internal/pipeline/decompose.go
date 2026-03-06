@@ -31,8 +31,8 @@ func NeedsDecomposition(ticket *models.Ticket, cfg *models.DecomposeConfig) bool
 
 // DecompositionResult is the structured output from the decomposition LLM call.
 type DecompositionResult struct {
-	Children  []ChildTicketSpec `json:"children"`
 	Rationale string            `json:"rationale"`
+	Children  []ChildTicketSpec `json:"children"`
 }
 
 // ChildTicketSpec describes a single child ticket to create.
@@ -123,28 +123,28 @@ Return a JSON object with this schema:
 func (d *Decomposer) formatComment(result *DecompositionResult, childIDs []string) string {
 	var sb strings.Builder
 	sb.WriteString("## Ticket Decomposed\n\n")
-	sb.WriteString(fmt.Sprintf("**Rationale:** %s\n\n", result.Rationale))
+	fmt.Fprintf(&sb, "**Rationale:** %s\n\n", result.Rationale)
 	sb.WriteString("**Child tickets:**\n")
 	for i, spec := range result.Children {
 		id := "pending"
 		if i < len(childIDs) {
 			id = "#" + childIDs[i]
 		}
-		sb.WriteString(fmt.Sprintf("- %s (%s) — %s\n", spec.Title, id, spec.EstimatedComplexity))
+		fmt.Fprintf(&sb, "- %s (%s) — %s\n", spec.Title, id, spec.EstimatedComplexity)
 	}
-	sb.WriteString(fmt.Sprintf("\nApprove children by changing their label to `%s`.\n", d.cfg.ApprovalLabel))
+	fmt.Fprintf(&sb, "\nApprove children by changing their label to `%s`.\n", d.cfg.ApprovalLabel)
 	return sb.String()
 }
 
 // countScopeKeywords counts occurrences of scope-expanding words.
 func countScopeKeywords(text string) int {
-	lower := strings.ToLower(text)
+	words := strings.Fields(strings.ToLower(text))
 	count := 0
-	for _, kw := range scopeKeywords {
-		words := strings.Fields(lower)
-		for _, w := range words {
+	for _, w := range words {
+		for _, kw := range scopeKeywords {
 			if w == kw {
 				count++
+				break
 			}
 		}
 	}
