@@ -108,6 +108,88 @@ func TestGitHubIssuesTracker_ProviderName(t *testing.T) {
 	assert.Equal(t, "github", tracker.ProviderName())
 }
 
+func TestGitHubIssuesTracker_GetTicket(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "GET", r.Method)
+		assert.Contains(t, r.URL.Path, "/issues/42")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"number": 42,
+			"title":  "Fix login bug",
+			"body":   "Something is broken\n\n## Acceptance Criteria\n- It works",
+			"labels": []map[string]string{{"name": "foreman-ready"}},
+		})
+	}))
+	defer server.Close()
+
+	tracker := NewGitHubIssuesTracker(server.URL, "test-token", "org", "repo", "foreman-ready")
+	ticket, err := tracker.GetTicket(context.Background(), "42")
+	require.NoError(t, err)
+	assert.Equal(t, "42", ticket.ExternalID)
+	assert.Equal(t, "Fix login bug", ticket.Title)
+}
+
+func TestGitHubIssuesTracker_AttachPR(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "POST", r.Method)
+		assert.Contains(t, r.URL.Path, "/issues/42/comments")
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(map[string]int{"id": 1})
+	}))
+	defer server.Close()
+
+	tracker := NewGitHubIssuesTracker(server.URL, "test-token", "org", "repo", "foreman-ready")
+	err := tracker.AttachPR(context.Background(), "42", "https://github.com/org/repo/pull/7")
+	require.NoError(t, err)
+}
+
+func TestGitHubIssuesTracker_RemoveLabel(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "DELETE", r.Method)
+		assert.Contains(t, r.URL.Path, "/issues/42/labels/old-label")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode([]map[string]string{})
+	}))
+	defer server.Close()
+
+	tracker := NewGitHubIssuesTracker(server.URL, "test-token", "org", "repo", "foreman-ready")
+	err := tracker.RemoveLabel(context.Background(), "42", "old-label")
+	require.NoError(t, err)
+}
+
+func TestGitHubIssuesTracker_HasLabel_True(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"number": 42,
+			"title":  "t",
+			"body":   "b",
+			"labels": []map[string]string{{"name": "foreman-ready"}, {"name": "bug"}},
+		})
+	}))
+	defer server.Close()
+
+	tracker := NewGitHubIssuesTracker(server.URL, "test-token", "org", "repo", "foreman-ready")
+	has, err := tracker.HasLabel(context.Background(), "42", "bug")
+	require.NoError(t, err)
+	assert.True(t, has)
+}
+
+func TestGitHubIssuesTracker_HasLabel_False(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"number": 42,
+			"title":  "t",
+			"body":   "b",
+			"labels": []map[string]string{{"name": "foreman-ready"}},
+		})
+	}))
+	defer server.Close()
+
+	tracker := NewGitHubIssuesTracker(server.URL, "test-token", "org", "repo", "foreman-ready")
+	has, err := tracker.HasLabel(context.Background(), "42", "missing-label")
+	require.NoError(t, err)
+	assert.False(t, has)
+}
+
 func TestGitHubIssuesTracker_UpdateStatus(t *testing.T) {
 	var method string
 	var body map[string]string
