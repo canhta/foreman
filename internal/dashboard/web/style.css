@@ -747,12 +747,17 @@ footer {
     /* Only the active panel is shown */
     section.mobile-active { display: flex !important; }
 
-    /* Feed panel full-width on mobile */
-    #feed-panel.collapsed { max-width: none; min-width: 0; }
+    /* Feed panel: reset 40px constraint from tablet query and collapsed state */
+    #feed-panel,
+    #feed-panel.collapsed {
+        max-width: none;
+        min-width: 0;
+    }
+    /* Feed panel panel-header is redundant on mobile — tab bar handles navigation */
+    #feed-panel .panel-header { display: none !important; }
+    /* Always show full feed content on mobile (no collapsed state) */
     #feed-panel .feed-content { display: flex !important; flex-direction: column; }
     #feed-panel .feed-dots    { display: none !important; }
-    #feed-panel .panel-header .collapse-btn { display: none; }
-    #feed-panel .panel-header span:first-child { display: block !important; }
 
     /* Footer hidden on mobile */
     footer { display: none; }

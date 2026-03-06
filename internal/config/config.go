@@ -143,6 +143,19 @@ func expandEnvVars(cfg *models.Config) {
 	cfg.Dashboard.AuthToken = expandEnv(cfg.Dashboard.AuthToken)
 	cfg.Database.Postgres.URL = expandEnv(cfg.Database.Postgres.URL)
 	cfg.Skills.AgentRunner.Copilot.GitHubToken = expandEnv(cfg.Skills.AgentRunner.Copilot.GitHubToken)
+	cfg.Daemon.WorkDir = expandTilde(cfg.Daemon.WorkDir)
+	cfg.Database.SQLite.Path = expandTilde(cfg.Database.SQLite.Path)
+}
+
+func expandTilde(path string) string {
+	if path == "~" || strings.HasPrefix(path, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return path
+		}
+		return home + path[1:]
+	}
+	return path
 }
 
 func expandEnv(s string) string {
