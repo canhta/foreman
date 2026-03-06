@@ -24,7 +24,7 @@ func TestTrackerContract_LocalFile(t *testing.T) {
 }
 
 func TestTrackerContract_GitHub(t *testing.T) {
-	var issueNumber int = 1
+	issueNumber := 1
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == "GET" && r.URL.Query().Get("labels") != "":
