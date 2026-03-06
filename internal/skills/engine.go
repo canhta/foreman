@@ -141,8 +141,19 @@ func (e *Engine) executeRunCommand(ctx context.Context, step SkillStep, _ *Skill
 
 func (e *Engine) executeFileWrite(step SkillStep, _ *SkillContext) (*StepResult, error) {
 	path := filepath.Join(e.workDir, step.Path)
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return nil, fmt.Errorf("resolving path %s: %w", step.Path, err)
+	}
+	absWorkDir, err := filepath.Abs(e.workDir)
+	if err != nil {
+		return nil, fmt.Errorf("resolving work dir: %w", err)
+	}
+	if !strings.HasPrefix(absPath, absWorkDir+string(filepath.Separator)) && absPath != absWorkDir {
+		return nil, fmt.Errorf("path %q escapes work directory", step.Path)
+	}
 
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(absPath), 0o755); err != nil {
 		return nil, fmt.Errorf("creating directory for %s: %w", step.Path, err)
 	}
 
@@ -150,13 +161,13 @@ func (e *Engine) executeFileWrite(step SkillStep, _ *SkillContext) (*StepResult,
 
 	switch step.Mode {
 	case "prepend":
-		existing, err := os.ReadFile(path)
+		existing, err := os.ReadFile(absPath)
 		if err != nil && !os.IsNotExist(err) {
 			return nil, fmt.Errorf("reading existing file %s: %w", step.Path, err)
 		}
 		content = content + "\n" + string(existing)
 	case "append":
-		existing, err := os.ReadFile(path)
+		existing, err := os.ReadFile(absPath)
 		if err != nil && !os.IsNotExist(err) {
 			return nil, fmt.Errorf("reading existing file %s: %w", step.Path, err)
 		}
@@ -164,10 +175,10 @@ func (e *Engine) executeFileWrite(step SkillStep, _ *SkillContext) (*StepResult,
 		// default: overwrite
 	}
 
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(absPath, []byte(content), 0o644); err != nil {
 		return nil, fmt.Errorf("writing file %s: %w", step.Path, err)
 	}
-	return &StepResult{Output: path}, nil
+	return &StepResult{Output: absPath}, nil
 }
 
 func (e *Engine) executeGitDiff(ctx context.Context) (*StepResult, error) {

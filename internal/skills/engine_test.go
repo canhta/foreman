@@ -108,6 +108,41 @@ func TestEngine_ExecuteFileWrite_Prepend(t *testing.T) {
 	assert.Contains(t, string(content), "existing content")
 }
 
+func TestEngine_ExecuteFileWrite_PathTraversal(t *testing.T) {
+	workDir := t.TempDir()
+	engine := NewEngine(&mockLLMProvider{}, &mockRunner{}, workDir, "main")
+
+	tests := []struct {
+		name    string
+		path    string
+		wantErr bool
+	}{
+		{"valid relative path", "src/main.go", false},
+		{"path traversal", "../../etc/evil", true},
+		{"absolute escape", "../outside", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			skill := &Skill{
+				ID:      "test",
+				Trigger: "pre_pr",
+				Steps: []SkillStep{
+					{ID: "write", Type: "file_write", Path: tt.path, Content: "test", Mode: "overwrite"},
+				},
+			}
+			sCtx := NewSkillContext()
+			err := engine.Execute(context.Background(), skill, sCtx)
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Contains(t, err.Error(), "escapes work directory")
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
+
 func TestEngine_ExecuteLLMCall(t *testing.T) {
 	workDir := t.TempDir()
 	engine := NewEngine(
