@@ -77,12 +77,17 @@ func validateBashCommand(command string, allowed []string) error {
 	if len(allowed) == 0 {
 		return fmt.Errorf("no commands are allowed — set allowed_commands in config")
 	}
+	parts := strings.Fields(command)
+	if len(parts) == 0 {
+		return fmt.Errorf("empty command")
+	}
+	binary := parts[0]
 	for _, a := range allowed {
-		if strings.HasPrefix(strings.TrimSpace(command), a) {
+		if binary == a {
 			return nil
 		}
 	}
-	return fmt.Errorf("command %q is not in the allowed commands list", strings.Fields(command)[0])
+	return fmt.Errorf("command %q is not in the allowed commands list", binary)
 }
 
 // --- RunTest ---

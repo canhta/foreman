@@ -56,6 +56,24 @@ func TestBash_NotInAllowlist(t *testing.T) {
 	}
 }
 
+func TestBash_ExactBinaryMatch(t *testing.T) {
+	cmd := &mockCmdRunner{stdout: "ok"}
+	reg, dir := newExecRegistry(t, cmd, []string{"go"})
+
+	// "go test" should be accepted — binary is "go"
+	out := execTool(t, reg, dir, "Bash", map[string]string{"command": "go test ./..."})
+	if out != "ok" {
+		t.Errorf("expected 'ok', got %q", out)
+	}
+
+	// "go_malicious" should be rejected — binary is "go_malicious", not "go"
+	b, _ := json.Marshal(map[string]string{"command": "go_malicious --steal-data"})
+	_, err := reg.Execute(context.Background(), dir, "Bash", b)
+	if err == nil {
+		t.Fatal("expected error: go_malicious should not match allowed command 'go'")
+	}
+}
+
 func TestBash_NilRunner(t *testing.T) {
 	reg := tools.NewRegistry(nil, nil, tools.ToolHooks{})
 	b, _ := json.Marshal(map[string]string{"command": "go version"})
