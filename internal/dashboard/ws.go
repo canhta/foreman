@@ -1,9 +1,11 @@
 package dashboard
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 
+	"github.com/canhta/foreman/internal/models"
 	"github.com/gorilla/websocket"
 	"github.com/rs/zerolog/log"
 )
@@ -40,7 +42,8 @@ func (a *API) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	defer a.emitter.Unsubscribe(ch)
 
 	for evt := range ch {
-		data, err := json.Marshal(evt)
+		enriched := a.enrichEvent(r.Context(), evt)
+		data, err := json.Marshal(enriched)
 		if err != nil {
 			continue
 		}
@@ -48,4 +51,24 @@ func (a *API) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
+}
+
+// enrichedEvent is the WebSocket payload with ticket context.
+// ticket_title is a snapshot at event time — titles rarely change.
+type enrichedEvent struct {
+	models.EventRecord
+	TicketTitle string `json:"ticket_title"`
+	Submitter   string `json:"submitter"`
+}
+
+func (a *API) enrichEvent(ctx context.Context, evt *models.EventRecord) *enrichedEvent {
+	enriched := &enrichedEvent{EventRecord: *evt}
+	if evt.TicketID != "" {
+		ticket, err := a.db.GetTicket(ctx, evt.TicketID)
+		if err == nil && ticket != nil {
+			enriched.TicketTitle = ticket.Title
+			enriched.Submitter = ticket.ChannelSenderID
+		}
+	}
+	return enriched
 }
