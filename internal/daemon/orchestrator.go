@@ -91,6 +91,7 @@ type OrchestratorConfig struct {
 	PRReviewers            []string
 	MaxParallelTasks       int
 	TaskTimeoutMinutes     int
+	DAGTimeoutMinutes      int
 	MaxLlmCallsPerTask     int
 	MaxImplementRetries    int
 	MaxSpecReviewCycles    int
@@ -361,7 +362,13 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 	executor := NewDAGExecutor(dagRunner, o.config.MaxParallelTasks, timeout)
 
 	log.Info().Int("task_count", len(dagTasks)).Msg("starting DAG execution")
-	results := executor.Execute(ctx, dagTasks)
+	execCtx := ctx
+	if o.config.DAGTimeoutMinutes > 0 {
+		var cancel context.CancelFunc
+		execCtx, cancel = context.WithTimeout(ctx, time.Duration(o.config.DAGTimeoutMinutes)*time.Minute)
+		defer cancel()
+	}
+	results := executor.Execute(execCtx, dagTasks)
 
 	// Analyze results.
 	doneCount, failedCount, skippedCount := analyzeResults(results)

@@ -132,11 +132,35 @@ func (a *API) handleStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+var validTicketStatuses = map[models.TicketStatus]bool{
+	models.TicketStatusQueued:              true,
+	models.TicketStatusClarificationNeeded: true,
+	models.TicketStatusPlanning:            true,
+	models.TicketStatusPlanValidating:      true,
+	models.TicketStatusImplementing:        true,
+	models.TicketStatusReviewing:           true,
+	models.TicketStatusPRCreated:           true,
+	models.TicketStatusDone:                true,
+	models.TicketStatusPartial:             true,
+	models.TicketStatusFailed:              true,
+	models.TicketStatusBlocked:             true,
+	models.TicketStatusDecomposing:         true,
+	models.TicketStatusDecomposed:          true,
+	models.TicketStatusAwaitingMerge:       true,
+	models.TicketStatusMerged:              true,
+	models.TicketStatusPRClosed:            true,
+}
+
 func (a *API) handleListTickets(w http.ResponseWriter, r *http.Request) {
 	status := r.URL.Query().Get("status")
 	filter := models.TicketFilter{}
 	if status != "" {
-		filter.StatusIn = []models.TicketStatus{models.TicketStatus(status)}
+		ts := models.TicketStatus(status)
+		if !validTicketStatuses[ts] {
+			http.Error(w, "invalid status filter", http.StatusBadRequest)
+			return
+		}
+		filter.StatusIn = []models.TicketStatus{ts}
 	}
 
 	tickets, err := a.db.ListTickets(r.Context(), filter)
