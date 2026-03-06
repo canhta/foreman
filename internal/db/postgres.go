@@ -557,6 +557,28 @@ func (p *PostgresDB) FindActiveClarification(ctx context.Context, senderID strin
 	return &t, nil
 }
 
+func (p *PostgresDB) DeleteTicket(ctx context.Context, id string) error {
+	tx, err := p.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, q := range []string{
+		`DELETE FROM file_reservations WHERE ticket_id = $1`,
+		`DELETE FROM progress_patterns WHERE ticket_id = $1`,
+		`DELETE FROM handoffs WHERE ticket_id = $1`,
+		`DELETE FROM llm_calls WHERE ticket_id = $1`,
+		`DELETE FROM events WHERE ticket_id = $1`,
+		`DELETE FROM tasks WHERE ticket_id = $1`,
+		`DELETE FROM tickets WHERE id = $1`,
+	} {
+		if _, err := tx.ExecContext(ctx, q, id); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 func (p *PostgresDB) GetTeamStats(ctx context.Context, since time.Time) ([]models.TeamStat, error) {
 	rows, err := p.db.QueryContext(ctx,
 		`SELECT channel_sender_id,

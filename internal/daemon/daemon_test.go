@@ -161,6 +161,8 @@ func (m *daemonMockDB) GetGlobalEvents(_ context.Context, _, _ int) ([]models.Ev
 	return nil, nil
 }
 
+func (m *daemonMockDB) DeleteTicket(_ context.Context, _ string) error { return nil }
+
 // daemonMockTracker is a mock tracker for daemon-level ingestion tests.
 type daemonMockTracker struct {
 	orchMockTracker

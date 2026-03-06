@@ -28,6 +28,7 @@ type DashboardDB interface {
 	GetRecentPRs(ctx context.Context, limit int) ([]models.Ticket, error)
 	GetTicketSummaries(ctx context.Context, filter models.TicketFilter) ([]models.TicketSummary, error)
 	GetGlobalEvents(ctx context.Context, limit, offset int) ([]models.EventRecord, error)
+	DeleteTicket(ctx context.Context, id string) error
 }
 
 // EventSubscriber is the subset of EventEmitter needed for WebSocket.
@@ -355,6 +356,23 @@ func (a *API) handleRetryTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "retrying", "task_id": id})
+}
+
+func (a *API) handleDeleteTicket(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	id := extractPathParam(r.URL.Path, "/api/tickets/")
+	if id == "" {
+		http.Error(w, "missing ticket id", http.StatusBadRequest)
+		return
+	}
+	if err := a.db.DeleteTicket(r.Context(), id); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted", "ticket_id": id})
 }
 
 func (a *API) handleDaemonPause(w http.ResponseWriter, r *http.Request) {

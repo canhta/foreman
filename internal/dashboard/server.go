@@ -60,7 +60,11 @@ func NewServer(db DashboardDB, emitter EventSubscriber, statusProvider DaemonSta
 		case strings.HasSuffix(path, "/retry"):
 			api.handleRetryTicket(w, r)
 		default:
-			api.handleGetTicket(w, r)
+			if r.Method == http.MethodDelete {
+				api.handleDeleteTicket(w, r)
+			} else {
+				api.handleGetTicket(w, r)
+			}
 		}
 	})))
 	mux.Handle("/api/costs/today", auth(http.HandlerFunc(api.handleCostsToday)))

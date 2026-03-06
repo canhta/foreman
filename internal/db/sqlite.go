@@ -545,6 +545,28 @@ func (s *SQLiteDB) FindActiveClarification(ctx context.Context, senderID string)
 	return &t, nil
 }
 
+func (s *SQLiteDB) DeleteTicket(ctx context.Context, id string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, q := range []string{
+		`DELETE FROM file_reservations WHERE ticket_id = ?`,
+		`DELETE FROM progress_patterns WHERE ticket_id = ?`,
+		`DELETE FROM handoffs WHERE ticket_id = ?`,
+		`DELETE FROM llm_calls WHERE ticket_id = ?`,
+		`DELETE FROM events WHERE ticket_id = ?`,
+		`DELETE FROM tasks WHERE ticket_id = ?`,
+		`DELETE FROM tickets WHERE id = ?`,
+	} {
+		if _, err := tx.ExecContext(ctx, q, id); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 func (s *SQLiteDB) GetTeamStats(ctx context.Context, since time.Time) ([]models.TeamStat, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT channel_sender_id,

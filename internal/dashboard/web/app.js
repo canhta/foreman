@@ -242,6 +242,7 @@ function foreman() {
         },
 
         loadTicketDetail: function (id) {
+            if (!id) return;
             var self = this;
             Promise.all([
                 fetchJSON('/api/tickets/' + id),
@@ -354,6 +355,19 @@ function foreman() {
                 self.loadTicketDetail(id);
                 self.loadTickets();
             }).catch(function (e) { alert('Failed: ' + e.message); });
+        },
+
+        deleteTicket: function (id) {
+            if (!confirm('Permanently delete this ticket and all its data?')) return;
+            var self = this;
+            fetch('/api/tickets/' + id, { method: 'DELETE', headers: headers })
+                .then(function (r) {
+                    if (!r.ok) throw new Error(r.statusText);
+                    self.selectedTicket = null;
+                    self.activePanel = 'tickets';
+                    self.loadTickets();
+                })
+                .catch(function (e) { alert('Delete failed: ' + e.message); });
         },
 
         retryTask: function (taskId) {

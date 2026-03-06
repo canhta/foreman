@@ -329,6 +329,39 @@ footer {
 .detail-pr a { color: var(--accent); text-decoration: none; font-weight: bold; }
 .detail-pr a:hover { text-decoration: underline; }
 
+.back-btn {
+    display: inline-block;
+    background: none;
+    color: var(--muted);
+    border: 2px solid #333;
+    padding: 0.2rem 0.6rem;
+    font-family: monospace;
+    font-size: 0.7rem;
+    font-weight: bold;
+    cursor: pointer;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    margin-bottom: 0.5rem;
+}
+.back-btn:hover { color: var(--text); border-color: var(--text); }
+
+.delete-btn {
+    display: inline-block;
+    background: none;
+    color: var(--danger);
+    border: 2px solid var(--danger);
+    padding: 0.2rem 0.6rem;
+    font-family: monospace;
+    font-size: 0.7rem;
+    font-weight: bold;
+    cursor: pointer;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    margin-bottom: 0.5rem;
+    margin-left: 0.5rem;
+}
+.delete-btn:hover { background: var(--danger); color: var(--text); }
+
 .retry-btn {
     display: inline-block;
     background: var(--danger);
@@ -695,16 +728,13 @@ footer {
     }
 
     section {
-        display: none;
         border-right: none;
         flex: 1;
         min-height: 0;
     }
 
-    /* Show only the active panel */
-    main[data-panel="tickets"] #tickets-panel { display: flex; }
-    main[data-panel="detail"]  #detail-panel  { display: flex; }
-    main[data-panel="feed"]    #feed-panel    { display: flex; }
+    /* Hide non-active panels via Alpine class binding */
+    section.mobile-hidden { display: none !important; }
 
     /* Feed panel full-width on mobile */
     #feed-panel.collapsed { max-width: none; min-width: 0; }

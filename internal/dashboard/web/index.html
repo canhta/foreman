@@ -31,9 +31,9 @@
         </div>
     </header>
 
-    <main :data-panel="activePanel">
+    <main>
         <!-- Left: Ticket List Sidebar -->
-        <section id="tickets-panel">
+        <section id="tickets-panel" :class="{ 'mobile-hidden': activePanel !== 'tickets' }">
             <div class="panel-header">
                 <span>TICKETS (<span x-text="filteredTickets.length"></span>)</span>
             </div>
@@ -68,7 +68,7 @@
         </section>
 
         <!-- Center: Detail or Team Summary -->
-        <section id="detail-panel">
+        <section id="detail-panel" :class="{ 'mobile-hidden': activePanel !== 'detail' }">
             <!-- Team Summary (no ticket selected) -->
             <template x-if="!selectedTicket">
                 <div id="team-summary" x-data="teamSummary()" x-init="load()">
@@ -192,6 +192,10 @@
             <template x-if="selectedTicket">
                 <div id="ticket-detail">
                     <div class="detail-header">
+                        <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.4rem;">
+                            <button class="back-btn" @click="selectedTicket = null; activePanel = 'tickets'">&#8592; BACK</button>
+                            <button class="delete-btn" @click="deleteTicket(selectedTicket.ID)">&#10007; DELETE</button>
+                        </div>
                         <div class="detail-title" x-text="ticketDetail?.Title || selectedTicket.Title"></div>
                         <div class="detail-meta">
                             <span x-text="selectedTicket.Status.toUpperCase()"></span>
@@ -291,7 +295,7 @@
         </section>
 
         <!-- Right: Live Feed (collapsible) -->
-        <section id="feed-panel" :class="feedCollapsed ? 'collapsed' : ''">
+        <section id="feed-panel" :class="{ 'collapsed': feedCollapsed, 'mobile-hidden': activePanel !== 'feed' }">
             <div class="panel-header">
                 <span x-show="!feedCollapsed">LIVE FEED</span>
                 <button class="collapse-btn" @click="feedCollapsed = !feedCollapsed" x-text="feedCollapsed ? '&#9654;' : '&#9664;'"></button>

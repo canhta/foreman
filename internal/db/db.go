@@ -65,6 +65,9 @@ type Database interface {
 	// Channel queries
 	FindActiveClarification(ctx context.Context, senderID string) (*models.Ticket, error)
 
+	// Dashboard mutations
+	DeleteTicket(ctx context.Context, id string) error
+
 	// Dashboard aggregates
 	GetTeamStats(ctx context.Context, since time.Time) ([]models.TeamStat, error)
 	GetRecentPRs(ctx context.Context, limit int) ([]models.Ticket, error)
