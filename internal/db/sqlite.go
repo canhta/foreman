@@ -308,6 +308,58 @@ func (s *SQLiteDB) ReserveFiles(ctx context.Context, ticketID string, paths []st
 	return tx.Commit()
 }
 
+func (s *SQLiteDB) TryReserveFiles(ctx context.Context, ticketID string, paths []string) ([]string, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// Read current reservations within the transaction.
+	rows, err := tx.QueryContext(ctx,
+		`SELECT file_path, ticket_id FROM file_reservations WHERE released_at IS NULL`)
+	if err != nil {
+		return nil, err
+	}
+	reserved := make(map[string]string)
+	for rows.Next() {
+		var path, owner string
+		if err := rows.Scan(&path, &owner); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		reserved[path] = owner
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Check for conflicts.
+	var conflicts []string
+	for _, p := range paths {
+		if owner, ok := reserved[p]; ok && owner != ticketID {
+			conflicts = append(conflicts, fmt.Sprintf("%s (held by %s)", p, owner))
+		}
+	}
+	if len(conflicts) > 0 {
+		return conflicts, nil
+	}
+
+	// No conflicts — insert reservations within the same transaction.
+	for _, p := range paths {
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO file_reservations (file_path, ticket_id, reserved_at) VALUES (?, ?, ?)`,
+			p, ticketID, time.Now()); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return nil, nil
+}
+
 func (s *SQLiteDB) ReleaseFiles(ctx context.Context, ticketID string) error {
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE file_reservations SET released_at = ? WHERE ticket_id = ? AND released_at IS NULL`,

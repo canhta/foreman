@@ -40,6 +40,7 @@ type Database interface {
 	ReserveFiles(ctx context.Context, ticketID string, paths []string) error
 	ReleaseFiles(ctx context.Context, ticketID string) error
 	GetReservedFiles(ctx context.Context) (map[string]string, error)
+	TryReserveFiles(ctx context.Context, ticketID string, paths []string) ([]string, error)
 
 	// Cost
 	GetTicketCost(ctx context.Context, ticketID string) (float64, error)

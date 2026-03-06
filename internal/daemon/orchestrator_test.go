@@ -125,6 +125,24 @@ func (m *orchMockDB) ReleaseFiles(_ context.Context, ticketID string) error {
 func (m *orchMockDB) GetReservedFiles(_ context.Context) (map[string]string, error) {
 	return m.reservedFiles, nil
 }
+func (m *orchMockDB) TryReserveFiles(_ context.Context, ticketID string, paths []string) ([]string, error) {
+	var conflicts []string
+	for _, p := range paths {
+		if owner, ok := m.reservedFiles[p]; ok && owner != ticketID {
+			conflicts = append(conflicts, fmt.Sprintf("%s (held by %s)", p, owner))
+		}
+	}
+	if len(conflicts) > 0 {
+		return conflicts, nil
+	}
+	if m.reserveErr != nil {
+		return nil, m.reserveErr
+	}
+	for _, p := range paths {
+		m.reservedFiles[p] = ticketID
+	}
+	return nil, nil
+}
 func (m *orchMockDB) GetTicketCost(_ context.Context, _ string) (float64, error) { return 0, nil }
 func (m *orchMockDB) GetDailyCost(_ context.Context, _ string) (float64, error) {
 	return m.dailyCost, nil

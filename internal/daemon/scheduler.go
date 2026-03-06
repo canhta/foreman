@@ -11,6 +11,12 @@ type FileReserver interface {
 	GetReservedFiles(ctx context.Context) (map[string]string, error)
 	ReserveFiles(ctx context.Context, ticketID string, paths []string) error
 	ReleaseFiles(ctx context.Context, ticketID string) error
+	// TryReserveFiles atomically checks for conflicts and reserves files in a
+	// single transaction. It returns a list of conflicting paths (each formatted
+	// as "path (held by owner)") and a nil error when conflicts are found, or
+	// an empty slice and nil error on success. A non-nil error indicates a DB
+	// failure.
+	TryReserveFiles(ctx context.Context, ticketID string, paths []string) (conflicts []string, err error)
 }
 
 // FileConflictError indicates file reservation conflicts.
@@ -33,25 +39,17 @@ func NewScheduler(db FileReserver) *Scheduler {
 }
 
 // TryReserve attempts to reserve files for a ticket. Returns FileConflictError if any
-// files are held by another ticket.
+// files are held by another ticket. The check-and-reserve is performed atomically
+// inside a DB transaction to prevent race conditions.
 func (s *Scheduler) TryReserve(ctx context.Context, ticketID string, files []string) error {
-	reserved, err := s.db.GetReservedFiles(ctx)
+	conflicts, err := s.db.TryReserveFiles(ctx, ticketID, files)
 	if err != nil {
-		return fmt.Errorf("getting reserved files: %w", err)
+		return fmt.Errorf("reserving files: %w", err)
 	}
-
-	var conflicts []string
-	for _, f := range files {
-		if owner, ok := reserved[f]; ok && owner != ticketID {
-			conflicts = append(conflicts, fmt.Sprintf("%s (held by %s)", f, owner))
-		}
-	}
-
 	if len(conflicts) > 0 {
 		return &FileConflictError{Conflicts: conflicts}
 	}
-
-	return s.db.ReserveFiles(ctx, ticketID, files)
+	return nil
 }
 
 // Release removes all file reservations for a ticket.

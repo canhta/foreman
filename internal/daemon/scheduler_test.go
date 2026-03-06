@@ -2,6 +2,8 @@ package daemon
 
 import (
 	"context"
+	"fmt"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -10,6 +12,7 @@ import (
 
 // mockDB implements the minimal DB interface needed for scheduler tests.
 type mockDB struct {
+	mu           sync.Mutex
 	reservations map[string]string   // path → ticketID
 	reserved     map[string][]string // ticketID → paths
 }
@@ -21,11 +24,15 @@ func newMockDB() *mockDB {
 	}
 }
 
-func (m *mockDB) GetReservedFiles(ctx context.Context) (map[string]string, error) {
+func (m *mockDB) GetReservedFiles(_ context.Context) (map[string]string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	return m.reservations, nil
 }
 
-func (m *mockDB) ReserveFiles(ctx context.Context, ticketID string, paths []string) error {
+func (m *mockDB) ReserveFiles(_ context.Context, ticketID string, paths []string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	for _, p := range paths {
 		m.reservations[p] = ticketID
 	}
@@ -33,12 +40,33 @@ func (m *mockDB) ReserveFiles(ctx context.Context, ticketID string, paths []stri
 	return nil
 }
 
-func (m *mockDB) ReleaseFiles(ctx context.Context, ticketID string) error {
+func (m *mockDB) ReleaseFiles(_ context.Context, ticketID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	for _, p := range m.reserved[ticketID] {
 		delete(m.reservations, p)
 	}
 	delete(m.reserved, ticketID)
 	return nil
+}
+
+func (m *mockDB) TryReserveFiles(_ context.Context, ticketID string, paths []string) ([]string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	var conflicts []string
+	for _, p := range paths {
+		if owner, ok := m.reservations[p]; ok && owner != ticketID {
+			conflicts = append(conflicts, fmt.Sprintf("%s (held by %s)", p, owner))
+		}
+	}
+	if len(conflicts) > 0 {
+		return conflicts, nil
+	}
+	for _, p := range paths {
+		m.reservations[p] = ticketID
+	}
+	m.reserved[ticketID] = paths
+	return nil, nil
 }
 
 func TestScheduler_TryReserve_NoConflict(t *testing.T) {
@@ -92,4 +120,39 @@ func TestScheduler_TryReserve_SameTicket(t *testing.T) {
 	// Same ticket re-reserving should not conflict
 	err := sched.TryReserve(context.Background(), "ticket-1", []string{"src/handler.go", "src/new.go"})
 	assert.NoError(t, err)
+}
+
+func TestScheduler_TryReserve_ConcurrentOnlyOneWins(t *testing.T) {
+	db := newMockDB()
+	sched := NewScheduler(db)
+
+	const goroutines = 10
+	errs := make([]error, goroutines)
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+
+	for i := 0; i < goroutines; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			ticketID := fmt.Sprintf("ticket-%d", idx)
+			errs[idx] = sched.TryReserve(context.Background(), ticketID, []string{"shared/file.go"})
+		}(i)
+	}
+	wg.Wait()
+
+	successCount := 0
+	conflictCount := 0
+	for _, err := range errs {
+		if err == nil {
+			successCount++
+		} else {
+			var conflictErr *FileConflictError
+			if assert.ErrorAs(t, err, &conflictErr) {
+				conflictCount++
+			}
+		}
+	}
+
+	assert.Equal(t, 1, successCount, "exactly one goroutine should succeed")
+	assert.Equal(t, goroutines-1, conflictCount, "all others should get conflict errors")
 }

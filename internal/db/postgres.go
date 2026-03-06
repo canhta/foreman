@@ -300,6 +300,59 @@ func (p *PostgresDB) ReserveFiles(ctx context.Context, ticketID string, paths []
 	return tx.Commit()
 }
 
+func (p *PostgresDB) TryReserveFiles(ctx context.Context, ticketID string, paths []string) ([]string, error) {
+	tx, err := p.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// Read current reservations within the transaction.
+	rows, err := tx.QueryContext(ctx,
+		`SELECT file_path, ticket_id FROM file_reservations WHERE released_at IS NULL`)
+	if err != nil {
+		return nil, err
+	}
+	reserved := make(map[string]string)
+	for rows.Next() {
+		var path, owner string
+		if err := rows.Scan(&path, &owner); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		reserved[path] = owner
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Check for conflicts.
+	var conflicts []string
+	for _, p := range paths {
+		if owner, ok := reserved[p]; ok && owner != ticketID {
+			conflicts = append(conflicts, fmt.Sprintf("%s (held by %s)", p, owner))
+		}
+	}
+	if len(conflicts) > 0 {
+		return conflicts, nil
+	}
+
+	// No conflicts — insert reservations within the same transaction.
+	for i, path := range paths {
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO file_reservations (file_path, ticket_id, reserved_at) VALUES ($1, $2, $3)
+			 ON CONFLICT (file_path, ticket_id) DO NOTHING`,
+			path, ticketID, time.Now()); err != nil {
+			return nil, fmt.Errorf("reserve file %d (%s): %w", i, path, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return nil, nil
+}
+
 func (p *PostgresDB) ReleaseFiles(ctx context.Context, ticketID string) error {
 	_, err := p.db.ExecContext(ctx,
 		`UPDATE file_reservations SET released_at = $1 WHERE ticket_id = $2 AND released_at IS NULL`,
