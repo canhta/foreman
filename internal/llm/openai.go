@@ -46,11 +46,17 @@ type openaiRequest struct {
 }
 
 // isReasoningModel returns true for OpenAI models that require max_completion_tokens
-// instead of max_tokens (e.g. o1, o1-mini, o3, o3-mini).
+// instead of max_tokens and do not support the temperature parameter.
+// This includes o-series models (o1, o3, o4-mini, …) and the gpt-5 family
+// (gpt-5, gpt-5.4, gpt-5-mini, gpt-5-nano, gpt-5.3-codex, …).
 func isReasoningModel(model string) bool {
 	base := strings.ToLower(model)
-	// Match o1*, o3*, o4* etc. but not gpt-4o or gpt-4o-mini
+	// o1*, o3*, o4* etc. — but not gpt-4o / gpt-4o-mini (those start with 'g')
 	if len(base) >= 2 && base[0] == 'o' && base[1] >= '1' && base[1] <= '9' {
+		return true
+	}
+	// gpt-5* family (gpt-5, gpt-5.4, gpt-5-mini, gpt-5-nano, gpt-5.3-codex, …)
+	if strings.HasPrefix(base, "gpt-5") {
 		return true
 	}
 	return false

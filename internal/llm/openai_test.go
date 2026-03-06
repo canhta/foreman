@@ -11,6 +11,7 @@ import (
 )
 
 func TestOpenAIProvider_Complete(t *testing.T) {
+	var requestBody map[string]interface{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer test-key" {
 			t.Errorf("expected Bearer test-key, got %s", r.Header.Get("Authorization"))
@@ -18,6 +19,7 @@ func TestOpenAIProvider_Complete(t *testing.T) {
 		if r.URL.Path != "/v1/chat/completions" {
 			t.Errorf("expected /v1/chat/completions, got %s", r.URL.Path)
 		}
+		json.NewDecoder(r.Body).Decode(&requestBody)
 
 		resp := map[string]interface{}{
 			"id":    "chatcmpl-123",
@@ -56,6 +58,20 @@ func TestOpenAIProvider_Complete(t *testing.T) {
 	}
 	if resp.TokensInput != 10 {
 		t.Errorf("expected 10 input tokens, got %d", resp.TokensInput)
+	}
+
+	// Verify messages array structure: system message first, then user message.
+	msgs, _ := requestBody["messages"].([]interface{})
+	if len(msgs) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(msgs))
+	}
+	sys, _ := msgs[0].(map[string]interface{})
+	usr, _ := msgs[1].(map[string]interface{})
+	if sys["role"] != "system" || sys["content"] != "You are a helper." {
+		t.Errorf("unexpected system message: %v", sys)
+	}
+	if usr["role"] != "user" || usr["content"] != "Hi" {
+		t.Errorf("unexpected user message: %v", usr)
 	}
 }
 
@@ -96,7 +112,12 @@ func TestOpenAIProvider_AuthError(t *testing.T) {
 }
 
 func TestOpenAIProvider_ConnectionError(t *testing.T) {
-	provider := NewOpenAIProvider("key", "http://localhost:19999") // nothing listening
+	// Use a server that is immediately closed so the port is guaranteed to refuse connections.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	url := srv.URL
+	srv.Close()
+
+	provider := NewOpenAIProvider("key", url)
 	_, err := provider.Complete(context.Background(), models.LlmRequest{Model: "gpt-4o", UserPrompt: "hi", MaxTokens: 10})
 	if _, ok := err.(*ConnectionError); !ok {
 		t.Errorf("expected ConnectionError, got %T: %v", err, err)
@@ -154,6 +175,108 @@ func TestLocalProvider_HealthCheck_UsesDefaultModel(t *testing.T) {
 	}
 	if requestedModel != "llama3" {
 		t.Errorf("expected llama3, got %s", requestedModel)
+	}
+}
+
+func TestIsReasoningModel(t *testing.T) {
+	cases := []struct {
+		model    string
+		expected bool
+	}{
+		// o-series
+		{"o1", true},
+		{"o1-mini", true},
+		{"o1-preview", true},
+		{"o3", true},
+		{"o3-mini", true},
+		{"o3-pro", true},
+		{"o3-deep-research", true},
+		{"o4-mini", true},
+		{"o4-mini-deep-research", true},
+		// gpt-5 family
+		{"gpt-5", true},
+		{"gpt-5.4", true},
+		{"gpt-5.4-pro", true},
+		{"gpt-5-mini", true},
+		{"gpt-5-nano", true},
+		{"gpt-5.3-codex", true},
+		// gpt-5.1 is an official gpt-5 family model — must be true
+		{"gpt-5.1", true},
+		// non-reasoning
+		{"gpt-4o", false},
+		{"gpt-4o-mini", false},
+		{"gpt-4", false},
+		{"gpt-4.1", false},
+		{"", false},
+		{"o", false},
+	}
+	for _, tc := range cases {
+		got := isReasoningModel(tc.model)
+		if got != tc.expected {
+			t.Errorf("isReasoningModel(%q) = %v, want %v", tc.model, got, tc.expected)
+		}
+	}
+}
+
+func testReasoningModelRequest(t *testing.T, modelName string) {
+	t.Helper()
+	var requestBody map[string]interface{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewDecoder(r.Body).Decode(&requestBody)
+		resp := map[string]interface{}{
+			"id":    "chatcmpl-123",
+			"model": modelName,
+			"choices": []map[string]interface{}{
+				{"message": map[string]string{"role": "assistant", "content": "ok"}, "finish_reason": "stop"},
+			},
+			"usage": map[string]int{"prompt_tokens": 1, "completion_tokens": 1},
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer srv.Close()
+
+	provider := NewOpenAIProvider("key", srv.URL)
+	_, err := provider.Complete(context.Background(), models.LlmRequest{Model: modelName, UserPrompt: "hi", MaxTokens: 4096})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, ok := requestBody["max_tokens"]; ok {
+		t.Errorf("model %s: max_tokens must not be sent for reasoning models", modelName)
+	}
+	if v, ok := requestBody["max_completion_tokens"]; !ok {
+		t.Errorf("model %s: max_completion_tokens must be sent for reasoning models", modelName)
+	} else if int(v.(float64)) != 4096 {
+		t.Errorf("model %s: max_completion_tokens = %v, want 4096", modelName, v)
+	}
+	if _, ok := requestBody["temperature"]; ok {
+		t.Errorf("model %s: temperature must not be sent for reasoning models", modelName)
+	}
+}
+
+func TestOpenAIProvider_ReasoningModel_UsesMaxCompletionTokens(t *testing.T) {
+	for _, model := range []string{
+		"o4-mini", "o1-mini", "o3", "o3-pro",
+		"gpt-5", "gpt-5.4", "gpt-5.4-pro", "gpt-5-mini", "gpt-5-nano", "gpt-5.3-codex",
+	} {
+		t.Run(model, func(t *testing.T) { testReasoningModelRequest(t, model) })
+	}
+}
+
+func TestOpenAIProvider_MalformedResponse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+
+	provider := NewOpenAIProvider("key", srv.URL)
+	resp, err := provider.Complete(context.Background(), models.LlmRequest{Model: "gpt-4o", UserPrompt: "hi", MaxTokens: 10})
+	if err != nil {
+		t.Fatalf("unexpected error on empty choices: %v", err)
+	}
+	// Empty choices → empty content and stop reason, not a panic.
+	if resp.Content != "" {
+		t.Errorf("expected empty content, got %q", resp.Content)
 	}
 }
 
