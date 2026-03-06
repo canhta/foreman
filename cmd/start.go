@@ -8,6 +8,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/canhta/foreman/internal/channel"
+	"github.com/canhta/foreman/internal/channel/whatsapp"
 	"github.com/canhta/foreman/internal/daemon"
 	"github.com/canhta/foreman/internal/dashboard"
 	"github.com/canhta/foreman/internal/git"
@@ -195,6 +197,29 @@ func newStartCmd() *cobra.Command {
 			d.SetOrchestrator(orch)
 			if prChecker != nil {
 				d.SetPRChecker(prChecker)
+			}
+
+			// 9b. Initialize channel (optional).
+			var ch channel.Channel
+			if cfg.Channel.Provider == "whatsapp" {
+				sessionDB := cfg.Channel.WhatsApp.SessionDB
+				if sessionDB == "" {
+					sessionDB = "~/.foreman/whatsapp.db"
+				}
+				sessionDB = expandHomePath(sessionDB)
+				ch = whatsapp.New(sessionDB, log.Logger)
+				orch.SetChannel(ch)
+				d.SetChannel(ch)
+
+				classifier := channel.NewClassifier(llmProv)
+				allowlist := channel.NewAllowlist(cfg.Channel.WhatsApp.AllowedNumbers)
+				var pairingMgr *channel.PairingManager
+				if cfg.Channel.WhatsApp.DMPolicy == "pairing" {
+					pairingMgr = channel.NewPairingManager(database, "whatsapp")
+				}
+				cmdHandler := daemon.NewDaemonCommandHandler(d)
+				router := channel.NewRouter(ch, database, classifier, allowlist, pairingMgr, cmdHandler, log.Logger)
+				d.SetChannelRouter(router)
 			}
 
 			// 10. Signal context.
