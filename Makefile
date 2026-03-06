@@ -1,9 +1,30 @@
-.PHONY: build test lint clean setup-hooks coverage
+.PHONY: build test lint clean setup-hooks setup-dev coverage dev debug
 
 BINARY := foreman
+GOBIN  := $(shell go env GOPATH)/bin
 
 build:
 	go build -o $(BINARY) .
+
+# Install development tools (air + dlv). Run once after cloning.
+setup-dev:
+	go install github.com/air-verse/air@latest
+	go install github.com/go-delve/delve/cmd/dlv@latest
+	@echo "Dev tools installed to $(GOBIN)"
+
+# Hot-reload: rebuilds and restarts on file changes (requires air).
+# Run 'make setup-dev' once to install. Pass CMD to change sub-command:
+#   make dev CMD=start
+CMD ?= run
+dev:
+	$(GOBIN)/air -- $(CMD)
+
+# Debug build + launch under Delve (requires dlv).
+# Run 'make setup-dev' once to install.
+# Connect your IDE or use: dlv connect 127.0.0.1:2345
+debug:
+	CGO_ENABLED=1 go build -gcflags="all=-N -l" -o $(BINARY) .
+	$(GOBIN)/dlv exec ./$(BINARY) --headless --listen=:2345 --api-version=2 -- run
 
 test:
 	go test ./... -v -race

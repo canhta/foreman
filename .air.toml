@@ -1,0 +1,56 @@
+# Air - Live reload for Go apps
+# https://github.com/air-verse/air
+# Usage: air -- run
+
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  # Command to build the project.
+  # CGO_ENABLED=1 is required by go-sqlite3.
+  pre_cmd  = []
+  cmd         = "CGO_ENABLED=1 go build -o ./tmp/foreman ."
+  entrypoint  = "./tmp/foreman"
+  # Arguments forwarded to the binary after "--" on the air command line.
+  # Override at runtime: air -- run --config=foreman.toml
+  args_bin = ["run"]
+
+  # Watch these extensions for changes.
+  include_ext = ["go", "toml"]
+
+  # Directories to exclude from watching.
+  exclude_dir = [
+    "tmp",
+    "dist",
+    "docs",
+    "skills",
+    "tickets",
+    "tests",
+    "prompts",
+    "deploy",
+    "scripts",
+  ]
+
+  # Files to exclude from watching (regex on the full path).
+  exclude_regex = ["_test\\.go$"]
+
+  # Kill the running process before rebuilding.
+  send_interrupt = true
+  kill_delay     = "500ms"
+
+  # Log build output even on success.
+  log = "build-errors.log"
+
+[log]
+  # Show timestamp in air's own log lines.
+  time = true
+
+[color]
+  main    = "magenta"
+  watcher = "cyan"
+  build   = "yellow"
+  runner  = "green"
+
+[misc]
+  # Delete the tmp dir on exit.
+  clean_on_exit = true

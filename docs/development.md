@@ -32,6 +32,9 @@ cd foreman
 # Install git hooks (run once)
 make setup-hooks
 
+# Install dev tools: air (hot reload) + dlv (debugger) — run once
+make setup-dev
+
 # Build the binary
 make build
 
@@ -51,6 +54,9 @@ cp foreman.example.toml foreman.toml
 | `make lint` | Run `go vet` + `golangci-lint` |
 | `make clean` | Remove `./foreman` binary |
 | `make setup-hooks` | Install git hooks from `.githooks/` (run once after cloning) |
+| `make setup-dev` | Install dev tools: `air` (hot reload) + `dlv` (debugger) |
+| `make dev` | Hot-reload: rebuild & restart on file changes (requires `make setup-dev`) |
+| `make debug` | Debug build + launch under Delve on `:2345` (requires `make setup-dev`) |
 | `make release` | Cross-compile for linux/darwin/windows amd64+arm64 |
 | `make docker` | Build Docker image `foreman:latest` |
 
@@ -71,6 +77,72 @@ go vet ./...
 ./foreman doctor       # validate config and connectivity
 ./foreman start        # start the background daemon
 ./foreman status       # show daemon status
+```
+
+## Debug Mode & Hot Reload
+
+### Debug Logging
+
+Set `log_level = "debug"` in `foreman.toml` to enable verbose structured output:
+
+```toml
+[daemon]
+log_level = "debug"   # debug, info, warn, error
+log_format = "pretty" # pretty is easier to read during development
+```
+
+### Hot Reload with Air
+
+[Air](https://github.com/air-verse/air) watches `.go` and `.toml` files and automatically rebuilds and restarts the binary on changes. The project ships a pre-configured [`.air.toml`](.air.toml).
+
+```bash
+# Install air + dlv (once)
+make setup-dev
+
+# Start with hot reload (runs `foreman run` by default)
+make dev
+
+# Run a different sub-command, e.g. start the daemon
+make dev CMD=start
+```
+
+> **Note:** CGO is required by `go-sqlite3`. The `.air.toml` sets `CGO_ENABLED=1` explicitly so air works out of the box on macOS and Linux.
+
+### Breakpoint Debugging with Delve
+
+[Delve](https://github.com/go-delve/delve) is the standard Go debugger. `make debug` compiles without optimizations and launches a headless Delve server on port `2345`.
+
+```bash
+# Install air + dlv (once)
+make setup-dev
+
+# Build (debug symbols, no optimizations) and start Delve server
+make debug
+```
+
+Then connect from your IDE or the Delve CLI in a second terminal:
+
+```bash
+dlv connect 127.0.0.1:2345
+```
+
+**VS Code:** Add this to `.vscode/launch.json` to attach automatically:
+
+```json
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Attach to foreman (dlv)",
+      "type": "go",
+      "request": "attach",
+      "mode": "remote",
+      "remotePath": "${workspaceFolder}",
+      "port": 2345,
+      "host": "127.0.0.1"
+    }
+  ]
+}
 ```
 
 ## Package Structure

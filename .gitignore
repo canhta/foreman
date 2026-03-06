@@ -13,6 +13,7 @@ dist/
 foreman.toml
 *.toml
 !foreman.example.toml
+!.air.toml
 
 # Work directory
 .foreman/
