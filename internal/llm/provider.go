@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/canhta/foreman/internal/models"
 )
@@ -68,4 +69,17 @@ func NewProviderFromConfig(providerName string, cfg models.LLMConfig) (LlmProvid
 	default:
 		return nil, fmt.Errorf("unknown LLM provider: %s", providerName)
 	}
+}
+
+// resolveModel returns the bare model name to send to an API.
+// It strips an optional "provider:" prefix (e.g. "openai:gpt-4o" → "gpt-4o")
+// and falls back to defaultModel when the result would be empty.
+func resolveModel(model, defaultModel string) string {
+	if idx := strings.Index(model, ":"); idx >= 0 {
+		model = model[idx+1:]
+	}
+	if model == "" {
+		return defaultModel
+	}
+	return model
 }

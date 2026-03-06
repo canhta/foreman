@@ -26,11 +26,17 @@ const (
 type Planner struct {
 	llm    LLMProvider
 	limits *models.LimitsConfig
+	model  string
 }
 
 // NewPlanner creates a planner with the given LLM provider and limits.
 func NewPlanner(llm LLMProvider, limits *models.LimitsConfig) *Planner {
 	return &Planner{llm: llm, limits: limits}
+}
+
+// NewPlannerWithModel creates a planner that uses a specific model for every call.
+func NewPlannerWithModel(llm LLMProvider, limits *models.LimitsConfig, model string) *Planner {
+	return &Planner{llm: llm, limits: limits, model: model}
 }
 
 // Plan generates a task plan for the given ticket.
@@ -43,6 +49,7 @@ func (p *Planner) Plan(ctx context.Context, workDir string, ticket *models.Ticke
 
 	// Make LLM call
 	resp, err := p.llm.Complete(ctx, models.LlmRequest{
+		Model:        p.model,
 		SystemPrompt: assembled.SystemPrompt,
 		UserPrompt:   assembled.UserPrompt,
 		MaxTokens:    plannerMaxTokens,

@@ -134,7 +134,7 @@ type anthropicToolUseBlock struct {
 
 func (p *AnthropicProvider) Complete(ctx context.Context, req models.LlmRequest) (*models.LlmResponse, error) {
 	body := anthropicRequest{
-		Model:       req.Model,
+		Model:       resolveModel(req.Model, "claude-3-5-haiku-20241022"),
 		MaxTokens:   req.MaxTokens,
 		Temperature: req.Temperature,
 		Stop:        req.StopSequences,

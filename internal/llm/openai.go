@@ -68,7 +68,7 @@ func (p *OpenAIProvider) Complete(ctx context.Context, req models.LlmRequest) (*
 	messages = append(messages, openaiMessage{Role: "user", Content: req.UserPrompt})
 
 	body := openaiRequest{
-		Model:       req.Model,
+		Model:       resolveModel(req.Model, p.defaultModel),
 		Messages:    messages,
 		MaxTokens:   req.MaxTokens,
 		Temperature: req.Temperature,
