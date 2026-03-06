@@ -72,18 +72,54 @@
             <!-- Team Summary (no ticket selected) -->
             <template x-if="!selectedTicket">
                 <div id="team-summary" x-data="teamSummary()" x-init="load()">
+
+                    <!-- Needs Attention — pinned top, only shown when needed -->
+                    <div class="summary-section" x-show="$root.needsAttention && $root.needsAttention.length > 0">
+                        <div class="summary-header">
+                            <span>&#9888; NEEDS ATTENTION</span>
+                            <span x-text="($root.needsAttention || []).length"></span>
+                        </div>
+                        <div class="summary-body">
+                            <template x-for="t in ($root.needsAttention || [])" :key="t.ID">
+                                <div class="attention-item" @click="$root.selectTicket(t)">
+                                    <span class="attention-label">
+                                        <span class="stat-danger" x-show="['failed','blocked','partial'].indexOf(t.Status) !== -1">&#10007; </span>
+                                        <span class="stat-muted" x-show="t.Status === 'clarification_needed'">&#10067; </span>
+                                        <span x-text="t.Title"></span>
+                                    </span>
+                                    <span class="attention-meta" x-text="t.Status + ' \u00B7 ' + formatSender(t.ChannelSenderID)"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
                     <!-- Today -->
                     <div class="summary-section">
-                        <div class="summary-header">TODAY</div>
+                        <div class="summary-header">
+                            <span>TODAY</span>
+                            <span class="stat-muted" x-text="new Date().toISOString().slice(0,10)"></span>
+                        </div>
                         <div class="summary-body">
-                            <div>
-                                <span x-text="todayStats.total + ' tickets'"></span>
-                                <span class="stat-success" x-text="'  \u2713 ' + todayStats.merged + ' merged'"></span>
-                                <span class="stat-danger" x-text="'  \u2717 ' + todayStats.failed + ' failed'"></span>
-                                <span class="stat-muted" x-text="'  \u2699 ' + todayStats.active + ' active'"></span>
+                            <div class="today-stats">
+                                <div class="today-stat">
+                                    <span class="today-stat-label">Tickets</span>
+                                    <span x-text="todayStats.total"></span>
+                                </div>
+                                <div class="today-stat">
+                                    <span class="today-stat-label">Active</span>
+                                    <span x-text="todayStats.active"></span>
+                                </div>
+                                <div class="today-stat">
+                                    <span class="today-stat-label">Merged</span>
+                                    <span class="stat-success" x-text="'\u2713 ' + todayStats.merged"></span>
+                                </div>
+                                <div class="today-stat">
+                                    <span class="today-stat-label">Failed</span>
+                                    <span :class="todayStats.failed > 0 ? 'stat-danger' : 'stat-muted'" x-text="todayStats.failed > 0 ? '\u2717 ' + todayStats.failed : '--'"></span>
+                                </div>
                             </div>
                             <div class="budget-bar">
-                                <div x-text="'Daily: $' + ($root.dailyCost || 0).toFixed(2) + ' / $' + Math.round($root.dailyBudget || 0)"></div>
+                                <div x-text="'Daily:   $' + ($root.dailyCost || 0).toFixed(2) + ' / $' + Math.round($root.dailyBudget || 0)"></div>
                                 <div x-text="'Monthly: $' + ($root.monthlyCost || 0).toFixed(2) + ' / $' + Math.round($root.monthlyBudget || 0)"></div>
                             </div>
                         </div>
@@ -91,27 +127,38 @@
 
                     <!-- This Week -->
                     <div class="summary-section">
-                        <div class="summary-header">THIS WEEK</div>
+                        <div class="summary-header">
+                            <span>THIS WEEK</span>
+                            <span class="stat-muted" x-text="'$' + ($root.weeklyCost || 0).toFixed(2)"></span>
+                        </div>
                         <div class="summary-body">
+                            <template x-if="weekDays.length === 0">
+                                <div class="summary-empty">No cost data yet.</div>
+                            </template>
                             <template x-for="day in weekDays" :key="day.date">
                                 <div class="bar-chart-row">
                                     <span class="bar-chart-label" x-text="dayLabel(day.date)"></span>
-                                    <span class="bar-chart-bar" x-text="barWidth(day.cost_usd || 0)"></span>
+                                    <span class="bar-chart-bar" x-text="barWidth(day.cost_usd || 0) || '\u00B7'"></span>
                                     <span class="bar-chart-cost" x-text="'$' + (day.cost_usd || 0).toFixed(2)"></span>
                                 </div>
                             </template>
-                            <div class="stat-muted" style="margin-top: 0.3rem;" x-text="'Total: $' + ($root.weeklyCost || 0).toFixed(2)"></div>
                         </div>
                     </div>
 
                     <!-- Team -->
                     <div class="summary-section">
-                        <div class="summary-header">TEAM</div>
+                        <div class="summary-header">
+                            <span>TEAM</span>
+                            <span class="stat-muted" x-text="teamStats.length + ' submitters'"></span>
+                        </div>
                         <div class="summary-body">
+                            <template x-if="teamStats.length === 0">
+                                <div class="summary-empty">No team activity this week.</div>
+                            </template>
                             <template x-for="stat in teamStats" :key="stat.channel_sender_id">
                                 <div class="team-row">
                                     <span class="team-name" x-text="formatSender(stat.channel_sender_id)"></span>
-                                    <span x-text="stat.ticket_count + ' tickets'"></span>
+                                    <span class="stat-muted" x-text="stat.ticket_count + ' tickets'"></span>
                                     <span x-text="'$' + stat.cost_usd.toFixed(2)"></span>
                                     <span class="team-fail" x-show="stat.failed_count > 0" x-text="'\u2717' + stat.failed_count"></span>
                                 </div>
@@ -121,33 +168,23 @@
 
                     <!-- Recent PRs -->
                     <div class="summary-section">
-                        <div class="summary-header">RECENT PRS</div>
+                        <div class="summary-header">
+                            <span>RECENT PRS</span>
+                            <span class="stat-muted" x-text="recentPRs.length"></span>
+                        </div>
                         <div class="summary-body">
+                            <template x-if="recentPRs.length === 0">
+                                <div class="summary-empty">No merged PRs yet.</div>
+                            </template>
                             <template x-for="pr in recentPRs" :key="pr.ID">
                                 <div class="pr-row">
-                                    <a :href="pr.PRURL" target="_blank" x-text="'#' + pr.PRNumber + ' ' + pr.Title"></a>
+                                    <a :href="pr.PRURL" target="_blank" x-text="(pr.PRNumber ? '#' + pr.PRNumber + ' ' : '') + pr.Title"></a>
                                     <span class="pr-meta" x-text="pr.Status + ' ' + formatRelative(pr.UpdatedAt)"></span>
                                 </div>
                             </template>
                         </div>
                     </div>
 
-                    <!-- Needs Attention -->
-                    <div class="summary-section" x-show="$root.needsAttention && $root.needsAttention.length > 0">
-                        <div class="summary-header">NEEDS ATTENTION</div>
-                        <div class="summary-body">
-                            <template x-for="t in ($root.needsAttention || [])" :key="t.ID">
-                                <div class="attention-item" @click="$root.selectTicket(t)">
-                                    <span class="attention-label">
-                                        <span class="stat-danger" x-show="['failed','blocked','partial'].indexOf(t.Status) !== -1">&#10007; </span>
-                                        <span class="stat-success" x-show="t.Status === 'clarification_needed'">&#10067; </span>
-                                        <span x-text="t.Title"></span>
-                                    </span>
-                                    <span class="attention-meta" x-text="t.Status + ' \u00B7 ' + formatSender(t.ChannelSenderID)"></span>
-                                </div>
-                            </template>
-                        </div>
-                    </div>
                 </div>
             </template>
 
