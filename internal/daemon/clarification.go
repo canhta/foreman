@@ -47,14 +47,16 @@ func checkClarificationTimeouts(ctx context.Context, log zerolog.Logger, db Clar
 			continue
 		}
 
-		if err := tracker.RemoveLabel(ctx, t.ExternalID, clarificationLabel); err != nil {
-			log.Error().Err(err).Str("ticket_id", t.ID).Str("external_id", t.ExternalID).Msg("failed to remove clarification label")
-			continue
-		}
-
+		// Update DB status to blocked BEFORE removing the label so that
+		// a label-removal failure does not cause re-processing on the
+		// next poll (the ticket will no longer match the clarification_needed filter).
 		if err := db.UpdateTicketStatus(ctx, t.ID, models.TicketStatusBlocked); err != nil {
 			log.Error().Err(err).Str("ticket_id", t.ID).Msg("failed to update ticket status to blocked")
 			continue
+		}
+
+		if err := tracker.RemoveLabel(ctx, t.ExternalID, clarificationLabel); err != nil {
+			log.Error().Err(err).Str("ticket_id", t.ID).Str("external_id", t.ExternalID).Msg("failed to remove clarification label (ticket already marked blocked)")
 		}
 
 		if err := db.RecordEvent(ctx, &models.EventRecord{
