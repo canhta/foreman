@@ -363,6 +363,9 @@ func TestSQLiteDB_SaveAndGetProgressPatterns(t *testing.T) {
 		ID: "t-1", ExternalID: "X-1", Title: "t", Description: "d",
 		Status: models.TicketStatusQueued, CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	}))
+	require.NoError(t, db.CreateTasks(ctx, "t-1", []models.Task{
+		{ID: "task-1", TicketID: "t-1", Sequence: 1, Title: "Do it", Description: "desc"},
+	}))
 
 	p := &models.ProgressPattern{
 		ID: "pp-1", TicketID: "t-1", PatternKey: "test_command",
