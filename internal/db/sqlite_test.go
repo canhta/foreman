@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -230,4 +231,59 @@ func TestSQLiteDB_RecordEvent(t *testing.T) {
 	if len(events) != 1 {
 		t.Fatalf("expected 1 event, got %d", len(events))
 	}
+}
+
+func TestSQLiteDB_UpdateTicketStatus(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	require.NoError(t, db.CreateTicket(ctx, &models.Ticket{
+		ID: "t-1", ExternalID: "X-1", Title: "t", Description: "d",
+		Status: models.TicketStatusQueued, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}))
+
+	require.NoError(t, db.UpdateTicketStatus(ctx, "t-1", models.TicketStatusImplementing))
+
+	got, err := db.GetTicket(ctx, "t-1")
+	require.NoError(t, err)
+	assert.Equal(t, models.TicketStatusImplementing, got.Status)
+}
+
+func TestSQLiteDB_ListTickets_StatusFilter(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	for i, status := range []models.TicketStatus{
+		models.TicketStatusQueued, models.TicketStatusImplementing, models.TicketStatusQueued,
+	} {
+		require.NoError(t, db.CreateTicket(ctx, &models.Ticket{
+			ID: fmt.Sprintf("t-%d", i), ExternalID: fmt.Sprintf("X-%d", i),
+			Title: "t", Description: "d", Status: status,
+			CreatedAt: time.Now(), UpdatedAt: time.Now(),
+		}))
+	}
+
+	queued, err := db.ListTickets(ctx, models.TicketFilter{Status: string(models.TicketStatusQueued)})
+	require.NoError(t, err)
+	assert.Len(t, queued, 2)
+
+	implementing, err := db.ListTickets(ctx, models.TicketFilter{StatusIn: []models.TicketStatus{models.TicketStatusImplementing}})
+	require.NoError(t, err)
+	assert.Len(t, implementing, 1)
+}
+
+func TestSQLiteDB_SetLastCompletedTask(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	require.NoError(t, db.CreateTicket(ctx, &models.Ticket{
+		ID: "t-1", ExternalID: "X-1", Title: "t", Description: "d",
+		Status: models.TicketStatusQueued, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}))
+
+	require.NoError(t, db.SetLastCompletedTask(ctx, "t-1", 3))
+	// No error = success; method has no return value to inspect beyond error
 }
