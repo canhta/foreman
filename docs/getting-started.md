@@ -50,20 +50,12 @@ Minimal working config using GitHub Issues + Anthropic:
 work_dir = "~/.foreman/work"
 
 [tracker]
-provider = "github"
-
-[tracker.github]
-owner    = "your-org"
-repo     = "your-repo"
-token    = "${GITHUB_TOKEN}"
+provider     = "github"
 pickup_label = "foreman-ready"
 
 [git]
 provider   = "github"
-clone_url  = "git@github.com:your-org/your-repo.git"
-
-[git.github]
-token = "${GITHUB_TOKEN}"
+clone_url  = "https://github.com/your-org/your-repo.git"
 
 [llm]
 default_provider = "anthropic"
@@ -83,6 +75,12 @@ Set required environment variables:
 export GITHUB_TOKEN=ghp_...
 export ANTHROPIC_API_KEY=sk-ant-...
 export FOREMAN_DASHBOARD_TOKEN=$(./foreman token generate)
+```
+
+Or store them in a `.env` file and load it:
+
+```bash
+source .env
 ```
 
 For a complete config reference, see [Configuration](configuration.md).
