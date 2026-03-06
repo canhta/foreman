@@ -7,6 +7,7 @@ type Config struct {
 	Pipeline  PipelineConfig    `mapstructure:"pipeline"`
 	Tracker   TrackerConfig     `mapstructure:"tracker"`
 	MCP       MCPConfig         `mapstructure:"mcp"`
+	Channel   ChannelConfig     `mapstructure:"channel"`
 	Agents    []AgentRoleConfig `mapstructure:"agents"`
 	LLM       LLMConfig         `mapstructure:"llm"`
 	Git       GitConfig         `mapstructure:"git"`
@@ -248,4 +249,16 @@ type CopilotRunnerConfig struct {
 	Model               string   `mapstructure:"model"`
 	DefaultAllowedTools []string `mapstructure:"default_allowed_tools"`
 	TimeoutSecsDefault  int      `mapstructure:"timeout_secs_default"`
+}
+
+type ChannelConfig struct {
+	Provider string                `mapstructure:"provider"` // "" (disabled) | "whatsapp"
+	WhatsApp WhatsAppChannelConfig `mapstructure:"whatsapp"`
+}
+
+type WhatsAppChannelConfig struct {
+	SessionDB      string   `mapstructure:"session_db"`
+	PairingMode    string   `mapstructure:"pairing_mode"`
+	DMPolicy       string   `mapstructure:"dm_policy"`
+	AllowedNumbers []string `mapstructure:"allowed_numbers"`
 }

@@ -23,6 +23,7 @@ type Ticket struct {
 	AcceptanceCriteria       string
 	RepoURL                  string
 	ParentTicketID           string
+	ChannelSenderID          string
 	Comments                 []TicketComment
 	Labels                   []string
 	ChildTicketIDs           []string
