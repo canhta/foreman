@@ -127,6 +127,11 @@ func (s *Server) SetChannelHealth(name string, h interface{ IsConnected() bool }
 	s.api.SetChannelHealth(name, h)
 }
 
+// Handler returns the HTTP handler, useful for testing with httptest.NewServer.
+func (s *Server) Handler() http.Handler {
+	return s.server.Handler
+}
+
 // Start begins listening for HTTP connections. Blocks until the server stops.
 func (s *Server) Start() error {
 	log.Info().Str("addr", s.server.Addr).Msg("Dashboard server starting")

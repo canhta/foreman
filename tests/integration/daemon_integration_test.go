@@ -120,6 +120,10 @@ func (m *mockIntegrationGit) StageAll(_ context.Context, _ string) error {
 	return nil
 }
 
+func (m *mockIntegrationGit) CleanWorkingTree(_ context.Context, _ string) error {
+	return nil
+}
+
 // --- Mock PR Creator ---
 
 type mockIntegrationPRCreator struct {
