@@ -33,7 +33,7 @@
 
     <main>
         <!-- Left: Ticket List Sidebar -->
-        <section id="tickets-panel" :class="{ 'mobile-hidden': activePanel !== 'tickets' }">
+        <section id="tickets-panel" :class="{ 'mobile-active': activePanel === 'tickets' }">
             <div class="panel-header">
                 <span>TICKETS (<span x-text="filteredTickets.length"></span>)</span>
             </div>
@@ -68,7 +68,7 @@
         </section>
 
         <!-- Center: Detail or Team Summary -->
-        <section id="detail-panel" :class="{ 'mobile-hidden': activePanel !== 'detail' }">
+        <section id="detail-panel" :class="{ 'mobile-active': activePanel === 'detail' }">
             <!-- Team Summary (no ticket selected) -->
             <template x-if="!selectedTicket">
                 <div id="team-summary" x-data="teamSummary()" x-init="load()">
@@ -295,7 +295,7 @@
         </section>
 
         <!-- Right: Live Feed (collapsible) -->
-        <section id="feed-panel" :class="{ 'collapsed': feedCollapsed, 'mobile-hidden': activePanel !== 'feed' }">
+        <section id="feed-panel" :class="{ 'collapsed': feedCollapsed, 'mobile-active': activePanel === 'feed' }">
             <div class="panel-header">
                 <span x-show="!feedCollapsed">LIVE FEED</span>
                 <button class="collapse-btn" @click="feedCollapsed = !feedCollapsed" x-text="feedCollapsed ? '&#9654;' : '&#9664;'"></button>

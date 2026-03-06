@@ -727,14 +727,16 @@ footer {
         overflow: hidden;
     }
 
+    /* All sections hidden by default on mobile — CSS default, not Alpine */
     section {
+        display: none !important;
         border-right: none;
         flex: 1;
         min-height: 0;
     }
 
-    /* Hide non-active panels via Alpine class binding */
-    section.mobile-hidden { display: none !important; }
+    /* Only the active panel is shown */
+    section.mobile-active { display: flex !important; }
 
     /* Feed panel full-width on mobile */
     #feed-panel.collapsed { max-width: none; min-width: 0; }
