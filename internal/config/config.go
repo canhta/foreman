@@ -180,5 +180,37 @@ func Validate(cfg *models.Config) []error {
 		errs = append(errs, fmt.Errorf("max_parallel_tickets cannot exceed 3 with SQLite (got %d), use PostgreSQL for higher concurrency", cfg.Daemon.MaxParallelTickets))
 	}
 
+	// Validate LLM provider has API key
+	switch cfg.LLM.DefaultProvider {
+	case "anthropic":
+		if cfg.LLM.Anthropic.APIKey == "" {
+			errs = append(errs, fmt.Errorf("llm.anthropic.api_key is required when default_provider is anthropic"))
+		}
+	case "openai":
+		if cfg.LLM.OpenAI.APIKey == "" {
+			errs = append(errs, fmt.Errorf("llm.openai.api_key is required when default_provider is openai"))
+		}
+	case "openrouter":
+		if cfg.LLM.OpenRouter.APIKey == "" {
+			errs = append(errs, fmt.Errorf("llm.openrouter.api_key is required when default_provider is openrouter"))
+		}
+	}
+
+	// Validate dashboard port
+	if cfg.Dashboard.Enabled && (cfg.Dashboard.Port < 1 || cfg.Dashboard.Port > 65535) {
+		errs = append(errs, fmt.Errorf("dashboard.port must be 1-65535 (got %d)", cfg.Dashboard.Port))
+	}
+
+	// Validate cost budgets are positive
+	if cfg.Cost.MaxCostPerTicketUSD <= 0 {
+		errs = append(errs, fmt.Errorf("cost.max_cost_per_ticket_usd must be positive"))
+	}
+	if cfg.Cost.MaxCostPerDayUSD <= 0 {
+		errs = append(errs, fmt.Errorf("cost.max_cost_per_day_usd must be positive"))
+	}
+	if cfg.Cost.MaxCostPerMonthUSD <= 0 {
+		errs = append(errs, fmt.Errorf("cost.max_cost_per_month_usd must be positive"))
+	}
+
 	return errs
 }

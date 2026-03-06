@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -92,6 +93,125 @@ max_cost_per_ticket_usd = 25.0
 	}
 	if cfg.Cost.MaxCostPerTicketUSD != 25.0 {
 		t.Errorf("expected max_cost_per_ticket_usd=25.0, got %f", cfg.Cost.MaxCostPerTicketUSD)
+	}
+}
+
+func TestValidateConfig_MissingAPIKey(t *testing.T) {
+	tests := []struct {
+		name     string
+		provider string
+		wantMsg  string
+	}{
+		{"anthropic", "anthropic", "llm.anthropic.api_key is required"},
+		{"openai", "openai", "llm.openai.api_key is required"},
+		{"openrouter", "openrouter", "llm.openrouter.api_key is required"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, _ := LoadDefaults()
+			cfg.LLM.DefaultProvider = tt.provider
+			// Ensure no API key is set
+			cfg.LLM.Anthropic.APIKey = ""
+			cfg.LLM.OpenAI.APIKey = ""
+			cfg.LLM.OpenRouter.APIKey = ""
+
+			errs := Validate(cfg)
+			found := false
+			for _, e := range errs {
+				if strings.Contains(e.Error(), tt.wantMsg) {
+					found = true
+				}
+			}
+			if !found {
+				t.Errorf("expected validation error containing %q, got %v", tt.wantMsg, errs)
+			}
+		})
+	}
+}
+
+func TestValidateConfig_APIKeyPresent(t *testing.T) {
+	cfg, _ := LoadDefaults()
+	cfg.LLM.DefaultProvider = "anthropic"
+	cfg.LLM.Anthropic.APIKey = "sk-test-key"
+
+	errs := Validate(cfg)
+	for _, e := range errs {
+		if strings.Contains(e.Error(), "api_key") {
+			t.Errorf("unexpected API key error: %v", e)
+		}
+	}
+}
+
+func TestValidateConfig_InvalidDashboardPort(t *testing.T) {
+	tests := []struct {
+		name string
+		port int
+	}{
+		{"zero", 0},
+		{"negative", -1},
+		{"too_high", 70000},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, _ := LoadDefaults()
+			cfg.LLM.Anthropic.APIKey = "sk-test"
+			cfg.Dashboard.Enabled = true
+			cfg.Dashboard.Port = tt.port
+
+			errs := Validate(cfg)
+			found := false
+			for _, e := range errs {
+				if strings.Contains(e.Error(), "dashboard.port") {
+					found = true
+				}
+			}
+			if !found {
+				t.Errorf("expected dashboard.port validation error for port=%d, got %v", tt.port, errs)
+			}
+		})
+	}
+}
+
+func TestValidateConfig_DashboardDisabledSkipsPortCheck(t *testing.T) {
+	cfg, _ := LoadDefaults()
+	cfg.LLM.Anthropic.APIKey = "sk-test"
+	cfg.Dashboard.Enabled = false
+	cfg.Dashboard.Port = 0
+
+	errs := Validate(cfg)
+	for _, e := range errs {
+		if strings.Contains(e.Error(), "dashboard.port") {
+			t.Errorf("should not validate port when dashboard is disabled: %v", e)
+		}
+	}
+}
+
+func TestValidateConfig_ZeroCostBudget(t *testing.T) {
+	cfg, _ := LoadDefaults()
+	cfg.LLM.Anthropic.APIKey = "sk-test"
+	cfg.Cost.MaxCostPerTicketUSD = 0
+	cfg.Cost.MaxCostPerDayUSD = 0
+	cfg.Cost.MaxCostPerMonthUSD = 0
+
+	errs := Validate(cfg)
+	costErrors := 0
+	for _, e := range errs {
+		if strings.Contains(e.Error(), "cost.") && strings.Contains(e.Error(), "must be positive") {
+			costErrors++
+		}
+	}
+	if costErrors != 3 {
+		t.Errorf("expected 3 cost validation errors, got %d: %v", costErrors, errs)
+	}
+}
+
+func TestValidateConfig_FullyValid(t *testing.T) {
+	cfg, _ := LoadDefaults()
+	cfg.LLM.Anthropic.APIKey = "sk-test-key"
+
+	errs := Validate(cfg)
+	if len(errs) != 0 {
+		t.Errorf("expected no validation errors for valid config, got %v", errs)
 	}
 }
 
