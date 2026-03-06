@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/canhta/foreman/internal/models"
@@ -34,12 +35,25 @@ func NewOpenAIProvider(apiKey, baseURL string) *OpenAIProvider {
 
 func (p *OpenAIProvider) ProviderName() string { return "openai" }
 
+//nolint:govet // fieldalignment: Temperature must be *float64 so callers can send 0.0 explicitly
 type openaiRequest struct {
-	Model       string          `json:"model"`
-	Messages    []openaiMessage `json:"messages"`
-	Stop        []string        `json:"stop,omitempty"`
-	MaxTokens   int             `json:"max_tokens,omitempty"`
-	Temperature float64         `json:"temperature"`
+	Messages            []openaiMessage `json:"messages"`
+	Stop                []string        `json:"stop,omitempty"`
+	Temperature         *float64        `json:"temperature,omitempty"`
+	Model               string          `json:"model"`
+	MaxTokens           int             `json:"max_tokens,omitempty"`
+	MaxCompletionTokens int             `json:"max_completion_tokens,omitempty"`
+}
+
+// isReasoningModel returns true for OpenAI models that require max_completion_tokens
+// instead of max_tokens (e.g. o1, o1-mini, o3, o3-mini).
+func isReasoningModel(model string) bool {
+	base := strings.ToLower(model)
+	// Match o1*, o3*, o4* etc. but not gpt-4o or gpt-4o-mini
+	if len(base) >= 2 && base[0] == 'o' && base[1] >= '1' && base[1] <= '9' {
+		return true
+	}
+	return false
 }
 
 type openaiMessage struct {
@@ -67,12 +81,19 @@ func (p *OpenAIProvider) Complete(ctx context.Context, req models.LlmRequest) (*
 	}
 	messages = append(messages, openaiMessage{Role: "user", Content: req.UserPrompt})
 
+	model := resolveModel(req.Model, p.defaultModel)
 	body := openaiRequest{
-		Model:       resolveModel(req.Model, p.defaultModel),
-		Messages:    messages,
-		MaxTokens:   req.MaxTokens,
-		Temperature: req.Temperature,
-		Stop:        req.StopSequences,
+		Model:    model,
+		Messages: messages,
+		Stop:     req.StopSequences,
+	}
+	if isReasoningModel(model) {
+		body.MaxCompletionTokens = req.MaxTokens
+		// Reasoning models do not support a custom temperature
+	} else {
+		body.MaxTokens = req.MaxTokens
+		t := req.Temperature
+		body.Temperature = &t
 	}
 
 	jsonBody, err := json.Marshal(body)
