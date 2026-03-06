@@ -11,6 +11,7 @@ import (
 )
 
 func TestAnthropicProvider_Complete(t *testing.T) {
+	var reqBody map[string]interface{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("x-api-key") != "test-key" {
 			t.Error("missing or wrong API key header")
@@ -18,8 +19,6 @@ func TestAnthropicProvider_Complete(t *testing.T) {
 		if r.Header.Get("anthropic-version") == "" {
 			t.Error("missing anthropic-version header")
 		}
-
-		var reqBody map[string]interface{}
 		json.NewDecoder(r.Body).Decode(&reqBody)
 
 		resp := map[string]interface{}{
@@ -61,6 +60,20 @@ func TestAnthropicProvider_Complete(t *testing.T) {
 	}
 	if resp.TokensOutput != 20 {
 		t.Errorf("expected 20 output tokens, got %d", resp.TokensOutput)
+	}
+
+	// System prompt must be sent as a top-level "system" string field, not inside messages[].
+	if system, ok := reqBody["system"].(string); !ok || system != "You are helpful." {
+		t.Errorf("expected system to be top-level string %q, got %v", "You are helpful.", reqBody["system"])
+	}
+	// User prompt must appear as the sole message.
+	msgs, _ := reqBody["messages"].([]interface{})
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(msgs))
+	}
+	msg, _ := msgs[0].(map[string]interface{})
+	if msg["role"] != "user" || msg["content"] != "Say hello" {
+		t.Errorf("unexpected message: %v", msg)
 	}
 }
 
@@ -353,6 +366,65 @@ func TestAnthropicProvider_PromptCaching(t *testing.T) {
 	}
 	if resp.CacheReadTokens != 200 {
 		t.Errorf("expected 200 cache read tokens, got %d", resp.CacheReadTokens)
+	}
+}
+
+func TestAnthropicProvider_Thinking_TemperatureOmitted(t *testing.T) {
+	var reqBody map[string]interface{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewDecoder(r.Body).Decode(&reqBody)
+		resp := map[string]interface{}{
+			"id": "msg_think", "type": "message", "role": "assistant",
+			"content":     []map[string]interface{}{{"type": "text", "text": "ok"}},
+			"model":       "claude-sonnet-4-5-20250929",
+			"stop_reason": "end_turn",
+			"usage":       map[string]interface{}{"input_tokens": 10, "output_tokens": 5},
+		}
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	provider := NewAnthropicProvider("test-key", server.URL)
+	_, err := provider.Complete(context.Background(), models.LlmRequest{
+		Model:       "claude-sonnet-4-5-20250929",
+		UserPrompt:  "hi",
+		MaxTokens:   2048,
+		Temperature: 0.7, // caller sets a temperature; thinking must override it
+		Thinking:    &models.ThinkingConfig{Enabled: true, BudgetTokens: 1024},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// When thinking is enabled the implementation silences the caller's temperature
+	// (sets body.Temperature = 0 → omitempty drops it from JSON).
+	// Anthropic treats an absent temperature as 1 for thinking requests.
+	if _, present := reqBody["temperature"]; present {
+		t.Errorf("temperature must not be sent when extended thinking is enabled, got %v", reqBody["temperature"])
+	}
+	// Thinking block must be present.
+	thinking, ok := reqBody["thinking"].(map[string]interface{})
+	if !ok || thinking["type"] != "enabled" {
+		t.Errorf("thinking block missing or malformed: %v", reqBody["thinking"])
+	}
+	// max_tokens must still be present (always required for Claude).
+	if _, ok := reqBody["max_tokens"]; !ok {
+		t.Error("max_tokens must always be present in Anthropic requests")
+	}
+}
+
+func TestAnthropicProvider_ServerOverload(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(529)
+		w.Write([]byte(`{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}`))
+	}))
+	defer server.Close()
+
+	provider := NewAnthropicProvider("test-key", server.URL)
+	_, err := provider.Complete(context.Background(), models.LlmRequest{
+		Model: "claude-sonnet-4-5-20250929", UserPrompt: "hi", MaxTokens: 10,
+	})
+	if _, ok := err.(*ServerOverloadError); !ok {
+		t.Errorf("expected ServerOverloadError for 529, got %T: %v", err, err)
 	}
 }
 

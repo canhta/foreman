@@ -221,6 +221,10 @@ func (p *AnthropicProvider) Complete(ctx context.Context, req models.LlmRequest)
 		return nil, &RateLimitError{RetryAfterSecs: 60}
 	}
 
+	if httpResp.StatusCode == 529 {
+		return nil, &ServerOverloadError{}
+	}
+
 	if httpResp.StatusCode == 401 || httpResp.StatusCode == 403 {
 		var apiErr anthropicError
 		_ = json.Unmarshal(respBody, &apiErr)

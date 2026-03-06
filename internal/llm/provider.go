@@ -42,6 +42,15 @@ func (e *BudgetExceededError) Error() string {
 	return "budget exceeded"
 }
 
+// ServerOverloadError is returned when Anthropic responds with HTTP 529 (overloaded).
+// Distinct from RateLimitError — overload should trigger a short backoff retry,
+// whereas rate limit carries an explicit retry-after window.
+type ServerOverloadError struct{}
+
+func (e *ServerOverloadError) Error() string {
+	return "anthropic server overloaded"
+}
+
 type ConnectionError struct {
 	Err     error
 	Attempt int
