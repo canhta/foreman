@@ -53,25 +53,32 @@ type DaemonStatus struct {
 
 // Daemon is the main 24/7 event loop.
 type Daemon struct {
-	startedAt     time.Time
 	db            db.Database
 	prChecker     git.PRChecker
-	hookRunner    *skills.HookRunner
 	tracker       tracker.IssueTracker
 	orchestrator  TicketProcessor
 	channel       channel.Channel
 	channelRouter channel.InboundHandler
+	hookRunner    *skills.HookRunner
+	tickets       chan struct{}
+	startedAt     time.Time
 	config        DaemonConfig
-	mu            sync.Mutex
 	wg            sync.WaitGroup
+	mu            sync.Mutex
 	running       atomic.Bool
 	paused        atomic.Bool
-	active        atomic.Int32
 }
 
 // NewDaemon creates a new daemon.
 func NewDaemon(config DaemonConfig) *Daemon {
-	return &Daemon{config: config}
+	maxTickets := config.MaxParallelTickets
+	if maxTickets <= 0 {
+		maxTickets = 1
+	}
+	return &Daemon{
+		config:  config,
+		tickets: make(chan struct{}, maxTickets),
+	}
 }
 
 // SetDB attaches a database instance to the daemon for startup cleanup tasks.
@@ -286,7 +293,7 @@ func (d *Daemon) Status() DaemonStatus {
 
 	return DaemonStatus{
 		State:           state,
-		ActivePipelines: int(d.active.Load()),
+		ActivePipelines: len(d.tickets),
 		StartedAt:       startedAt,
 		Uptime:          uptime,
 	}
@@ -332,21 +339,23 @@ func (d *Daemon) processQueuedTickets(ctx context.Context, database db.Database)
 		return
 	}
 	for _, ticket := range queued {
-		if int(d.active.Load()) >= d.config.MaxParallelTickets {
-			break
+		select {
+		case d.tickets <- struct{}{}: // Acquire slot (non-blocking)
+		default:
+			return // All slots full
 		}
 
 		// Mark planning BEFORE launching goroutine to prevent double pickup
 		if err := database.UpdateTicketStatus(ctx, ticket.ID, models.TicketStatusPlanning); err != nil {
+			<-d.tickets // Release on failure
 			log.Warn().Err(err).Str("ticket_id", ticket.ID).Msg("failed to mark ticket planning")
 			continue
 		}
 
-		d.active.Add(1)
 		d.wg.Add(1)
 		go func(t models.Ticket) {
 			defer d.wg.Done()
-			defer d.active.Add(-1)
+			defer func() { <-d.tickets }()
 			if err := d.orchestrator.ProcessTicket(ctx, t); err != nil {
 				log.Error().Err(err).Str("ticket_id", t.ID).Msg("ticket processing failed")
 			}

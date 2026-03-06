@@ -268,7 +268,7 @@ func TestDaemon_ProcessQueuedTickets_RespectsMaxParallel(t *testing.T) {
 	}, time.Second, 10*time.Millisecond)
 
 	// Only 1 should be active due to maxParallelTickets=1
-	assert.Equal(t, int32(1), d.active.Load(), "only 1 ticket should be active")
+	assert.Equal(t, 1, len(d.tickets), "only 1 ticket slot should be occupied")
 
 	// Release the blocker
 	close(blocker)
@@ -392,9 +392,13 @@ func TestDaemon_MergeCheckerTrackedInWaitGroup(t *testing.T) {
 	// Cancel context to trigger shutdown
 	cancel()
 
+	// Wait for Start() to return so that no more wg.Add() calls race with wg.Wait().
+	require.Eventually(t, func() bool {
+		return !d.IsRunning()
+	}, 2*time.Second, 10*time.Millisecond)
+
 	// WaitForDrain should complete because MergeChecker goroutine is tracked in WaitGroup.
 	// If it were NOT tracked, wg.Wait() would return immediately while MergeChecker is still running.
-	// We verify correctness by ensuring WaitForDrain returns promptly after cancellation.
 	drainCtx, drainCancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer drainCancel()
 
