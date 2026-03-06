@@ -280,6 +280,51 @@ func TestDaemon_ProcessQueuedTickets_RespectsMaxParallel(t *testing.T) {
 	assert.Len(t, mp.calls, 1, "only 1 ticket should have been processed (maxParallel=1)")
 }
 
+func TestDaemon_ProcessQueuedTickets_MarksStatusBeforeGoroutine(t *testing.T) {
+	mdb := newDaemonMockDB()
+	mdb.queuedTickets = []models.Ticket{
+		{ID: "q-10", ExternalID: "GH-500", Title: "Ticket A"},
+		{ID: "q-11", ExternalID: "GH-501", Title: "Ticket B"},
+	}
+
+	blocker := make(chan struct{})
+	mp := &daemonMockProcessor{blocking: blocker}
+
+	cfg := DefaultDaemonConfig()
+	cfg.MaxParallelTickets = 5
+
+	d := NewDaemon(cfg)
+	d.SetDB(mdb)
+	d.SetOrchestrator(mp)
+
+	d.processQueuedTickets(context.Background(), mdb)
+
+	// Wait for both goroutines to start
+	require.Eventually(t, func() bool {
+		return mp.started.Load() >= 2
+	}, time.Second, 10*time.Millisecond)
+
+	// Both tickets should have been marked as planning BEFORE goroutines started.
+	// The status updates are recorded in the embedded orchMockDB.
+	mdb.mu.Lock()
+	seq := mdb.statusSequence("q-10")
+	mdb.mu.Unlock()
+	require.NotEmpty(t, seq, "ticket q-10 should have status updates")
+	assert.Equal(t, models.TicketStatusPlanning, seq[0], "first status for q-10 should be planning")
+
+	mdb.mu.Lock()
+	seq = mdb.statusSequence("q-11")
+	mdb.mu.Unlock()
+	require.NotEmpty(t, seq, "ticket q-11 should have status updates")
+	assert.Equal(t, models.TicketStatusPlanning, seq[0], "first status for q-11 should be planning")
+
+	// A second call to processQueuedTickets with the same queued list should
+	// still try to mark them (in production the DB query would no longer return
+	// them), but the key point is the synchronous status update happens before launch.
+	close(blocker)
+	d.wg.Wait()
+}
+
 func TestDaemon_SkipWhenPaused(t *testing.T) {
 	mdb := newDaemonMockDB()
 	mdb.queuedTickets = []models.Ticket{

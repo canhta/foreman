@@ -331,6 +331,13 @@ func (d *Daemon) processQueuedTickets(ctx context.Context, database db.Database)
 		if int(d.active.Load()) >= d.config.MaxParallelTickets {
 			break
 		}
+
+		// Mark planning BEFORE launching goroutine to prevent double pickup
+		if err := database.UpdateTicketStatus(ctx, ticket.ID, models.TicketStatusPlanning); err != nil {
+			log.Warn().Err(err).Str("ticket_id", ticket.ID).Msg("failed to mark ticket planning")
+			continue
+		}
+
 		d.active.Add(1)
 		d.wg.Add(1)
 		go func(t models.Ticket) {
