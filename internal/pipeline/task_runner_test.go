@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/canhta/foreman/internal/models"
@@ -175,6 +176,26 @@ func TestQualityReviewPassesTaskID(t *testing.T) {
 	// WorkDir should never appear as a key in call counts.
 	_, usedPath := db.callCounts["/some/filesystem/path"]
 	assert.False(t, usedPath, "DB must not be called with WorkDir as task ID")
+}
+
+func TestFeedbackAccumulator_ResetBetweenRetries(t *testing.T) {
+	// Simulate what RunTask does: feedback should be cleared at the start
+	// of each retry loop iteration so that stale feedback from attempt N
+	// does not leak into attempt N+1.
+	feedback := NewFeedbackAccumulator()
+
+	for attempt := 1; attempt <= 3; attempt++ {
+		// Reset at the very start of each iteration (the fix).
+		feedback.Reset()
+
+		// At the start of every attempt, feedback must be empty.
+		assert.False(t, feedback.HasFeedback(),
+			"attempt %d: feedback should be empty at start of loop iteration", attempt)
+
+		// Simulate a failure that adds feedback.
+		feedback.AddTestError("test failed on attempt " + fmt.Sprintf("%d", attempt))
+		assert.True(t, feedback.HasFeedback())
+	}
 }
 
 func TestTaskRunnerConfig_Defaults(t *testing.T) {

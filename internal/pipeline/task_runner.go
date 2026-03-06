@@ -87,6 +87,10 @@ func (r *PipelineTaskRunner) RunTask(ctx context.Context, task *models.Task) err
 	feedback := NewFeedbackAccumulator()
 
 	for attempt := 1; attempt <= r.config.MaxImplementationRetries+1; attempt++ {
+		// Clear stale feedback from previous attempt so it does not leak
+		// into this iteration's retry prompt.
+		feedback.Reset()
+
 		// Check call cap before each LLM call.
 		if err := CheckTaskCallCap(ctx, r.db, task.ID, r.config.MaxLlmCallsPerTask); err != nil {
 			return fmt.Errorf("call cap: %w", err)
