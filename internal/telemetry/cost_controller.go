@@ -3,6 +3,8 @@ package telemetry
 import (
 	"fmt"
 
+	"github.com/rs/zerolog/log"
+
 	"github.com/canhta/foreman/internal/models"
 )
 
@@ -54,6 +56,7 @@ func (c *CostController) CalculateCost(model string, inputTokens, outputTokens i
 	pricing, ok := c.config.Pricing[model]
 	if !ok {
 		// Fallback pricing for unknown models
+		log.Warn().Str("model", model).Msg("unknown model for cost calculation, using fallback pricing")
 		pricing = models.PricingConfig{Input: 3.0, Output: 15.0}
 	}
 	return (float64(inputTokens)/1_000_000)*pricing.Input +
