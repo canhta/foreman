@@ -8,7 +8,7 @@ import (
 
 func TestCostCmd_Exists(t *testing.T) {
 	cmd := newCostCmd()
-	assert.Equal(t, "cost", cmd.Use)
+	assert.Equal(t, "cost [today|week|month|per-ticket]", cmd.Use)
 }
 
 func TestCostCmd_AcceptsSubcommand(t *testing.T) {

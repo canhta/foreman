@@ -14,7 +14,13 @@ services:
       FOREMAN_DASHBOARD_TOKEN: ${FOREMAN_DASHBOARD_TOKEN:-}
     volumes:
       - ./.foreman:/root/.foreman
-      - ./foreman.example.toml:/app/foreman.toml:ro
+      - ./foreman.toml:/app/foreman.toml:ro
     command: ["start"]
     ports:
       - "3333:3333"
+    healthcheck:
+      test: ["CMD", "foreman", "doctor", "--quick"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3

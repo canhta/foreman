@@ -22,10 +22,14 @@ FROM debian:bookworm-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     tini \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY --from=builder /out/foreman /usr/local/bin/foreman
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD ["foreman", "doctor", "--quick"]
 
 ENTRYPOINT ["/usr/bin/tini", "--", "foreman"]
 CMD ["start"]
