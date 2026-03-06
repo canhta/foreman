@@ -20,9 +20,11 @@ func (m *mockLLM) Complete(ctx context.Context, req models.LlmRequest) (*models.
 	role := "implementer"
 	if contains(req.SystemPrompt, "decomposing a ticket") {
 		role = "planner"
-	} else if contains(req.SystemPrompt, "verify that the implementation satisfies") {
+	} else if contains(req.SystemPrompt, "reviewing code changes for spec compliance") ||
+		contains(req.SystemPrompt, "verify that the implementation satisfies") {
 		role = "spec_reviewer"
-	} else if contains(req.SystemPrompt, "review code quality") {
+	} else if contains(req.SystemPrompt, "reviewing code changes for quality") ||
+		contains(req.SystemPrompt, "review code quality") {
 		role = "quality_reviewer"
 	}
 

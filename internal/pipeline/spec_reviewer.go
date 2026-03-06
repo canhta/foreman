@@ -3,7 +3,6 @@ package pipeline
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/canhta/foreman/internal/llm"
 	"github.com/canhta/foreman/internal/models"
@@ -41,37 +40,18 @@ func (r *SpecReviewer) Review(ctx context.Context, input SpecReviewInput) (*Revi
 		return nil, fmt.Errorf("spec review requires at least one acceptance criterion")
 	}
 
-	// TODO: move to prompts/spec_reviewer.md.j2 when template engine is wired (Phase 3 final)
-	system := `You verify that the implementation satisfies every acceptance criterion. Nothing more.
-
-## Rules
-1. Check EVERY criterion. Mark pass or fail.
-2. Flag any extra functionality not requested (YAGNI).
-3. Do NOT comment on code quality or style.
-4. Be specific — say exactly what's missing and where.
-
-## Output Format
-STATUS: APPROVED | REJECTED
-
-CRITERIA:
-- [pass/fail] <criterion>
-
-ISSUES:
-- <what's missing, which file, what's needed>
-
-EXTRAS:
-- <anything not requested>`
-
-	var user strings.Builder
-	fmt.Fprintf(&user, "## Task\n%s\n\nCriteria:\n", input.TaskTitle)
-	for _, c := range input.AcceptanceCriteria {
-		fmt.Fprintf(&user, "- %s\n", c)
+	system, err := RenderPrompt("spec_reviewer", PromptContext{
+		TaskTitle:          input.TaskTitle,
+		AcceptanceCriteria: input.AcceptanceCriteria,
+		Diff:               input.Diff,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("render spec_reviewer prompt: %w", err)
 	}
-	fmt.Fprintf(&user, "\n## Diff\n```diff\n%s\n```\n\n## Test Output\n```\n%s\n```\n", input.Diff, input.TestOutput)
 
 	resp, err := r.llm.Complete(ctx, models.LlmRequest{
 		SystemPrompt: system,
-		UserPrompt:   user.String(),
+		UserPrompt:   "Please provide your review.",
 		MaxTokens:    2048,
 		Temperature:  0.1,
 	})

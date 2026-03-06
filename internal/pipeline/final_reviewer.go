@@ -4,7 +4,6 @@ package pipeline
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/canhta/foreman/internal/llm"
 	"github.com/canhta/foreman/internal/models"
@@ -45,33 +44,24 @@ var _ FinalReviewRunner = (*FinalReviewer)(nil)
 
 // Review runs the final review and returns the parsed result.
 func (r *FinalReviewer) Review(ctx context.Context, input FinalReviewInput) (*ReviewResult, error) {
-	// TODO: move to prompts/final_reviewer.md.j2 when template engine is wired
-	system := `Final review of the complete changeset before PR creation.
-
-## Check
-1. Changes as a whole address the original ticket
-2. Integration issues between tasks
-3. Cross-cutting concerns (error handling consistency, migrations, etc.)
-
-## Output Format
-STATUS: APPROVED | REJECTED
-SUMMARY: <2-3 sentences>
-CHANGES: <key changes by area>
-CONCERNS: <issues if any>
-REVIEW_NOTES: <notes for human reviewer>`
-
-	var prompt strings.Builder
-	fmt.Fprintf(&prompt, "## Ticket\n%s\n%s\n\n", input.TicketTitle, input.TicketDescription)
-	fmt.Fprintf(&prompt, "## Full Diff\n```diff\n%s\n```\n\n", input.FullDiff)
-	prompt.WriteString("## Tasks\n")
+	completedTasks := make([]CompletedTask, len(input.TaskSummaries))
 	for i, t := range input.TaskSummaries {
-		fmt.Fprintf(&prompt, "%d. %s — %s\n", i+1, t.Title, t.Status)
+		completedTasks[i] = CompletedTask(t)
 	}
-	fmt.Fprintf(&prompt, "\n## Tests\n```\n%s\n```\n", input.TestOutput)
+
+	system, err := RenderPrompt("final_reviewer", PromptContext{
+		TicketTitle:       input.TicketTitle,
+		TicketDescription: input.TicketDescription,
+		FullDiff:          input.FullDiff,
+		CompletedTasks:    completedTasks,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("render final_reviewer prompt: %w", err)
+	}
 
 	resp, err := r.llm.Complete(ctx, models.LlmRequest{
 		SystemPrompt: system,
-		UserPrompt:   prompt.String(),
+		UserPrompt:   "Please provide your review.",
 		MaxTokens:    2048,
 		Temperature:  0.1,
 	})

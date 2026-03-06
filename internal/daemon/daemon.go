@@ -147,6 +147,15 @@ func (d *Daemon) WaitForDrain(ctx context.Context) {
 
 // Start begins the daemon's poll loop. Blocks until ctx is cancelled.
 func (d *Daemon) Start(ctx context.Context) {
+	d.mu.Lock()
+	if d.db == nil {
+		log.Warn().Msg("daemon started without database: tickets will not be processed")
+	}
+	if d.orchestrator == nil {
+		log.Warn().Msg("daemon started without orchestrator: queued tickets will not be processed")
+	}
+	d.mu.Unlock()
+
 	d.running.Store(true)
 	d.mu.Lock()
 	d.startedAt = time.Now()

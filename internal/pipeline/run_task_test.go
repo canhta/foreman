@@ -323,9 +323,11 @@ type implCountingLLM struct {
 func (m *implCountingLLM) Complete(_ context.Context, req models.LlmRequest) (*models.LlmResponse, error) {
 	var content string
 	switch {
-	case contains(req.SystemPrompt, "verify that the implementation satisfies"):
+	case contains(req.SystemPrompt, "reviewing code changes for spec compliance") ||
+		contains(req.SystemPrompt, "verify that the implementation satisfies"):
 		content = m.specResponse
-	case contains(req.SystemPrompt, "review code quality"):
+	case contains(req.SystemPrompt, "reviewing code changes for quality") ||
+		contains(req.SystemPrompt, "review code quality"):
 		content = m.qualityResponse
 	default:
 		m.implCallN++
@@ -785,10 +787,12 @@ type callCountingLLM struct {
 func (m *callCountingLLM) Complete(_ context.Context, req models.LlmRequest) (*models.LlmResponse, error) {
 	var content string
 	switch {
-	case contains(req.SystemPrompt, "verify that the implementation satisfies"):
+	case contains(req.SystemPrompt, "reviewing code changes for spec compliance") ||
+		contains(req.SystemPrompt, "verify that the implementation satisfies"):
 		m.specCallN++
 		content = m.specResponder(m.specCallN)
-	case contains(req.SystemPrompt, "review code quality"):
+	case contains(req.SystemPrompt, "reviewing code changes for quality") ||
+		contains(req.SystemPrompt, "review code quality"):
 		content = m.qualityResponse
 	default:
 		content = m.implResponse
