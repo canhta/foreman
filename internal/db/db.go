@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"io"
+	"time"
 
 	"github.com/canhta/foreman/internal/models"
 )
@@ -53,6 +54,16 @@ type Database interface {
 	// Auth
 	CreateAuthToken(ctx context.Context, tokenHash, name string) error
 	ValidateAuthToken(ctx context.Context, tokenHash string) (bool, error)
+
+	// Pairing
+	CreatePairing(ctx context.Context, code, senderID, channel string, expiresAt time.Time) error
+	GetPairing(ctx context.Context, code string) (*models.Pairing, error)
+	DeletePairing(ctx context.Context, code string) error
+	ListPairings(ctx context.Context, channel string) ([]models.Pairing, error)
+	DeleteExpiredPairings(ctx context.Context) error
+
+	// Channel queries
+	FindActiveClarification(ctx context.Context, senderID string) (*models.Ticket, error)
 
 	io.Closer
 }

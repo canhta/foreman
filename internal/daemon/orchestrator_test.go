@@ -7,6 +7,7 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
@@ -138,7 +139,21 @@ func (m *orchMockDB) GetEvents(_ context.Context, _ string, _ int) ([]models.Eve
 }
 func (m *orchMockDB) CreateAuthToken(_ context.Context, _, _ string) error        { return nil }
 func (m *orchMockDB) ValidateAuthToken(_ context.Context, _ string) (bool, error) { return false, nil }
-func (m *orchMockDB) Close() error                                                { return nil }
+func (m *orchMockDB) CreatePairing(_ context.Context, _, _, _ string, _ time.Time) error {
+	return nil
+}
+func (m *orchMockDB) GetPairing(_ context.Context, _ string) (*models.Pairing, error) {
+	return nil, nil
+}
+func (m *orchMockDB) DeletePairing(_ context.Context, _ string) error { return nil }
+func (m *orchMockDB) ListPairings(_ context.Context, _ string) ([]models.Pairing, error) {
+	return nil, nil
+}
+func (m *orchMockDB) DeleteExpiredPairings(_ context.Context) error { return nil }
+func (m *orchMockDB) FindActiveClarification(_ context.Context, _ string) (*models.Ticket, error) {
+	return nil, nil
+}
+func (m *orchMockDB) Close() error { return nil }
 
 func (m *orchMockDB) lastStatus(id string) models.TicketStatus {
 	for i := len(m.statusUpdates) - 1; i >= 0; i-- {

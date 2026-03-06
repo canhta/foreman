@@ -45,9 +45,9 @@ func (p *PostgresDB) Close() error { return p.db.Close() }
 
 func (p *PostgresDB) CreateTicket(ctx context.Context, t *models.Ticket) error {
 	_, err := p.db.ExecContext(ctx,
-		`INSERT INTO tickets (id, external_id, title, description, status, parent_ticket_id, decompose_depth, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-		t.ID, t.ExternalID, t.Title, t.Description, string(t.Status), t.ParentTicketID, t.DecomposeDepth, t.CreatedAt, t.UpdatedAt,
+		`INSERT INTO tickets (id, external_id, title, description, status, parent_ticket_id, channel_sender_id, decompose_depth, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		t.ID, t.ExternalID, t.Title, t.Description, string(t.Status), t.ParentTicketID, t.ChannelSenderID, t.DecomposeDepth, t.CreatedAt, t.UpdatedAt,
 	)
 	return err
 }
@@ -62,19 +62,19 @@ func (p *PostgresDB) UpdateTicketStatus(ctx context.Context, id string, status m
 
 func (p *PostgresDB) GetTicket(ctx context.Context, id string) (*models.Ticket, error) {
 	return p.scanTicket(p.db.QueryRowContext(ctx,
-		`SELECT id, external_id, title, description, status, parent_ticket_id, decompose_depth, created_at, updated_at FROM tickets WHERE id = $1`, id))
+		`SELECT id, external_id, title, description, status, parent_ticket_id, channel_sender_id, decompose_depth, created_at, updated_at FROM tickets WHERE id = $1`, id))
 }
 
 func (p *PostgresDB) GetTicketByExternalID(ctx context.Context, externalID string) (*models.Ticket, error) {
 	return p.scanTicket(p.db.QueryRowContext(ctx,
-		`SELECT id, external_id, title, description, status, parent_ticket_id, decompose_depth, created_at, updated_at FROM tickets WHERE external_id = $1`, externalID))
+		`SELECT id, external_id, title, description, status, parent_ticket_id, channel_sender_id, decompose_depth, created_at, updated_at FROM tickets WHERE external_id = $1`, externalID))
 }
 
 func (p *PostgresDB) scanTicket(row *sql.Row) (*models.Ticket, error) {
 	var t models.Ticket
 	var status string
 	err := row.Scan(&t.ID, &t.ExternalID, &t.Title, &t.Description, &status,
-		&t.ParentTicketID, &t.DecomposeDepth, &t.CreatedAt, &t.UpdatedAt)
+		&t.ParentTicketID, &t.ChannelSenderID, &t.DecomposeDepth, &t.CreatedAt, &t.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +83,7 @@ func (p *PostgresDB) scanTicket(row *sql.Row) (*models.Ticket, error) {
 }
 
 func (p *PostgresDB) ListTickets(ctx context.Context, filter models.TicketFilter) ([]models.Ticket, error) {
-	query := `SELECT id, external_id, title, description, status, parent_ticket_id, decompose_depth, created_at, updated_at FROM tickets WHERE 1=1`
+	query := `SELECT id, external_id, title, description, status, parent_ticket_id, channel_sender_id, decompose_depth, created_at, updated_at FROM tickets WHERE 1=1`
 	var args []interface{}
 	argIdx := 1
 
@@ -116,7 +116,7 @@ func (p *PostgresDB) ListTickets(ctx context.Context, filter models.TicketFilter
 		var t models.Ticket
 		var status string
 		if err := rows.Scan(&t.ID, &t.ExternalID, &t.Title, &t.Description, &status,
-			&t.ParentTicketID, &t.DecomposeDepth, &t.CreatedAt, &t.UpdatedAt); err != nil {
+			&t.ParentTicketID, &t.ChannelSenderID, &t.DecomposeDepth, &t.CreatedAt, &t.UpdatedAt); err != nil {
 			return nil, err
 		}
 		t.Status = models.TicketStatus(status)
@@ -127,7 +127,7 @@ func (p *PostgresDB) ListTickets(ctx context.Context, filter models.TicketFilter
 
 func (p *PostgresDB) GetChildTickets(ctx context.Context, parentExternalID string) ([]models.Ticket, error) {
 	rows, err := p.db.QueryContext(ctx,
-		`SELECT id, external_id, title, description, status, parent_ticket_id, decompose_depth, created_at, updated_at
+		`SELECT id, external_id, title, description, status, parent_ticket_id, channel_sender_id, decompose_depth, created_at, updated_at
 		 FROM tickets WHERE parent_ticket_id = $1`, parentExternalID)
 	if err != nil {
 		return nil, err
@@ -139,7 +139,7 @@ func (p *PostgresDB) GetChildTickets(ctx context.Context, parentExternalID strin
 		var t models.Ticket
 		var status string
 		if err := rows.Scan(&t.ID, &t.ExternalID, &t.Title, &t.Description, &status,
-			&t.ParentTicketID, &t.DecomposeDepth, &t.CreatedAt, &t.UpdatedAt); err != nil {
+			&t.ParentTicketID, &t.ChannelSenderID, &t.DecomposeDepth, &t.CreatedAt, &t.UpdatedAt); err != nil {
 			return nil, err
 		}
 		t.Status = models.TicketStatus(status)
@@ -477,4 +477,82 @@ func (p *PostgresDB) ValidateAuthToken(ctx context.Context, tokenHash string) (b
 		_, _ = p.db.ExecContext(ctx, `UPDATE auth_tokens SET last_used_at = $1 WHERE token_hash = $2`, time.Now(), tokenHash)
 	}
 	return !revoked, nil
+}
+
+// --- Pairing ---
+
+func (p *PostgresDB) CreatePairing(ctx context.Context, code, senderID, channel string, expiresAt time.Time) error {
+	_, err := p.db.ExecContext(ctx,
+		`INSERT INTO pending_pairings (code, sender_id, channel, expires_at) VALUES ($1, $2, $3, $4)`,
+		code, senderID, channel, expiresAt)
+	if err != nil {
+		return fmt.Errorf("create pairing: %w", err)
+	}
+	return nil
+}
+
+func (p *PostgresDB) GetPairing(ctx context.Context, code string) (*models.Pairing, error) {
+	row := p.db.QueryRowContext(ctx,
+		`SELECT code, sender_id, channel, expires_at, created_at FROM pending_pairings WHERE code = $1`, code)
+	var pr models.Pairing
+	err := row.Scan(&pr.Code, &pr.SenderID, &pr.Channel, &pr.ExpiresAt, &pr.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get pairing: %w", err)
+	}
+	return &pr, nil
+}
+
+func (p *PostgresDB) DeletePairing(ctx context.Context, code string) error {
+	_, err := p.db.ExecContext(ctx, `DELETE FROM pending_pairings WHERE code = $1`, code)
+	if err != nil {
+		return fmt.Errorf("delete pairing: %w", err)
+	}
+	return nil
+}
+
+func (p *PostgresDB) ListPairings(ctx context.Context, channel string) ([]models.Pairing, error) {
+	rows, err := p.db.QueryContext(ctx,
+		`SELECT code, sender_id, channel, expires_at, created_at FROM pending_pairings WHERE channel = $1 ORDER BY created_at`, channel)
+	if err != nil {
+		return nil, fmt.Errorf("list pairings: %w", err)
+	}
+	defer rows.Close()
+	var result []models.Pairing
+	for rows.Next() {
+		var pr models.Pairing
+		if err := rows.Scan(&pr.Code, &pr.SenderID, &pr.Channel, &pr.ExpiresAt, &pr.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan pairing: %w", err)
+		}
+		result = append(result, pr)
+	}
+	return result, rows.Err()
+}
+
+func (p *PostgresDB) DeleteExpiredPairings(ctx context.Context) error {
+	_, err := p.db.ExecContext(ctx, `DELETE FROM pending_pairings WHERE expires_at < NOW()`)
+	if err != nil {
+		return fmt.Errorf("delete expired pairings: %w", err)
+	}
+	return nil
+}
+
+func (p *PostgresDB) FindActiveClarification(ctx context.Context, senderID string) (*models.Ticket, error) {
+	row := p.db.QueryRowContext(ctx,
+		`SELECT id, external_id, title, description, status, parent_ticket_id, channel_sender_id, decompose_depth, created_at, updated_at
+		 FROM tickets WHERE channel_sender_id = $1 AND status = 'clarification_needed' LIMIT 1`, senderID)
+	var t models.Ticket
+	var status string
+	err := row.Scan(&t.ID, &t.ExternalID, &t.Title, &t.Description, &status,
+		&t.ParentTicketID, &t.ChannelSenderID, &t.DecomposeDepth, &t.CreatedAt, &t.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("find active clarification: %w", err)
+	}
+	t.Status = models.TicketStatus(status)
+	return &t, nil
 }

@@ -51,9 +51,9 @@ func (s *SQLiteDB) Close() error {
 
 func (s *SQLiteDB) CreateTicket(ctx context.Context, t *models.Ticket) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO tickets (id, external_id, title, description, status, parent_ticket_id, decompose_depth, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		t.ID, t.ExternalID, t.Title, t.Description, string(t.Status), t.ParentTicketID, t.DecomposeDepth, t.CreatedAt, t.UpdatedAt,
+		`INSERT INTO tickets (id, external_id, title, description, status, parent_ticket_id, channel_sender_id, decompose_depth, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		t.ID, t.ExternalID, t.Title, t.Description, string(t.Status), t.ParentTicketID, t.ChannelSenderID, t.DecomposeDepth, t.CreatedAt, t.UpdatedAt,
 	)
 	return err
 }
@@ -68,19 +68,19 @@ func (s *SQLiteDB) UpdateTicketStatus(ctx context.Context, id string, status mod
 
 func (s *SQLiteDB) GetTicket(ctx context.Context, id string) (*models.Ticket, error) {
 	return s.scanTicket(s.db.QueryRowContext(ctx,
-		`SELECT id, external_id, title, description, status, parent_ticket_id, decompose_depth, created_at, updated_at FROM tickets WHERE id = ?`, id))
+		`SELECT id, external_id, title, description, status, parent_ticket_id, channel_sender_id, decompose_depth, created_at, updated_at FROM tickets WHERE id = ?`, id))
 }
 
 func (s *SQLiteDB) GetTicketByExternalID(ctx context.Context, externalID string) (*models.Ticket, error) {
 	return s.scanTicket(s.db.QueryRowContext(ctx,
-		`SELECT id, external_id, title, description, status, parent_ticket_id, decompose_depth, created_at, updated_at FROM tickets WHERE external_id = ?`, externalID))
+		`SELECT id, external_id, title, description, status, parent_ticket_id, channel_sender_id, decompose_depth, created_at, updated_at FROM tickets WHERE external_id = ?`, externalID))
 }
 
 func (s *SQLiteDB) scanTicket(row *sql.Row) (*models.Ticket, error) {
 	var t models.Ticket
 	var status string
 	err := row.Scan(&t.ID, &t.ExternalID, &t.Title, &t.Description, &status,
-		&t.ParentTicketID, &t.DecomposeDepth, &t.CreatedAt, &t.UpdatedAt)
+		&t.ParentTicketID, &t.ChannelSenderID, &t.DecomposeDepth, &t.CreatedAt, &t.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -89,7 +89,7 @@ func (s *SQLiteDB) scanTicket(row *sql.Row) (*models.Ticket, error) {
 }
 
 func (s *SQLiteDB) ListTickets(ctx context.Context, filter models.TicketFilter) ([]models.Ticket, error) {
-	query := `SELECT id, external_id, title, description, status, parent_ticket_id, decompose_depth, created_at, updated_at FROM tickets WHERE 1=1`
+	query := `SELECT id, external_id, title, description, status, parent_ticket_id, channel_sender_id, decompose_depth, created_at, updated_at FROM tickets WHERE 1=1`
 	var args []interface{}
 
 	if filter.Status != "" {
@@ -119,7 +119,7 @@ func (s *SQLiteDB) ListTickets(ctx context.Context, filter models.TicketFilter) 
 		var t models.Ticket
 		var status string
 		if err := rows.Scan(&t.ID, &t.ExternalID, &t.Title, &t.Description, &status,
-			&t.ParentTicketID, &t.DecomposeDepth, &t.CreatedAt, &t.UpdatedAt); err != nil {
+			&t.ParentTicketID, &t.ChannelSenderID, &t.DecomposeDepth, &t.CreatedAt, &t.UpdatedAt); err != nil {
 			return nil, err
 		}
 		t.Status = models.TicketStatus(status)
@@ -130,7 +130,7 @@ func (s *SQLiteDB) ListTickets(ctx context.Context, filter models.TicketFilter) 
 
 func (s *SQLiteDB) GetChildTickets(ctx context.Context, parentExternalID string) ([]models.Ticket, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, external_id, title, description, status, parent_ticket_id, decompose_depth, created_at, updated_at
+		`SELECT id, external_id, title, description, status, parent_ticket_id, channel_sender_id, decompose_depth, created_at, updated_at
 		 FROM tickets WHERE parent_ticket_id = ?`, parentExternalID)
 	if err != nil {
 		return nil, err
@@ -142,7 +142,7 @@ func (s *SQLiteDB) GetChildTickets(ctx context.Context, parentExternalID string)
 		var t models.Ticket
 		var status string
 		if err := rows.Scan(&t.ID, &t.ExternalID, &t.Title, &t.Description, &status,
-			&t.ParentTicketID, &t.DecomposeDepth, &t.CreatedAt, &t.UpdatedAt); err != nil {
+			&t.ParentTicketID, &t.ChannelSenderID, &t.DecomposeDepth, &t.CreatedAt, &t.UpdatedAt); err != nil {
 			return nil, err
 		}
 		t.Status = models.TicketStatus(status)
@@ -465,4 +465,82 @@ func (s *SQLiteDB) ValidateAuthToken(ctx context.Context, tokenHash string) (boo
 		_, _ = s.db.ExecContext(ctx, `UPDATE auth_tokens SET last_used_at = ? WHERE token_hash = ?`, time.Now(), tokenHash)
 	}
 	return !revoked, nil
+}
+
+// --- Pairing ---
+
+func (s *SQLiteDB) CreatePairing(ctx context.Context, code, senderID, channel string, expiresAt time.Time) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO pending_pairings (code, sender_id, channel, expires_at) VALUES (?, ?, ?, ?)`,
+		code, senderID, channel, expiresAt.UTC())
+	if err != nil {
+		return fmt.Errorf("create pairing: %w", err)
+	}
+	return nil
+}
+
+func (s *SQLiteDB) GetPairing(ctx context.Context, code string) (*models.Pairing, error) {
+	row := s.db.QueryRowContext(ctx,
+		`SELECT code, sender_id, channel, expires_at, created_at FROM pending_pairings WHERE code = ?`, code)
+	var p models.Pairing
+	err := row.Scan(&p.Code, &p.SenderID, &p.Channel, &p.ExpiresAt, &p.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get pairing: %w", err)
+	}
+	return &p, nil
+}
+
+func (s *SQLiteDB) DeletePairing(ctx context.Context, code string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM pending_pairings WHERE code = ?`, code)
+	if err != nil {
+		return fmt.Errorf("delete pairing: %w", err)
+	}
+	return nil
+}
+
+func (s *SQLiteDB) ListPairings(ctx context.Context, channel string) ([]models.Pairing, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT code, sender_id, channel, expires_at, created_at FROM pending_pairings WHERE channel = ? ORDER BY created_at`, channel)
+	if err != nil {
+		return nil, fmt.Errorf("list pairings: %w", err)
+	}
+	defer rows.Close()
+	var result []models.Pairing
+	for rows.Next() {
+		var p models.Pairing
+		if err := rows.Scan(&p.Code, &p.SenderID, &p.Channel, &p.ExpiresAt, &p.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan pairing: %w", err)
+		}
+		result = append(result, p)
+	}
+	return result, rows.Err()
+}
+
+func (s *SQLiteDB) DeleteExpiredPairings(ctx context.Context) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM pending_pairings WHERE expires_at < datetime('now')`)
+	if err != nil {
+		return fmt.Errorf("delete expired pairings: %w", err)
+	}
+	return nil
+}
+
+func (s *SQLiteDB) FindActiveClarification(ctx context.Context, senderID string) (*models.Ticket, error) {
+	row := s.db.QueryRowContext(ctx,
+		`SELECT id, external_id, title, description, status, parent_ticket_id, channel_sender_id, decompose_depth, created_at, updated_at
+		 FROM tickets WHERE channel_sender_id = ? AND status = 'clarification_needed' LIMIT 1`, senderID)
+	var t models.Ticket
+	var status string
+	err := row.Scan(&t.ID, &t.ExternalID, &t.Title, &t.Description, &status,
+		&t.ParentTicketID, &t.ChannelSenderID, &t.DecomposeDepth, &t.CreatedAt, &t.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("find active clarification: %w", err)
+	}
+	t.Status = models.TicketStatus(status)
+	return &t, nil
 }
