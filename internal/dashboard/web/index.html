@@ -70,14 +70,182 @@
             <!-- Team Summary (no ticket selected) -->
             <template x-if="!selectedTicket">
                 <div id="team-summary" x-data="teamSummary()" x-init="load()">
-                    <!-- Content filled in Task 10 -->
+                    <!-- Today -->
+                    <div class="summary-section">
+                        <div class="summary-header">TODAY</div>
+                        <div class="summary-body">
+                            <div>
+                                <span x-text="todayStats.total + ' tickets'"></span>
+                                <span x-text="' \u2713' + todayStats.merged + ' merged'"></span>
+                                <span x-text="' \u2717' + todayStats.failed + ' failed'"></span>
+                                <span x-text="' \u2699' + todayStats.active + ' active'"></span>
+                            </div>
+                            <div class="budget-bar">
+                                <div x-text="'Daily: $' + ($root.dailyCost || 0).toFixed(2) + ' / $' + Math.round($root.dailyBudget || 0)"></div>
+                                <div x-text="'Monthly: $' + ($root.monthlyCost || 0).toFixed(2) + ' / $' + Math.round($root.monthlyBudget || 0)"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- This Week -->
+                    <div class="summary-section">
+                        <div class="summary-header">THIS WEEK</div>
+                        <div class="summary-body">
+                            <template x-for="day in weekDays" :key="day.date">
+                                <div class="bar-chart-row">
+                                    <span class="bar-chart-label" x-text="dayLabel(day.date)"></span>
+                                    <span class="bar-chart-bar" x-text="barWidth(day.cost_usd || 0)"></span>
+                                    <span x-text="'$' + (day.cost_usd || 0).toFixed(2)"></span>
+                                </div>
+                            </template>
+                            <div style="margin-top: 0.3rem; color: var(--muted);" x-text="'Total: $' + ($root.weeklyCost || 0).toFixed(2)"></div>
+                        </div>
+                    </div>
+
+                    <!-- Team -->
+                    <div class="summary-section">
+                        <div class="summary-header">TEAM</div>
+                        <div class="summary-body">
+                            <template x-for="stat in teamStats" :key="stat.channel_sender_id">
+                                <div class="team-row">
+                                    <span x-text="formatSender(stat.channel_sender_id)"></span>
+                                    <span x-text="stat.ticket_count + ' tickets'"></span>
+                                    <span x-text="'$' + stat.cost_usd.toFixed(2)"></span>
+                                    <span x-show="stat.failed_count > 0" style="color: var(--danger);" x-text="'\u2717' + stat.failed_count"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
+                    <!-- Recent PRs -->
+                    <div class="summary-section">
+                        <div class="summary-header">RECENT PRS</div>
+                        <div class="summary-body">
+                            <template x-for="pr in recentPRs" :key="pr.ID">
+                                <div class="pr-row">
+                                    <a :href="pr.PRURL" target="_blank" x-text="'#' + pr.PRNumber + ' ' + pr.Title"></a>
+                                    <span x-text="pr.Status + ' ' + formatRelative(pr.UpdatedAt)"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
+                    <!-- Needs Attention -->
+                    <div class="summary-section" x-show="$root.needsAttention && $root.needsAttention.length > 0">
+                        <div class="summary-header">NEEDS ATTENTION</div>
+                        <div class="summary-body">
+                            <template x-for="t in ($root.needsAttention || [])" :key="t.ID">
+                                <div class="attention-item" @click="$root.selectTicket(t)">
+                                    <span>
+                                        <span x-show="['failed','blocked','partial'].indexOf(t.Status) !== -1" style="color: var(--danger);">&#10007;</span>
+                                        <span x-show="t.Status === 'clarification_needed'" style="color: var(--accent);">&#10067;</span>
+                                        <span x-text="t.Title"></span>
+                                    </span>
+                                    <span style="color: var(--muted);" x-text="t.Status + ' \u00B7 ' + formatSender(t.ChannelSenderID)"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
                 </div>
             </template>
 
             <!-- Ticket Detail (ticket selected) -->
             <template x-if="selectedTicket">
                 <div id="ticket-detail">
-                    <!-- Content filled in Task 10 -->
+                    <div class="detail-header">
+                        <div class="detail-title" x-text="ticketDetail?.Title || selectedTicket.Title"></div>
+                        <div class="detail-meta">
+                            <span x-text="selectedTicket.Status"></span>
+                            <span x-text="' \u00B7 ' + formatSender(selectedTicket.ChannelSenderID)"></span>
+                            <span x-text="' \u00B7 started ' + formatRelative(selectedTicket.StartedAt || selectedTicket.CreatedAt)"></span>
+                        </div>
+                        <div class="detail-pr" x-show="ticketDetail?.PRURL">
+                            PR: <a :href="ticketDetail?.PRURL" target="_blank" x-text="'#' + (ticketDetail?.PRNumber || '')"></a>
+                        </div>
+                        <button class="retry-btn"
+                                x-show="isFailed(selectedTicket) || selectedTicket.Status === 'partial'"
+                                @click="retryTicket(selectedTicket.ID)">RETRY TICKET</button>
+                    </div>
+
+                    <!-- Clarification -->
+                    <div class="detail-section" x-show="ticketDetail?.ClarificationRequestedAt">
+                        <div class="detail-section-header">CLARIFICATION</div>
+                        <div class="detail-section-body">
+                            <div class="clarification-q" x-text="'\u2753 ' + (ticketDetail?.ErrorMessage || 'Clarification requested')"></div>
+                            <template x-if="ticketDetail?.Comments && ticketDetail.Comments.length > 0">
+                                <div class="clarification-a" x-text="'\uD83D\uDCAC ' + ticketDetail.Comments[ticketDetail.Comments.length - 1].Body"></div>
+                            </template>
+                        </div>
+                    </div>
+
+                    <!-- Tasks -->
+                    <div class="detail-section">
+                        <div class="detail-section-header">
+                            <span>TASKS</span>
+                            <span x-text="ticketTasks.filter(t => t.Status === 'done').length + '/' + ticketTasks.length"></span>
+                        </div>
+                        <div class="detail-section-body">
+                            <template x-for="task in ticketTasks" :key="task.ID">
+                                <div>
+                                    <div class="task-item" @click="toggleTask(task.ID)">
+                                        <span class="task-icon" :class="taskIconClass(task.Status)" x-text="taskIcon(task.Status)"></span>
+                                        <span x-text="task.Sequence + '. ' + task.Title"></span>
+                                        <span class="task-complexity" x-text="task.EstimatedComplexity"></span>
+                                        <button class="retry-task-btn"
+                                                x-show="task.Status === 'failed'"
+                                                @click.stop="retryTask(task.ID)">[retry]</button>
+                                    </div>
+                                    <div class="task-expanded" x-show="expandedTasks[task.ID]">
+                                        <div>Status: <span x-text="task.Status"></span>
+                                            <span x-show="task.ImplementationAttempts > 0" x-text="' (attempt ' + task.ImplementationAttempts + ')'"></span>
+                                        </div>
+                                        <div x-show="task.FilesToModify && task.FilesToModify.length">Files: <span x-text="(task.FilesToModify || []).join(', ')"></span></div>
+                                        <div x-show="task.ErrorMessage" style="color: var(--danger);">Error: <span x-text="task.ErrorMessage"></span></div>
+                                        <div>Cost: $<span x-text="(task.CostUSD || 0).toFixed(2)"></span></div>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
+                    <!-- Cost Breakdown -->
+                    <div class="detail-section">
+                        <div class="detail-section-header">
+                            <span>COST BREAKDOWN</span>
+                            <span x-text="'$' + (ticketDetail?.CostUSD || 0).toFixed(2)"></span>
+                        </div>
+                        <div class="detail-section-body">
+                            <template x-for="item in costByRole()" :key="item.role">
+                                <div class="cost-bar-row">
+                                    <span class="cost-bar-label" x-text="item.role"></span>
+                                    <span class="cost-bar-amount" x-text="'$' + item.cost.toFixed(2)"></span>
+                                    <span class="cost-bar">
+                                        <span class="cost-bar-fill" :style="'width:' + item.pct + '%'"></span>
+                                    </span>
+                                </div>
+                            </template>
+                            <div style="margin-top: 0.5rem; color: var(--muted); font-size: 0.7rem;">
+                                <span x-text="'Model: ' + llmSummary().model"></span> |
+                                <span x-text="Math.round(llmSummary().totalTokens / 1000) + 'k tokens'"></span> |
+                                <span x-text="llmSummary().totalCalls + ' calls (' + llmSummary().ok + ' ok, ' + llmSummary().retried + ' retried)'"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Events for this ticket -->
+                    <div class="detail-section">
+                        <div class="detail-section-header">EVENTS</div>
+                        <div class="detail-section-body">
+                            <template x-for="evt in ticketEvents.slice(0, 20)" :key="evt.ID">
+                                <div class="event-entry">
+                                    <span class="event-time" x-text="formatTime(evt.CreatedAt)"></span>
+                                    <span class="event-severity" :class="'severity-' + evt.Severity" x-text="severityIcon(evt.Severity)"></span>
+                                    <span class="event-type" x-text="evt.EventType"></span>
+                                    <span class="event-message" x-text="evt.Message" x-show="evt.Message"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
                 </div>
             </template>
         </section>
