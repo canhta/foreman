@@ -170,6 +170,16 @@ func (g *NativeGitProvider) StageAll(ctx context.Context, workDir string) error 
 	return err
 }
 
+func (g *NativeGitProvider) CleanWorkingTree(ctx context.Context, workDir string) error {
+	if _, err := g.run(ctx, workDir, "git", "checkout", "--", "."); err != nil {
+		return fmt.Errorf("git checkout: %w", err)
+	}
+	if _, err := g.run(ctx, workDir, "git", "clean", "-fd"); err != nil {
+		return fmt.Errorf("git clean: %w", err)
+	}
+	return nil
+}
+
 func (g *NativeGitProvider) run(ctx context.Context, workDir string, name string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = workDir

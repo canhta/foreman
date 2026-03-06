@@ -42,7 +42,8 @@ func (m *mockGitProvider) Log(_ context.Context, _ string, count int) ([]git.Com
 	}
 	return m.logEntries, nil
 }
-func (m *mockGitProvider) StageAll(_ context.Context, _ string) error { return nil }
+func (m *mockGitProvider) StageAll(_ context.Context, _ string) error         { return nil }
+func (m *mockGitProvider) CleanWorkingTree(_ context.Context, _ string) error { return nil }
 
 func newGitRegistry(t *testing.T, g git.GitProvider) (*tools.Registry, string) {
 	t.Helper()

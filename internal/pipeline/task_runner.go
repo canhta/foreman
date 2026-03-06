@@ -91,6 +91,13 @@ func (r *PipelineTaskRunner) RunTask(ctx context.Context, task *models.Task) err
 		// into this iteration's retry prompt.
 		feedback.Reset()
 
+		// Revert any file changes left by the previous attempt.
+		if attempt > 1 {
+			if cleanErr := r.git.CleanWorkingTree(ctx, r.config.WorkDir); cleanErr != nil {
+				return fmt.Errorf("clean working tree before retry: %w", cleanErr)
+			}
+		}
+
 		// Check call cap before each LLM call.
 		if err := CheckTaskCallCap(ctx, r.db, task.ID, r.config.MaxLlmCallsPerTask); err != nil {
 			return fmt.Errorf("call cap: %w", err)

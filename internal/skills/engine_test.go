@@ -237,6 +237,7 @@ func (m *mockGitForEngine) FileTree(_ context.Context, _ string) ([]git.FileEntr
 func (m *mockGitForEngine) Log(_ context.Context, _ string, _ int) ([]git.CommitEntry, error) {
 	return nil, nil
 }
+func (m *mockGitForEngine) CleanWorkingTree(_ context.Context, _ string) error { return nil }
 func (m *mockGitForEngine) CheckFileOverlap(_ context.Context, _, _ string, _ []string) ([]string, error) {
 	return nil, nil
 }

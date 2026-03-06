@@ -17,6 +17,7 @@ type GitProvider interface {
 	FileTree(ctx context.Context, workDir string) ([]FileEntry, error)
 	Log(ctx context.Context, workDir string, count int) ([]CommitEntry, error)
 	StageAll(ctx context.Context, workDir string) error
+	CleanWorkingTree(ctx context.Context, workDir string) error
 }
 
 // RebaseResult holds rebase outcome.

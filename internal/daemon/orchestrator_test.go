@@ -270,7 +270,8 @@ func (m *orchMockGit) FileTree(_ context.Context, _ string) ([]git.FileEntry, er
 func (m *orchMockGit) Log(_ context.Context, _ string, _ int) ([]git.CommitEntry, error) {
 	return nil, nil
 }
-func (m *orchMockGit) StageAll(_ context.Context, _ string) error { return nil }
+func (m *orchMockGit) StageAll(_ context.Context, _ string) error         { return nil }
+func (m *orchMockGit) CleanWorkingTree(_ context.Context, _ string) error { return nil }
 
 // ---------------------------------------------------------------------------
 // Mock: git.PRCreator

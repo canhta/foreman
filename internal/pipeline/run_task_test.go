@@ -278,6 +278,70 @@ func TestRunTask_SpecReviewRejection_TriggersRetry(t *testing.T) {
 }
 
 // =============================================
+// RunTask: CleanWorkingTree called between retries
+// =============================================
+
+func TestRunTask_CleanWorkingTree_CalledBetweenRetries(t *testing.T) {
+	db := newMockTaskRunnerDB()
+	cleanCount := 0
+	g := &realMockGitProvider{diffOutput: "+x", commitSHA: "sha-clean", cleanCalled: &cleanCount}
+	cmd := &realMockCmdRunner{exitCode: 0}
+
+	// First attempt: invalid output (triggers retry). Second attempt: valid.
+	llm2 := &implCountingLLM{
+		implResponses: func(n int) string {
+			if n == 1 {
+				return "this is not valid implementer output"
+			}
+			return buildNewFileResponse("out.go", "package main\n")
+		},
+		specResponse:    "STATUS: APPROVED\nCRITERIA:\n- [pass] ok\nISSUES:\n- None",
+		qualityResponse: "STATUS: APPROVED\nISSUES:\n- None",
+	}
+
+	r := newTaskRunnerForTest(t, db, llm2, g, cmd, TaskRunnerConfig{
+		MaxImplementationRetries: 2,
+		EnableTDDVerification:    false,
+	})
+
+	task := simpleTask("t-clean", "Clean test")
+	err := r.RunTask(context.Background(), task)
+	require.NoError(t, err)
+
+	// CleanWorkingTree should have been called once (before attempt 2).
+	assert.Equal(t, 1, cleanCount, "CleanWorkingTree should be called once between retries")
+}
+
+// implCountingLLM tracks per-role call counts with separate impl call counter.
+type implCountingLLM struct {
+	implResponses   func(n int) string
+	specResponse    string
+	qualityResponse string
+	implCallN       int
+}
+
+func (m *implCountingLLM) Complete(_ context.Context, req models.LlmRequest) (*models.LlmResponse, error) {
+	var content string
+	switch {
+	case contains(req.SystemPrompt, "verify that the implementation satisfies"):
+		content = m.specResponse
+	case contains(req.SystemPrompt, "review code quality"):
+		content = m.qualityResponse
+	default:
+		m.implCallN++
+		content = m.implResponses(m.implCallN)
+	}
+	return &models.LlmResponse{
+		Content:    content,
+		StopReason: models.StopReasonEndTurn,
+		Model:      "test-model",
+	}, nil
+}
+
+func (m *implCountingLLM) ProviderName() string                { return "mock" }
+func (m *implCountingLLM) HealthCheck(_ context.Context) error { return nil }
+
+// =============================================
 // RunTask: quality review with only MINOR issues approves
 // =============================================
 

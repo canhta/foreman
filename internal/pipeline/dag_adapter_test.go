@@ -58,9 +58,11 @@ func (m *mockAdapterDB) IncrementTaskLlmCalls(_ context.Context, id string) (int
 
 // realMockGitProvider implements git.GitProvider using the real package types.
 type realMockGitProvider struct {
-	commitErr  error
-	diffOutput string
-	commitSHA  string
+	commitErr   error
+	diffOutput  string
+	commitSHA   string
+	cleanErr    error
+	cleanCalled *int
 }
 
 func (m *realMockGitProvider) EnsureRepo(_ context.Context, _ string) error      { return nil }
@@ -85,6 +87,12 @@ func (m *realMockGitProvider) Log(_ context.Context, _ string, _ int) ([]git.Com
 	return nil, nil
 }
 func (m *realMockGitProvider) StageAll(_ context.Context, _ string) error { return nil }
+func (m *realMockGitProvider) CleanWorkingTree(_ context.Context, _ string) error {
+	if m.cleanCalled != nil {
+		*m.cleanCalled++
+	}
+	return m.cleanErr
+}
 
 // realMockCmdRunner implements runner.CommandRunner.
 type realMockCmdRunner struct {

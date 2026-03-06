@@ -100,6 +100,10 @@ func (g *GoGitProvider) CreatePR(ctx context.Context, req PrRequest) (*PrRespons
 	return nil, fmt.Errorf("go-git CreatePR not implemented — requires GitHub/GitLab API client")
 }
 
+func (g *GoGitProvider) CleanWorkingTree(_ context.Context, _ string) error {
+	return fmt.Errorf("go-git CleanWorkingTree not implemented — use native git provider")
+}
+
 func (g *GoGitProvider) StageAll(ctx context.Context, workDir string) error {
 	repo, err := gogit.PlainOpen(workDir)
 	if err != nil {
