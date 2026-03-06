@@ -1,6 +1,8 @@
 # syntax=docker/dockerfile:1
 
-FROM golang:1.25-bookworm AS builder
+FROM --platform=$BUILDPLATFORM golang:1.25-bookworm AS builder
+ARG TARGETOS=linux
+ARG TARGETARCH
 WORKDIR /src
 
 # go-sqlite3 requires CGO-enabled builds.
@@ -14,7 +16,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/foreman ./main.go
+RUN CGO_ENABLED=1 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /out/foreman ./main.go
 
 FROM debian:bookworm-slim AS runtime
 RUN apt-get update && apt-get install -y --no-install-recommends \
