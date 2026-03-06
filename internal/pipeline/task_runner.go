@@ -119,6 +119,9 @@ func (r *PipelineTaskRunner) RunTask(ctx context.Context, task *models.Task) err
 
 		// Check for mid-implementation escalation.
 		if question := detectEscalation(result.Response.Content); question != "" {
+			// No dedicated "escalated" status exists; mark as failed so the
+			// ticket is not left in "implementing" state indefinitely.
+			_ = r.db.UpdateTaskStatus(ctx, task.ID, models.TaskStatusFailed)
 			return &EscalationError{Question: question}
 		}
 
