@@ -42,16 +42,9 @@ type Registry struct {
 
 // NewRegistry creates a Registry. gitProvider and cmdRunner may be nil — those
 // tool groups return informative errors if invoked when their dependency is absent.
+// This is a convenience wrapper around NewRegistryWithMCP(gitProvider, cmdRunner, hooks, nil).
 func NewRegistry(gitProvider git.GitProvider, cmdRunner runner.CommandRunner, hooks ToolHooks) *Registry {
-	r := &Registry{
-		tools: make(map[string]Tool),
-		hooks: hooks,
-	}
-	registerFS(r)
-	registerGit(r, gitProvider)
-	registerCode(r, cmdRunner)
-	registerExec(r, cmdRunner, nil)
-	return r
+	return NewRegistryWithMCP(gitProvider, cmdRunner, hooks, nil)
 }
 
 // NewRegistryWithMCP creates a Registry with an optional MCP Manager wired into

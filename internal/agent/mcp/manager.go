@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/canhta/foreman/internal/models"
 	"github.com/canhta/foreman/internal/telemetry"
@@ -26,6 +27,7 @@ type Manager struct {
 	clients   map[string]Client
 	metrics   *telemetry.Metrics
 	toolCache []MCPToolSummary
+	mu        sync.RWMutex
 }
 
 // NewManager creates a new MCP Manager.
@@ -136,15 +138,19 @@ func (m *Manager) Close() error {
 
 // SetToolCache replaces the in-memory tool cache with the provided summaries.
 // This is used during initialisation (after MCP servers are ready) and in tests.
-// Not concurrency-safe: callers must ensure no concurrent reads via
-// ListToolSummaries are in-flight when this is called.
+// Safe for concurrent use.
 func (m *Manager) SetToolCache(summaries []MCPToolSummary) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.toolCache = summaries
 }
 
 // ListToolSummaries returns the cached MCP tool summaries without making any
 // network calls. Returns an empty (non-nil) slice when no tools are cached.
+// Safe for concurrent use.
 func (m *Manager) ListToolSummaries() []MCPToolSummary {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	if m.toolCache == nil {
 		return []MCPToolSummary{}
 	}
@@ -154,6 +160,7 @@ func (m *Manager) ListToolSummaries() []MCPToolSummary {
 // CacheToolSummaries queries every registered MCP client for its tools and
 // stores the results in the in-memory cache.  This is the only method that
 // makes network calls; all subsequent ListToolSummaries calls are in-memory.
+// Safe for concurrent use.
 func (m *Manager) CacheToolSummaries(ctx context.Context) {
 	var summaries []MCPToolSummary
 	for serverName, c := range m.clients {
@@ -181,5 +188,7 @@ func (m *Manager) CacheToolSummaries(ctx context.Context) {
 	if summaries == nil {
 		summaries = []MCPToolSummary{}
 	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.toolCache = summaries
 }
