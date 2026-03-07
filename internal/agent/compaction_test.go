@@ -213,8 +213,8 @@ func TestSplitForSummarization_KeepsLastThreeTurns(t *testing.T) {
 
 	// old should have the remaining turns (turns 0..3) plus the initial message
 	// total old messages = 1 (initial) + 4 * 2 (turns 0-3) = 9
-	if len(old) == 0 {
-		t.Error("expected non-empty old messages")
+	if len(old) != 9 {
+		t.Errorf("expected 9 old messages, got %d", len(old))
 	}
 	// The initial task message should appear in old, not in recent
 	for _, m := range recent {

@@ -261,9 +261,29 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 			if budget <= 0 {
 				budget = contextWindowBudget
 			}
-			threshold := int(float64(budget) * compactionThreshold)
+			p1Threshold := int(float64(budget) * compactionThreshold)    // 70%
+			p2Threshold := int(float64(budget) * summarizationThreshold) // 85%
 			currentTokens := countAllTokens(messages)
-			if currentTokens > threshold {
+
+			// Phase 2 (85%): LLM summarization takes priority — preserve as much context as possible.
+			// Skip if the first message is already a summary (avoid progressive fidelity loss).
+			if currentTokens > p2Threshold {
+				oldMessages, recentMessages := splitForSummarization(messages)
+				alreadySummarized := len(messages) > 0 && strings.HasPrefix(messages[0].Content, "[context summary]")
+				if len(oldMessages) > 0 && !alreadySummarized {
+					summaryMsg := SummarizeHistory(ctx, r.provider, r.model, oldMessages)
+					messages = append([]models.Message{summaryMsg}, recentMessages...)
+					log.Info().
+						Int("tokens_before", currentTokens).
+						Int("old_messages", len(oldMessages)).
+						Int("remaining", len(messages)).
+						Msg("builtin: context summarized via LLM")
+				}
+			}
+
+			// Phase 1 (70%): fall-through truncation if still over budget
+			// (e.g., last 3 turns alone are large, or summarization was skipped).
+			if countAllTokens(messages) > p1Threshold {
 				before := len(messages)
 				messages = CompactMessages(messages, budget)
 				after := len(messages)
@@ -276,23 +296,8 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 						Msg("builtin: context compacted")
 					messages = append(messages, models.Message{
 						Role:    "user",
-						Content: compactionSummary(dropped / 2), // pairs
+						Content: compactionSummary(dropped / 2),
 					})
-				}
-			}
-
-			// Phase 2: at 85% threshold, LLM summarization replaces old messages with a
-			// structured summary (REQ-LOOP-006).
-			summarizationThresh := int(float64(budget) * summarizationThreshold)
-			if countAllTokens(messages) > summarizationThresh {
-				oldMessages, recentMessages := splitForSummarization(messages)
-				if len(oldMessages) > 0 {
-					summaryMsg := SummarizeHistory(ctx, r.provider, r.model, oldMessages)
-					messages = append([]models.Message{summaryMsg}, recentMessages...)
-					log.Info().
-						Int("old_messages", len(oldMessages)).
-						Int("remaining", len(messages)).
-						Msg("builtin: context summarized via LLM")
 				}
 			}
 
