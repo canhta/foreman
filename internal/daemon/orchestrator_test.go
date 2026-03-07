@@ -640,3 +640,31 @@ func TestProcessTicket_DAGAllFailed(t *testing.T) {
 	last := f.db.lastStatus("t-6")
 	assert.Equal(t, models.TicketStatusFailed, last)
 }
+
+// TestProcessTicket_ReleaseFailDoesNotBlockPR verifies BUG-M02:
+// A failed Release() call after a successful PR creation must NOT cause the
+// orchestrator to return an error. The PR was already created; leaking
+// reservations is only cosmetic (CleanupOrphanReservations will handle it).
+func TestProcessTicket_ReleaseFailDoesNotBlockPR(t *testing.T) {
+	f := newOrchFixture()
+	// Inject a release error so Release() fails.
+	f.db.releaseErr = errors.New("db connection lost")
+
+	ticket := models.Ticket{
+		ID:         "t-rel-fail",
+		ExternalID: "GH-99",
+		Title:      "Release fails after PR",
+	}
+
+	err := f.orch.ProcessTicket(context.Background(), ticket)
+	// Must succeed despite release failure.
+	require.NoError(t, err, "release error must not propagate after PR is created")
+
+	// Final status should be awaiting_merge, not failed.
+	last := f.db.lastStatus("t-rel-fail")
+	assert.Equal(t, models.TicketStatusAwaitingMerge, last,
+		"ticket must reach awaiting_merge even when Release() fails")
+
+	// PR was still created.
+	assert.True(t, f.prCreator.called, "PR should have been created")
+}

@@ -117,6 +117,9 @@ type ModelsConfig struct {
 }
 
 type CostConfig struct {
+	// FallbackPricing is used for unknown models when no entry exists in Pricing.
+	// Defaults to $3.00/M input and $15.00/M output if not set.
+	FallbackPricing     *PricingConfig           `mapstructure:"fallback_pricing"`
 	Pricing             map[string]PricingConfig `mapstructure:"pricing"`
 	MaxCostPerTicketUSD float64                  `mapstructure:"max_cost_per_ticket_usd"`
 	MaxCostPerDayUSD    float64                  `mapstructure:"max_cost_per_day_usd"`

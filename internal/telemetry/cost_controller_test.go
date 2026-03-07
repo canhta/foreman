@@ -95,3 +95,29 @@ func TestCostController_CheckTaskCallCap(t *testing.T) {
 	assert.Error(t, cc.CheckTaskCallCap(8))
 	assert.Error(t, cc.CheckTaskCallCap(10))
 }
+
+// TestCostController_ConfigurableFallbackPricing verifies BUG-M12:
+// When a FallbackPricing is configured in CostConfig, unknown models must use
+// those rates instead of the hardcoded $3/$15 values.
+func TestCostController_ConfigurableFallbackPricing(t *testing.T) {
+	customInput := 1.0
+	customOutput := 5.0
+	cc := NewCostController(models.CostConfig{
+		FallbackPricing: &models.PricingConfig{Input: customInput, Output: customOutput},
+	})
+
+	// 1M input tokens at $1/M + 1M output tokens at $5/M = $6.00
+	cost := cc.CalculateCost("some-unknown-model", 1_000_000, 1_000_000)
+	assert.InDelta(t, 6.0, cost, 0.001, "custom fallback pricing should be used for unknown models")
+}
+
+// TestCostController_DefaultFallbackPricing verifies that the default hardcoded
+// fallback pricing ($3 input / $15 output) is still used when no FallbackPricing
+// is configured.
+func TestCostController_DefaultFallbackPricing(t *testing.T) {
+	cc := NewCostController(models.CostConfig{})
+
+	// 1M input tokens at $3/M + 1M output tokens at $15/M = $18.00
+	cost := cc.CalculateCost("unknown-model-default", 1_000_000, 1_000_000)
+	assert.InDelta(t, 18.0, cost, 0.001, "default fallback pricing $3/$15 should be used when none configured")
+}

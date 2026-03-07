@@ -199,6 +199,13 @@ func extractBody(msg *waE2E.Message) string {
 }
 
 // rateLimiter implements a simple per-JID windowed counter.
+//
+// NOTE (BUG-M11): This is an in-memory implementation. All per-JID counters are
+// reset on process restart, which means a JID could exceed its effective rate limit
+// across a restart window. For this internal anti-spam use-case (Foreman is a
+// single-tenant autonomous dev tool) this is acceptable; the window is short
+// (1 minute by default) and the impact of counter reset is minor. If billing or
+// safety enforcement is required, replace with a database-backed counter.
 type rateLimiter struct {
 	buckets map[string]*rateBucket
 	mu      sync.Mutex

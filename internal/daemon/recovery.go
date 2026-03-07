@@ -36,6 +36,15 @@ func ClassifyRecovery(ticket *models.Ticket) RecoveryPlan {
 		return RecoveryPlan{Action: RecoveryResume, ResumeFromSeq: ticket.LastCompletedTaskSeq}
 
 	case models.TicketStatusImplementing, models.TicketStatusReviewing:
+		// BUG-M04: Guard against corrupted / negative sequence numbers that would
+		// cause a resume from an invalid position.
+		if ticket.LastCompletedTaskSeq < 0 {
+			log.Warn().
+				Int("last_completed_seq", ticket.LastCompletedTaskSeq).
+				Str("status", string(ticket.Status)).
+				Msg("negative LastCompletedTaskSeq detected; treating as replan to avoid invalid resume")
+			return RecoveryPlan{Action: RecoveryReplan}
+		}
 		return RecoveryPlan{Action: RecoveryResume, ResumeFromSeq: ticket.LastCompletedTaskSeq}
 
 	default:

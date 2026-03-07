@@ -103,3 +103,16 @@ func TestClassifyRecovery_NilTicket(t *testing.T) {
 	action := ClassifyRecovery(nil)
 	assert.Equal(t, RecoveryReplan, action.Action)
 }
+
+// TestClassifyRecovery_NegativeLastCompletedTaskSeq verifies BUG-M04:
+// If the database has a corrupted negative LastCompletedTaskSeq, ClassifyRecovery
+// must treat the ticket as RecoveryReplan (not RecoveryResume from an invalid index).
+func TestClassifyRecovery_NegativeLastCompletedTaskSeq(t *testing.T) {
+	ticket := &models.Ticket{
+		Status:               models.TicketStatusImplementing,
+		LastCompletedTaskSeq: -1,
+	}
+	action := ClassifyRecovery(ticket)
+	assert.Equal(t, RecoveryReplan, action.Action,
+		"negative LastCompletedTaskSeq must trigger RecoveryReplan, not RecoveryResume")
+}

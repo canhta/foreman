@@ -55,9 +55,15 @@ func (c *CostController) ShouldAlert(currentCost, limit float64) bool {
 func (c *CostController) CalculateCost(model string, inputTokens, outputTokens int) float64 {
 	pricing, ok := c.config.Pricing[model]
 	if !ok {
-		// Fallback pricing for unknown models
-		log.Warn().Str("model", model).Msg("unknown model for cost calculation, using fallback pricing")
-		pricing = models.PricingConfig{Input: 3.0, Output: 15.0}
+		if c.config.FallbackPricing != nil {
+			pricing = *c.config.FallbackPricing
+		} else {
+			// Default hardcoded fallback — warn prominently that costs may be inaccurate.
+			log.Warn().Str("model", model).
+				Msg("unknown model for cost calculation, using default fallback pricing ($3/$15); " +
+					"configure [cost.fallback_pricing] in foreman.toml for accurate estimates")
+			pricing = models.PricingConfig{Input: 3.0, Output: 15.0}
+		}
 	}
 	return (float64(inputTokens)/1_000_000)*pricing.Input +
 		(float64(outputTokens)/1_000_000)*pricing.Output
