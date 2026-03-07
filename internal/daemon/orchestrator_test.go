@@ -202,6 +202,16 @@ func (m *orchMockDB) GetEmbeddingsByRepoSHA(_ context.Context, _, _ string) ([]d
 	return nil, nil
 }
 func (m *orchMockDB) DeleteEmbeddingsByRepoSHA(_ context.Context, _, _ string) error { return nil }
+func (m *orchMockDB) DeleteEmbeddingsByRepoExceptSHA(_ context.Context, _, _ string) error {
+	return nil
+}
+
+func (m *orchMockDB) GetTaskContextStats(_ context.Context, _ string) (db.TaskContextStats, error) {
+	return db.TaskContextStats{}, nil
+}
+func (m *orchMockDB) UpdateTaskContextStats(_ context.Context, _ string, _ db.TaskContextStats) error {
+	return nil
+}
 
 func (m *orchMockDB) lastStatus(id string) models.TicketStatus {
 	for i := len(m.statusUpdates) - 1; i >= 0; i-- {

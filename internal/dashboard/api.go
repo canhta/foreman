@@ -8,8 +8,22 @@ import (
 	"strings"
 	"time"
 
+	"github.com/canhta/foreman/internal/db"
 	"github.com/canhta/foreman/internal/models"
 )
+
+// TaskContextStats is an alias for db.TaskContextStats used in the dashboard package.
+type TaskContextStats = db.TaskContextStats
+
+// TaskContextResponse is the JSON response for GET /api/tasks/{id}/context.
+type TaskContextResponse struct {
+	Budget         int     `json:"budget"`
+	Used           int     `json:"used"`
+	UtilizationPct float64 `json:"utilization_pct"`
+	FilesSelected  int     `json:"files_selected"`
+	FilesTouched   int     `json:"files_touched"`
+	CacheHits      int     `json:"cache_hits"`
+}
 
 // DashboardDB is a subset of db.Database needed by the dashboard.
 type DashboardDB interface {
@@ -29,6 +43,8 @@ type DashboardDB interface {
 	GetTicketSummaries(ctx context.Context, filter models.TicketFilter) ([]models.TicketSummary, error)
 	GetGlobalEvents(ctx context.Context, limit, offset int) ([]models.EventRecord, error)
 	DeleteTicket(ctx context.Context, id string) error
+	GetTaskContextStats(ctx context.Context, taskID string) (TaskContextStats, error)
+	UpdateTaskContextStats(ctx context.Context, taskID string, stats TaskContextStats) error
 }
 
 // EventSubscriber is the subset of EventEmitter needed for WebSocket.
@@ -380,6 +396,36 @@ func (a *API) handleRetryTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "retrying", "task_id": id})
+}
+
+func (a *API) handleTaskContext(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	path := strings.TrimPrefix(r.URL.Path, "/api/tasks/")
+	id := strings.TrimSuffix(path, "/context")
+	if id == "" || id == path {
+		http.Error(w, "missing task id", http.StatusBadRequest)
+		return
+	}
+	stats, err := a.db.GetTaskContextStats(r.Context(), id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	utilPct := 0.0
+	if stats.Budget > 0 {
+		utilPct = float64(stats.Used) / float64(stats.Budget) * 100.0
+	}
+	writeJSON(w, http.StatusOK, TaskContextResponse{
+		Budget:         stats.Budget,
+		Used:           stats.Used,
+		UtilizationPct: utilPct,
+		FilesSelected:  stats.FilesSelected,
+		FilesTouched:   stats.FilesTouched,
+		CacheHits:      stats.CacheHits,
+	})
 }
 
 func (a *API) handleDeleteTicket(w http.ResponseWriter, r *http.Request) {

@@ -58,6 +58,12 @@ func (m *mockDB) DeleteEmbeddingsByRepoExceptSHA(_ context.Context, _, _ string)
 	m.deleteExceptCalls++
 	return nil
 }
+func (m *mockDB) GetTaskContextStats(_ context.Context, _ string) (db.TaskContextStats, error) {
+	return db.TaskContextStats{}, nil
+}
+func (m *mockDB) UpdateTaskContextStats(_ context.Context, _ string, _ db.TaskContextStats) error {
+	return nil
+}
 
 // Implement remaining db.Database interface methods as no-ops.
 
