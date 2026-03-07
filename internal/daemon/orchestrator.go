@@ -502,6 +502,17 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 		return returnErr
 	}
 
+	// Store the local branch HEAD SHA at PR creation time. This may briefly differ from the
+	// GitHub API head.sha if CI pushes a merge-ref on top; the first MergeChecker poll
+	// (storedSHA == "" branch) will initialize from the live API SHA, eliminating false positives.
+	// We read HEAD from the git log; if this fails it's non-fatal — MergeChecker will
+	// treat a missing SHA as "first-seen" and initialize it on the next poll.
+	if commits, logErr := o.git.Log(ctx, o.config.WorkDir, 1); logErr == nil && len(commits) > 0 {
+		if shaErr := o.db.SetTicketPRHeadSHA(ctx, ticket.ID, commits[0].SHA); shaErr != nil {
+			log.Warn().Err(shaErr).Str("ticket_id", ticket.ID).Msg("failed to store PR HEAD SHA (non-fatal)")
+		}
+	}
+
 	// Release file reservations. Do NOT return the error — the PR was already
 	// created successfully and the ticket status has been updated. A release
 	// failure is only a cosmetic leak; CleanupOrphanReservations will reclaim

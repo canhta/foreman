@@ -45,6 +45,7 @@ func NewMergeChecker(db MergeCheckerDB, prChecker git.PRChecker, hookRunner *ski
 
 // SetNotify attaches a notification callback invoked when the pr_updated status is set.
 // The callback receives the affected ticket and a human-readable message.
+// SetNotify must be called before Start; it is not safe to call concurrently with the health loop.
 func (m *MergeChecker) SetNotify(fn func(ctx context.Context, ticket *models.Ticket, msg string)) {
 	m.notify = fn
 }
