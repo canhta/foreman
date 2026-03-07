@@ -467,3 +467,188 @@ func TestSQLiteDB_CreateAndValidateAuthToken(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, valid)
 }
+
+// ---------------------------------------------------------------------------
+// BUG-C07: TryReserveFiles atomicity tests
+// ---------------------------------------------------------------------------
+
+// TestSQLiteDB_TryReserveFiles_NoConflict verifies that files with no existing
+// reservation are reserved and no conflicts are returned.
+func TestSQLiteDB_TryReserveFiles_NoConflict(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	require.NoError(t, db.CreateTicket(ctx, &models.Ticket{
+		ID: "t-1", ExternalID: "X-1", Title: "t", Description: "d",
+		Status: models.TicketStatusQueued, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}))
+
+	conflicts, err := db.TryReserveFiles(ctx, "t-1", []string{"a/b.go", "c/d.go"})
+	require.NoError(t, err)
+	assert.Empty(t, conflicts, "no conflicts expected for fresh reservation")
+
+	// Files should now be reserved for t-1.
+	reserved, err := db.GetReservedFiles(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "t-1", reserved["a/b.go"])
+	assert.Equal(t, "t-1", reserved["c/d.go"])
+}
+
+// TestSQLiteDB_TryReserveFiles_Conflict verifies that attempting to reserve a
+// file already held by another ticket returns a non-empty conflict list and
+// does NOT overwrite the existing reservation.
+func TestSQLiteDB_TryReserveFiles_Conflict(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	for _, id := range []string{"t-1", "t-2"} {
+		require.NoError(t, db.CreateTicket(ctx, &models.Ticket{
+			ID: id, ExternalID: id, Title: "t", Description: "d",
+			Status: models.TicketStatusQueued, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+		}))
+	}
+
+	// t-1 reserves "shared.go".
+	conflicts, err := db.TryReserveFiles(ctx, "t-1", []string{"shared.go"})
+	require.NoError(t, err)
+	require.Empty(t, conflicts)
+
+	// t-2 tries to reserve "shared.go" — should get a conflict.
+	conflicts, err = db.TryReserveFiles(ctx, "t-2", []string{"shared.go", "other.go"})
+	require.NoError(t, err)
+	require.Len(t, conflicts, 1, "expected exactly one conflict")
+	assert.Contains(t, conflicts[0], "shared.go")
+	assert.Contains(t, conflicts[0], "t-1")
+
+	// "other.go" must NOT have been reserved (the whole operation aborts on conflict).
+	reserved, err := db.GetReservedFiles(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "t-1", reserved["shared.go"], "shared.go still held by t-1")
+	_, otherReserved := reserved["other.go"]
+	assert.False(t, otherReserved, "other.go must not be reserved after a conflicting attempt")
+}
+
+// TestSQLiteDB_TryReserveFiles_Idempotent verifies that a ticket re-reserving
+// its own files (e.g. after a crash) is treated as a no-op without conflict.
+func TestSQLiteDB_TryReserveFiles_Idempotent(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	require.NoError(t, db.CreateTicket(ctx, &models.Ticket{
+		ID: "t-1", ExternalID: "X-1", Title: "t", Description: "d",
+		Status: models.TicketStatusQueued, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}))
+
+	// First reservation.
+	conflicts, err := db.TryReserveFiles(ctx, "t-1", []string{"foo.go"})
+	require.NoError(t, err)
+	require.Empty(t, conflicts)
+
+	// Same ticket re-reserves the same file — must be conflict-free.
+	conflicts, err = db.TryReserveFiles(ctx, "t-1", []string{"foo.go"})
+	require.NoError(t, err)
+	assert.Empty(t, conflicts, "same ticket re-reserving its own file should have no conflict")
+}
+
+// TestSQLiteDB_TryReserveFiles_ConcurrentAtomicity verifies that when two
+// goroutines race to reserve the same file, exactly one wins and the other
+// sees a conflict — no double-booking occurs (BUG-C07).
+func TestSQLiteDB_TryReserveFiles_ConcurrentAtomicity(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	for _, id := range []string{"t-A", "t-B"} {
+		require.NoError(t, db.CreateTicket(ctx, &models.Ticket{
+			ID: id, ExternalID: id, Title: "t", Description: "d",
+			Status: models.TicketStatusQueued, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+		}))
+	}
+
+	const sharedFile = "internal/core/main.go"
+
+	type result struct {
+		conflicts []string
+		err       error
+	}
+	chA := make(chan result, 1)
+	chB := make(chan result, 1)
+
+	// Launch both goroutines simultaneously.
+	start := make(chan struct{})
+	go func() {
+		<-start
+		c, e := db.TryReserveFiles(ctx, "t-A", []string{sharedFile})
+		chA <- result{c, e}
+	}()
+	go func() {
+		<-start
+		c, e := db.TryReserveFiles(ctx, "t-B", []string{sharedFile})
+		chB <- result{c, e}
+	}()
+	close(start)
+
+	resA := <-chA
+	resB := <-chB
+
+	require.NoError(t, resA.err)
+	require.NoError(t, resB.err)
+
+	// Exactly one should win (no conflict) and one should lose (conflict).
+	aWon := len(resA.conflicts) == 0
+	bWon := len(resB.conflicts) == 0
+	assert.True(t, aWon != bWon, "exactly one goroutine must win the reservation race, got aWon=%v bWon=%v", aWon, bWon)
+
+	// Verify only one ticket owns the file.
+	reserved, err := db.GetReservedFiles(ctx)
+	require.NoError(t, err)
+	owner, ok := reserved[sharedFile]
+	require.True(t, ok, "file must be reserved by the winner")
+	assert.True(t, owner == "t-A" || owner == "t-B")
+}
+
+// TestSQLiteDB_IncrementTaskLlmCalls_Concurrent verifies BUG-C08: concurrent
+// increments are serialized by the transaction and the final count is correct.
+func TestSQLiteDB_IncrementTaskLlmCalls_Concurrent(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	require.NoError(t, db.CreateTicket(ctx, &models.Ticket{
+		ID: "t-1", ExternalID: "X-1", Title: "t", Description: "d",
+		Status: models.TicketStatusQueued, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}))
+	require.NoError(t, db.CreateTasks(ctx, "t-1", []models.Task{
+		{ID: "task-c", TicketID: "t-1", Sequence: 1, Title: "Concurrent task", Description: "desc"},
+	}))
+
+	const workers = 5
+	counts := make(chan int, workers)
+	errs := make(chan error, workers)
+	start := make(chan struct{})
+	for i := 0; i < workers; i++ {
+		go func() {
+			<-start
+			count, err := db.IncrementTaskLlmCalls(ctx, "task-c")
+			counts <- count
+			errs <- err
+		}()
+	}
+	close(start)
+	for i := 0; i < workers; i++ {
+		require.NoError(t, <-errs)
+	}
+	close(counts)
+
+	// Collect returned counts — they should be a permutation of {1, 2, 3, 4, 5},
+	// meaning no two goroutines got the same count (no lost updates).
+	seen := make(map[int]bool)
+	for c := range counts {
+		assert.False(t, seen[c], "duplicate count %d returned — concurrent increment race detected", c)
+		seen[c] = true
+	}
+	assert.Len(t, seen, workers, "expected %d distinct count values", workers)
+}

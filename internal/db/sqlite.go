@@ -355,14 +355,28 @@ func (s *SQLiteDB) ReserveFiles(ctx context.Context, ticketID string, paths []st
 }
 
 func (s *SQLiteDB) TryReserveFiles(ctx context.Context, ticketID string, paths []string) ([]string, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
+	// Use a dedicated connection so we can issue BEGIN IMMEDIATE directly.
+	// BEGIN IMMEDIATE acquires a write lock before reading, preventing two
+	// concurrent workers from both seeing the same files as unreserved and
+	// then both inserting reservations (TOCTOU race).
+	conn, err := s.db.Conn(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("begin transaction: %w", err)
+		return nil, fmt.Errorf("acquire connection: %w", err)
 	}
-	defer func() { _ = tx.Rollback() }()
+	defer conn.Close()
 
-	// Read current reservations within the transaction.
-	rows, err := tx.QueryContext(ctx,
+	if _, beginErr := conn.ExecContext(ctx, `BEGIN IMMEDIATE`); beginErr != nil {
+		return nil, fmt.Errorf("begin immediate transaction: %w", beginErr)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_, _ = conn.ExecContext(context.Background(), `ROLLBACK`)
+		}
+	}()
+
+	// Read current reservations within the IMMEDIATE transaction.
+	rows, err := conn.QueryContext(ctx,
 		`SELECT file_path, ticket_id FROM file_reservations WHERE released_at IS NULL`)
 	if err != nil {
 		return nil, fmt.Errorf("query reservations: %w", err)
@@ -396,15 +410,16 @@ func (s *SQLiteDB) TryReserveFiles(ctx context.Context, ticketID string, paths [
 	// INSERT OR IGNORE handles the case where this ticket already holds the reservation
 	// (e.g. replanning after a crash that left old reservations unreleased).
 	for _, p := range paths {
-		if _, err := tx.ExecContext(ctx,
+		if _, err := conn.ExecContext(ctx,
 			`INSERT OR IGNORE INTO file_reservations (file_path, ticket_id, reserved_at) VALUES (?, ?, ?)`,
 			p, ticketID, time.Now()); err != nil {
 			return nil, fmt.Errorf("insert reservation for %q: %w", p, err)
 		}
 	}
-	if err := tx.Commit(); err != nil {
+	if _, err := conn.ExecContext(ctx, `COMMIT`); err != nil {
 		return nil, fmt.Errorf("commit reservations: %w", err)
 	}
+	committed = true
 	return nil, nil
 }
 
