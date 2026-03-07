@@ -71,6 +71,9 @@ func (m *mockDB) CreateTicket(_ context.Context, _ *models.Ticket) error { retur
 func (m *mockDB) UpdateTicketStatus(_ context.Context, _ string, _ models.TicketStatus) error {
 	return nil
 }
+func (m *mockDB) UpdateTicketStatusIfEquals(_ context.Context, _ string, _ models.TicketStatus, _ models.TicketStatus) (bool, error) {
+	return true, nil
+}
 func (m *mockDB) GetTicket(_ context.Context, _ string) (*models.Ticket, error) { return nil, nil }
 func (m *mockDB) GetTicketByExternalID(_ context.Context, _ string) (*models.Ticket, error) {
 	return nil, nil
@@ -117,7 +120,10 @@ func (m *mockDB) GetReservedFiles(_ context.Context) (map[string]string, error) 
 func (m *mockDB) TryReserveFiles(_ context.Context, _ string, _ []string) ([]string, error) {
 	return nil, nil
 }
-func (m *mockDB) GetTicketCost(_ context.Context, _ string) (float64, error)   { return 0, nil }
+func (m *mockDB) GetTicketCost(_ context.Context, _ string) (float64, error) { return 0, nil }
+func (m *mockDB) GetTicketCostByStage(_ context.Context, _ string) (map[string]float64, error) {
+	return map[string]float64{}, nil
+}
 func (m *mockDB) GetDailyCost(_ context.Context, _ string) (float64, error)    { return 0, nil }
 func (m *mockDB) GetMonthlyCost(_ context.Context, _ string) (float64, error)  { return 0, nil }
 func (m *mockDB) RecordDailyCost(_ context.Context, _ string, _ float64) error { return nil }

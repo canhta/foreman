@@ -76,6 +76,7 @@ type LlmCallRecord struct {
 	Role                string
 	Provider            string
 	Model               string
+	Stage               string
 	TicketID            string
 	TaskID              string
 	ErrorMessage        string

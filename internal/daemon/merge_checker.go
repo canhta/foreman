@@ -17,6 +17,7 @@ import (
 type MergeCheckerDB interface {
 	ListTickets(ctx context.Context, filter models.TicketFilter) ([]models.Ticket, error)
 	UpdateTicketStatus(ctx context.Context, id string, status models.TicketStatus) error
+	UpdateTicketStatusIfEquals(ctx context.Context, ticketID string, newStatus models.TicketStatus, requiredCurrentStatus models.TicketStatus) (bool, error)
 	SetTicketPRHeadSHA(ctx context.Context, ticketID, sha string) error
 	RecordEvent(ctx context.Context, e *models.EventRecord) error
 	GetTicketByExternalID(ctx context.Context, externalID string) (*models.Ticket, error)
@@ -233,9 +234,15 @@ func (m *MergeChecker) checkParentCompletion(ctx context.Context, parentExternal
 		}
 	}
 
-	// All children merged — close parent
-	if err := m.db.UpdateTicketStatus(ctx, parent.ID, models.TicketStatusDone); err != nil {
+	// All children merged — attempt to close parent using a conditional update
+	// to prevent concurrent goroutines from firing side effects twice (ARCH-F06).
+	updated, err := m.db.UpdateTicketStatusIfEquals(ctx, parent.ID, models.TicketStatusDone, models.TicketStatusDecomposed)
+	if err != nil {
 		m.log.Error().Err(err).Str("parent", parent.ID).Msg("failed to close parent ticket")
+		return
+	}
+	if !updated {
+		// Another goroutine already closed the parent; skip side effects.
 		return
 	}
 

@@ -278,6 +278,40 @@ func TestSQLiteDB_UpdateTicketStatus(t *testing.T) {
 	assert.Equal(t, models.TicketStatusImplementing, got.Status)
 }
 
+func TestSQLiteDB_UpdateTicketStatusIfEquals(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	require.NoError(t, db.CreateTicket(ctx, &models.Ticket{
+		ID: "t-cond", ExternalID: "X-cond", Title: "t", Description: "d",
+		Status: models.TicketStatusDecomposed, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}))
+
+	t.Run("updates when status matches", func(t *testing.T) {
+		updated, err := db.UpdateTicketStatusIfEquals(ctx, "t-cond", models.TicketStatusDone, models.TicketStatusDecomposed)
+		require.NoError(t, err)
+		assert.True(t, updated)
+
+		got, err := db.GetTicket(ctx, "t-cond")
+		require.NoError(t, err)
+		assert.Equal(t, models.TicketStatusDone, got.Status)
+	})
+
+	t.Run("returns false when status does not match", func(t *testing.T) {
+		// Status is now Done, so requiring Decomposed should fail
+		updated, err := db.UpdateTicketStatusIfEquals(ctx, "t-cond", models.TicketStatusDone, models.TicketStatusDecomposed)
+		require.NoError(t, err)
+		assert.False(t, updated)
+	})
+
+	t.Run("returns false when ticket does not exist", func(t *testing.T) {
+		updated, err := db.UpdateTicketStatusIfEquals(ctx, "nonexistent", models.TicketStatusDone, models.TicketStatusDecomposed)
+		require.NoError(t, err)
+		assert.False(t, updated)
+	})
+}
+
 func TestSQLiteDB_ListTickets_StatusFilter(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
@@ -547,6 +581,53 @@ func TestSQLiteDB_GetTicketCost(t *testing.T) {
 	cost, err = db.GetTicketCost(ctx, "t-1")
 	require.NoError(t, err)
 	assert.InDelta(t, 0.15, cost, 0.001, "cost should be sum of llm_calls")
+}
+
+func TestSQLiteDB_GetTicketCostByStage(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	require.NoError(t, db.CreateTicket(ctx, &models.Ticket{
+		ID: "t-stage", ExternalID: "X-stage", Title: "t", Description: "d",
+		Status: models.TicketStatusQueued, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}))
+
+	t.Run("empty returns empty map", func(t *testing.T) {
+		result, err := db.GetTicketCostByStage(ctx, "t-stage")
+		require.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.Empty(t, result)
+	})
+
+	// Insert calls in two stages.
+	require.NoError(t, db.RecordLlmCall(ctx, &models.LlmCallRecord{
+		ID: "cs-1", TicketID: "t-stage", Role: "planner", Provider: "anthropic",
+		Model: "claude-3", Attempt: 1, CostUSD: 0.10, Stage: "planning", Status: "success", CreatedAt: time.Now(),
+	}))
+	require.NoError(t, db.RecordLlmCall(ctx, &models.LlmCallRecord{
+		ID: "cs-2", TicketID: "t-stage", Role: "implementer", Provider: "anthropic",
+		Model: "claude-3", Attempt: 1, CostUSD: 0.20, Stage: "implement", Status: "success", CreatedAt: time.Now(),
+	}))
+	require.NoError(t, db.RecordLlmCall(ctx, &models.LlmCallRecord{
+		ID: "cs-3", TicketID: "t-stage", Role: "implementer", Provider: "anthropic",
+		Model: "claude-3", Attempt: 2, CostUSD: 0.30, Stage: "implement", Status: "success", CreatedAt: time.Now(),
+	}))
+
+	t.Run("groups costs by stage", func(t *testing.T) {
+		result, err := db.GetTicketCostByStage(ctx, "t-stage")
+		require.NoError(t, err)
+		require.Len(t, result, 2)
+		assert.InDelta(t, 0.10, result["planning"], 0.001)
+		assert.InDelta(t, 0.50, result["implement"], 0.001)
+	})
+
+	t.Run("unknown ticket returns empty map", func(t *testing.T) {
+		result, err := db.GetTicketCostByStage(ctx, "nonexistent")
+		require.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.Empty(t, result)
+	})
 }
 
 func TestSQLiteDB_GetDailyCost(t *testing.T) {

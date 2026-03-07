@@ -59,6 +59,9 @@ func (m *orchMockDB) UpdateTicketStatus(_ context.Context, id string, status mod
 	}{id, status})
 	return nil
 }
+func (m *orchMockDB) UpdateTicketStatusIfEquals(_ context.Context, _ string, _ models.TicketStatus, _ models.TicketStatus) (bool, error) {
+	return true, nil
+}
 func (m *orchMockDB) GetTicket(_ context.Context, _ string) (*models.Ticket, error) {
 	return nil, nil
 }
@@ -147,6 +150,9 @@ func (m *orchMockDB) TryReserveFiles(_ context.Context, ticketID string, paths [
 	return nil, nil
 }
 func (m *orchMockDB) GetTicketCost(_ context.Context, _ string) (float64, error) { return 0, nil }
+func (m *orchMockDB) GetTicketCostByStage(_ context.Context, _ string) (map[string]float64, error) {
+	return map[string]float64{}, nil
+}
 func (m *orchMockDB) GetDailyCost(_ context.Context, _ string) (float64, error) {
 	return m.dailyCost, nil
 }

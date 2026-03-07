@@ -82,6 +82,7 @@ CREATE TABLE IF NOT EXISTS llm_calls (
     cache_read_input_tokens INTEGER NOT NULL DEFAULT 0,
     cache_creation_input_tokens INTEGER NOT NULL DEFAULT 0,
     prompt_version TEXT NOT NULL DEFAULT '',
+    stage TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 

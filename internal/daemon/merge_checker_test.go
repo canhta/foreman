@@ -2,11 +2,14 @@ package daemon
 
 import (
 	"context"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/canhta/foreman/internal/git"
 	"github.com/canhta/foreman/internal/models"
+	"github.com/canhta/foreman/internal/tracker"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 )
@@ -50,6 +53,16 @@ func (m *mockMergeDB) UpdateTicketStatus(_ context.Context, id string, status mo
 		t.Status = status
 	}
 	return nil
+}
+
+func (m *mockMergeDB) UpdateTicketStatusIfEquals(_ context.Context, id string, newStatus models.TicketStatus, requiredCurrentStatus models.TicketStatus) (bool, error) {
+	t, ok := m.tickets[id]
+	if !ok || t.Status != requiredCurrentStatus {
+		return false, nil
+	}
+	t.Status = newStatus
+	m.statusUpdates[id] = newStatus
+	return true, nil
 }
 
 func (m *mockMergeDB) SetTicketPRHeadSHA(_ context.Context, ticketID, sha string) error {
@@ -261,6 +274,74 @@ func TestMergeChecker_NoNotificationWhenNoSHAChange(t *testing.T) {
 
 	assert.False(t, notifyCalled, "notify should not be called when SHA is unchanged")
 }
+
+func TestMergeChecker_ParentCompletion_ConcurrentIdempotency(t *testing.T) {
+	// Simulate two goroutines calling checkParentCompletion concurrently for the same
+	// parent. Only one should proceed with tracker side effects (ARCH-F06).
+	mdb := newMockMergeDB()
+	mdb.tickets["parent"] = &models.Ticket{
+		ID: "parent", ExternalID: "EXT-P", Status: models.TicketStatusDecomposed,
+	}
+	mdb.tickets["child1"] = &models.Ticket{
+		ID: "child1", ExternalID: "EXT-C1", Status: models.TicketStatusMerged,
+		ParentTicketID: "EXT-P",
+	}
+	mdb.tickets["child2"] = &models.Ticket{
+		ID: "child2", ExternalID: "EXT-C2", Status: models.TicketStatusMerged,
+		ParentTicketID: "EXT-P",
+	}
+
+	// Track how many times the tracker UpdateStatus is called.
+	var trackerCallCount int64
+	mockTracker := &countingTracker{callCount: &trackerCallCount}
+
+	mc := NewMergeChecker(mdb, nil, nil, mockTracker, zerolog.Nop())
+
+	// Simulate two concurrent calls to checkParentCompletion.
+	var wg sync.WaitGroup
+	wg.Add(2)
+	for i := 0; i < 2; i++ {
+		go func() {
+			defer wg.Done()
+			mc.checkParentCompletion(context.Background(), "EXT-P")
+		}()
+	}
+	wg.Wait()
+
+	// Parent should be Done.
+	assert.Equal(t, models.TicketStatusDone, mdb.tickets["parent"].Status)
+	// Tracker UpdateStatus must be called exactly once, not twice.
+	assert.Equal(t, int64(1), atomic.LoadInt64(&trackerCallCount),
+		"tracker should be called exactly once even with concurrent completions")
+}
+
+// countingTracker is a minimal tracker.IssueTracker stub that counts UpdateStatus calls.
+type countingTracker struct {
+	callCount *int64
+}
+
+func (c *countingTracker) UpdateStatus(_ context.Context, _ string, _ string) error {
+	atomic.AddInt64(c.callCount, 1)
+	return nil
+}
+
+func (c *countingTracker) CreateTicket(_ context.Context, _ tracker.CreateTicketRequest) (*tracker.Ticket, error) {
+	return nil, nil
+}
+func (c *countingTracker) FetchReadyTickets(_ context.Context) ([]tracker.Ticket, error) {
+	return nil, nil
+}
+func (c *countingTracker) GetTicket(_ context.Context, _ string) (*tracker.Ticket, error) {
+	return nil, nil
+}
+func (c *countingTracker) AddComment(_ context.Context, _, _ string) error  { return nil }
+func (c *countingTracker) AttachPR(_ context.Context, _, _ string) error    { return nil }
+func (c *countingTracker) AddLabel(_ context.Context, _, _ string) error    { return nil }
+func (c *countingTracker) RemoveLabel(_ context.Context, _, _ string) error { return nil }
+func (c *countingTracker) HasLabel(_ context.Context, _, _ string) (bool, error) {
+	return false, nil
+}
+func (c *countingTracker) ProviderName() string { return "counting" }
 
 func TestMergeChecker_ParentCompletion(t *testing.T) {
 	db := newMockMergeDB()

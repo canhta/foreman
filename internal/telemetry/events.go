@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/canhta/foreman/internal/models"
@@ -19,9 +20,10 @@ type EventStore interface {
 
 // EventEmitter writes events to the database and fans them out to WebSocket subscribers.
 type EventEmitter struct {
-	store       EventStore
-	subscribers map[chan *models.EventRecord]struct{}
-	mu          sync.RWMutex
+	store        EventStore
+	subscribers  map[chan *models.EventRecord]struct{}
+	mu           sync.RWMutex
+	droppedCount int64 // accessed atomically (ARCH-O03)
 }
 
 // NewEventEmitter creates a new EventEmitter backed by the given store.
@@ -37,6 +39,12 @@ func newID() string {
 	b := make([]byte, 16)
 	_, _ = rand.Read(b)
 	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+}
+
+// DroppedCount returns the total number of events dropped due to slow subscribers
+// since this emitter was created (ARCH-O03).
+func (e *EventEmitter) DroppedCount() int64 {
+	return atomic.LoadInt64(&e.droppedCount)
 }
 
 // Emit records an event in the store and broadcasts it to all subscribers.
@@ -66,11 +74,35 @@ func (e *EventEmitter) Emit(ctx context.Context, ticketID, taskID, eventType, se
 
 	e.mu.RLock()
 	defer e.mu.RUnlock()
+
+	var dropped bool
 	for ch := range e.subscribers {
 		select {
 		case ch <- evt:
 		default:
 			// Drop if subscriber is slow — backpressure is caller's responsibility.
+			dropped = true
+		}
+	}
+
+	if dropped {
+		total := atomic.AddInt64(&e.droppedCount, 1)
+		// Emit a meta-event to all subscribers (best-effort, non-blocking) so the
+		// dashboard can detect event loss (ARCH-O03).
+		metaEvt := &models.EventRecord{
+			ID:        newID(),
+			EventType: "events_dropped",
+			Severity:  "warning",
+			Message:   fmt.Sprintf("event dropped: slow subscriber (total drops: %d)", total),
+			Details:   fmt.Sprintf(`{"count":%d}`, total),
+			CreatedAt: time.Now(),
+		}
+		for ch := range e.subscribers {
+			select {
+			case ch <- metaEvt:
+			default:
+				// Best-effort — do not recurse.
+			}
 		}
 	}
 }

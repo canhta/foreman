@@ -56,6 +56,11 @@ type Database interface {
 	// Tickets
 	CreateTicket(ctx context.Context, t *models.Ticket) error
 	UpdateTicketStatus(ctx context.Context, id string, status models.TicketStatus) error
+	// UpdateTicketStatusIfEquals atomically updates the ticket status to newStatus only
+	// if its current status equals requiredCurrentStatus. Returns (true, nil) if exactly
+	// one row was updated, (false, nil) if the status did not match (another goroutine
+	// already changed it), or (false, err) on a database error.
+	UpdateTicketStatusIfEquals(ctx context.Context, ticketID string, newStatus models.TicketStatus, requiredCurrentStatus models.TicketStatus) (updated bool, err error)
 	SetTicketPRHeadSHA(ctx context.Context, ticketID, sha string) error
 	GetTicket(ctx context.Context, id string) (*models.Ticket, error)
 	GetTicketByExternalID(ctx context.Context, externalID string) (*models.Ticket, error)
@@ -95,6 +100,11 @@ type Database interface {
 
 	// Cost
 	GetTicketCost(ctx context.Context, ticketID string) (float64, error)
+	// GetTicketCostByStage returns a map of pipeline stage name → total cost_usd
+	// for all LLM calls recorded against the given ticket. Stages with no calls
+	// are absent from the map. An empty map (not nil) is returned when the ticket
+	// has no recorded calls.
+	GetTicketCostByStage(ctx context.Context, ticketID string) (map[string]float64, error)
 	GetDailyCost(ctx context.Context, date string) (float64, error)
 	GetMonthlyCost(ctx context.Context, yearMonth string) (float64, error)
 	RecordDailyCost(ctx context.Context, date string, amount float64) error

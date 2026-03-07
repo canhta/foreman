@@ -65,6 +65,11 @@ func runPostgresSchema(db *sqlx.DB) error {
 		)`); err != nil {
 		return fmt.Errorf("migrate dag_states: %w", err)
 	}
+	// Add stage column to llm_calls for cost-per-stage breakdown (ARCH-O04).
+	if _, err := db.ExecContext(ctx,
+		`ALTER TABLE llm_calls ADD COLUMN IF NOT EXISTS stage TEXT NOT NULL DEFAULT ''`); err != nil {
+		return fmt.Errorf("migrate llm_calls.stage: %w", err)
+	}
 	return nil
 }
 
@@ -93,6 +98,21 @@ func (p *PostgresDB) UpdateTicketStatus(ctx context.Context, id string, status m
 		return fmt.Errorf("update ticket status: %w", err)
 	}
 	return nil
+}
+
+func (p *PostgresDB) UpdateTicketStatusIfEquals(ctx context.Context, ticketID string, newStatus models.TicketStatus, requiredCurrentStatus models.TicketStatus) (bool, error) {
+	result, err := p.db.ExecContext(ctx,
+		`UPDATE tickets SET status = $1, updated_at = $2 WHERE id = $3 AND status = $4`,
+		string(newStatus), time.Now(), ticketID, string(requiredCurrentStatus),
+	)
+	if err != nil {
+		return false, fmt.Errorf("update ticket status if equals: %w", err)
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("rows affected: %w", err)
+	}
+	return n == 1, nil
 }
 
 func (p *PostgresDB) SetTicketPRHeadSHA(ctx context.Context, ticketID, sha string) error {
@@ -319,17 +339,42 @@ func (p *PostgresDB) RecordLlmCall(ctx context.Context, call *models.LlmCallReco
 	_, err := p.db.ExecContext(ctx,
 		`INSERT INTO llm_calls (id, ticket_id, task_id, role, provider, model, attempt,
 		 tokens_input, tokens_output, cost_usd, duration_ms, prompt_hash, response_summary, status, error_message,
-		 cache_read_input_tokens, cache_creation_input_tokens, prompt_version, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
+		 cache_read_input_tokens, cache_creation_input_tokens, prompt_version, stage, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
 		call.ID, call.TicketID, taskID, call.Role, call.Provider, call.Model, call.Attempt,
 		call.TokensInput, call.TokensOutput, call.CostUSD, call.DurationMs,
 		call.PromptHash, call.ResponseSummary, call.Status, call.ErrorMessage,
-		call.CacheReadTokens, call.CacheCreationTokens, call.PromptVersion, call.CreatedAt,
+		call.CacheReadTokens, call.CacheCreationTokens, call.PromptVersion, call.Stage, call.CreatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("record llm call: %w", err)
 	}
 	return nil
+}
+
+// GetTicketCostByStage returns a map of stage name → total cost_usd for a ticket.
+func (p *PostgresDB) GetTicketCostByStage(ctx context.Context, ticketID string) (map[string]float64, error) {
+	rows, err := p.db.QueryContext(ctx,
+		`SELECT stage, COALESCE(SUM(cost_usd), 0) FROM llm_calls WHERE ticket_id = $1 GROUP BY stage`,
+		ticketID)
+	if err != nil {
+		return nil, fmt.Errorf("get ticket cost by stage: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(map[string]float64)
+	for rows.Next() {
+		var stage string
+		var cost float64
+		if err := rows.Scan(&stage, &cost); err != nil {
+			return nil, fmt.Errorf("scan cost by stage row: %w", err)
+		}
+		result[stage] = cost
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate cost by stage rows: %w", err)
+	}
+	return result, nil
 }
 
 func (p *PostgresDB) StoreCallDetails(ctx context.Context, callID, fullPrompt, fullResponse string) error {
