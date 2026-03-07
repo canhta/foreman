@@ -92,6 +92,12 @@ func TestDAGExecutor_ParallelIndependent(t *testing.T) {
 	assert.Equal(t, int32(3), atomic.LoadInt32(&runner.maxConcur), "all 3 independent tasks should run concurrently")
 }
 
+// TestDAGExecutor_DependencyChain verifies that a linear A→B→C chain executes
+// in order and all tasks complete successfully. This also serves as an
+// integration confirmation that the DAGExecutor inDegree logic works correctly
+// for the recovery scenario described in ARCH-F03: after TasksForDAGRecovery
+// strips completed deps, the remaining chain (e.g. B→C with no external deps)
+// must complete without deadlock.
 func TestDAGExecutor_DependencyChain(t *testing.T) {
 	runner := newMockRunner(10*time.Millisecond, nil)
 	exec := NewDAGExecutor(runner, 3, 5*time.Second)

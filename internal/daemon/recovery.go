@@ -94,9 +94,22 @@ func TasksForDAGRecovery(tasks []DAGTask, dagState *db.DAGState) []DAGTask {
 
 	pending := make([]DAGTask, 0, len(tasks))
 	for _, t := range tasks {
-		if _, done := completed[t.ID]; !done {
-			pending = append(pending, t)
+		if _, done := completed[t.ID]; done {
+			continue
 		}
+		// Strip completed dependencies so DAGExecutor doesn't deadlock: if a
+		// dependency was already completed before this recovery run, its ID won't
+		// be in the task set, so inDegree would never reach zero for the
+		// dependent task. Removing already-satisfied deps fixes the deadlock
+		// (ARCH-F03).
+		var filtered []string
+		for _, dep := range t.DependsOn {
+			if _, depDone := completed[dep]; !depDone {
+				filtered = append(filtered, dep)
+			}
+		}
+		t.DependsOn = filtered
+		pending = append(pending, t)
 	}
 	return pending
 }

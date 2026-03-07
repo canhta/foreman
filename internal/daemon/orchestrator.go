@@ -462,7 +462,8 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 	// Load prior DAG state so crash recovery can skip already-completed tasks (ARCH-F03).
 	dagState, dagStateErr := o.db.GetDAGState(ctx, ticket.ID)
 	if dagStateErr != nil {
-		log.Warn().Err(dagStateErr).Str("ticket_id", ticket.ID).Msg("failed to load DAG state; starting from scratch")
+		log.Warn().Err(dagStateErr).Str("ticket_id", ticket.ID).Msg("failed to load DAG state, running all tasks")
+		dagState = nil // explicit: don't use partial state on error
 	}
 	tasksToRun := TasksForDAGRecovery(dagTasks, dagState)
 
@@ -503,6 +504,14 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 
 	isPartial := failedCount > 0 && doneCount > 0
 
+	// DAG execution reached a terminal state: remove the persisted DAG state to
+	// prevent unbounded table growth and avoid stale state being replayed on next
+	// run. Called here (before early returns) so all exit paths clean up (ARCH-F03).
+	// Failure is non-fatal — warn and continue.
+	if delErr := o.db.DeleteDAGState(ctx, ticket.ID); delErr != nil {
+		log.Warn().Err(delErr).Str("ticket_id", ticket.ID).Msg("failed to delete DAG state after completion; row will persist until next run")
+	}
+
 	if doneCount == 0 {
 		returnErr = fmt.Errorf("all %d tasks failed", totalCount)
 		return returnErr
@@ -511,12 +520,6 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 	if failedCount > 0 && !o.config.EnablePartialPR {
 		returnErr = fmt.Errorf("%d of %d tasks failed and partial PRs are disabled", failedCount, totalCount)
 		return returnErr
-	}
-
-	// DAG execution reached a terminal state (success or partial): remove the persisted
-	// DAG state to prevent unbounded table growth. Failure is non-fatal.
-	if delErr := o.db.DeleteDAGState(ctx, ticket.ID); delErr != nil {
-		log.Warn().Err(delErr).Str("ticket_id", ticket.ID).Msg("failed to delete DAG state after completion; row will persist until next run")
 	}
 
 	if failedCount > 0 {

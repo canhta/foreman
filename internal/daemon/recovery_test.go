@@ -6,6 +6,7 @@ import (
 	"github.com/canhta/foreman/internal/db"
 	"github.com/canhta/foreman/internal/models"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestClassifyRecovery_PlanningPhase(t *testing.T) {
@@ -187,4 +188,44 @@ func TestRecovery_NilDAGState_ReturnsAllTasks(t *testing.T) {
 
 	pending := TasksForDAGRecovery(allTasks, nil)
 	assert.Len(t, pending, 2, "nil DAGState must return all tasks unchanged")
+}
+
+// TestRecovery_StripsCompletedDepsFromDependsOn is the regression test for the
+// ARCH-F03 deadlock: when a DAG chain A→B→C recovers with A already completed,
+// TasksForDAGRecovery must strip A from B.DependsOn so DAGExecutor's inDegree
+// for B starts at 0 and B is seeded into readyChan immediately. Without this
+// fix, inDegree[B]==1 and nothing ever decrements it → deadlock.
+func TestRecovery_StripsCompletedDepsFromDependsOn(t *testing.T) {
+	// Chain: A → B → C.  A is already completed.
+	dagState := &db.DAGState{
+		TicketID:       "ticket-chain",
+		CompletedTasks: []string{"task-A"},
+	}
+
+	allTasks := []DAGTask{
+		{ID: "task-A"},
+		{ID: "task-B", DependsOn: []string{"task-A"}},
+		{ID: "task-C", DependsOn: []string{"task-B"}},
+	}
+
+	pending := TasksForDAGRecovery(allTasks, dagState)
+
+	// A must be filtered out; B and C returned.
+	require.Len(t, pending, 2, "completed task-A must be excluded")
+
+	byID := make(map[string]DAGTask, len(pending))
+	for _, t := range pending {
+		byID[t.ID] = t
+	}
+
+	b, ok := byID["task-B"]
+	require.True(t, ok, "task-B must be in pending set")
+	assert.Empty(t, b.DependsOn,
+		"task-B.DependsOn must be empty after stripping completed task-A; "+
+			"a non-empty DependsOn would cause DAGExecutor inDegree to never reach 0 (deadlock)")
+
+	c, ok := byID["task-C"]
+	require.True(t, ok, "task-C must be in pending set")
+	assert.Equal(t, []string{"task-B"}, c.DependsOn,
+		"task-C.DependsOn must still contain task-B (not yet completed)")
 }
