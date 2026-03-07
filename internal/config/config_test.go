@@ -156,6 +156,7 @@ func TestValidateConfig_InvalidDashboardPort(t *testing.T) {
 			cfg, _ := LoadDefaults()
 			cfg.LLM.Anthropic.APIKey = "sk-test"
 			cfg.Dashboard.Enabled = true
+			cfg.Dashboard.AuthToken = "test-token"
 			cfg.Dashboard.Port = tt.port
 
 			errs := Validate(cfg)
