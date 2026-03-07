@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -14,11 +13,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/canhta/foreman/internal/agent"
 	"github.com/canhta/foreman/internal/db"
 	"github.com/canhta/foreman/internal/git"
 	"github.com/canhta/foreman/internal/models"
-	"github.com/canhta/foreman/internal/skills"
 	"github.com/canhta/foreman/internal/telemetry"
 	"github.com/canhta/foreman/internal/tracker"
 )
@@ -825,110 +822,4 @@ func TestBuildTaskSummaries_RecoveredTasksShowDone(t *testing.T) {
 		"recovered task must show as done, not pending")
 	assert.Equal(t, "pending", byTitle["Write tests"],
 		"task not in results must show as pending")
-}
-
-// ---------------------------------------------------------------------------
-// Mock: capturing EventEmitter for OnProgress wiring tests
-// ---------------------------------------------------------------------------
-
-// capturingEventEmitter records all Emit calls for test assertions.
-type capturingEventEmitter struct {
-	mu     sync.Mutex
-	events []capturedEvent
-}
-
-type capturedEvent struct {
-	ticketID  string
-	taskID    string
-	eventType string
-	severity  string
-	message   string
-}
-
-func (c *capturingEventEmitter) Emit(_ context.Context, ticketID, taskID, eventType, severity, message string, _ map[string]string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.events = append(c.events, capturedEvent{
-		ticketID:  ticketID,
-		taskID:    taskID,
-		eventType: eventType,
-		severity:  severity,
-		message:   message,
-	})
-}
-
-func (c *capturingEventEmitter) eventTypes() []string {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	types := make([]string, len(c.events))
-	for i, e := range c.events {
-		types[i] = e.eventType
-	}
-	return types
-}
-
-// ---------------------------------------------------------------------------
-// TestOnProgressWiresAgentEventsToEmitter verifies that when the builtin runner
-// fires agent progress events (turn_start, tool_start, tool_end, turn_end),
-// the OnProgress closure built by skills.Engine routes them to the EventEmitter
-// wired through SkillContext — which is exactly what the orchestrator wires via
-// runSkillHook → SkillContext.EventEmitter = o.emitter.
-// ---------------------------------------------------------------------------
-
-func TestOnProgressWiresAgentEventsToEmitter(t *testing.T) {
-	ctx := context.Background()
-	emitter := &capturingEventEmitter{}
-
-	// Mock agent runner that fires all four event types via OnProgress.
-	mockRunner := &agent.MockRunner{
-		RunFunc: func(_ context.Context, req agent.AgentRequest) (agent.AgentResult, error) {
-			require.NotNil(t, req.OnProgress, "OnProgress must be set by the engine")
-			req.OnProgress(agent.AgentEvent{Type: agent.AgentEventTurnStart, Turn: 1})
-			req.OnProgress(agent.AgentEvent{Type: agent.AgentEventToolStart, Turn: 1, ToolName: "bash"})
-			req.OnProgress(agent.AgentEvent{Type: agent.AgentEventToolEnd, Turn: 1, ToolName: "bash"})
-			req.OnProgress(agent.AgentEvent{Type: agent.AgentEventTurnEnd, Turn: 1, TokensIn: 100, TokensOut: 50})
-			return agent.AgentResult{Output: "done"}, nil
-		},
-	}
-
-	// Build a skills.Engine with the mock runner.
-	eng := skills.NewEngine(nil, nil, t.TempDir(), "main")
-	eng.SetAgentRunner(mockRunner)
-
-	// Build a SkillContext with an emitter and pipeline context, as the orchestrator
-	// does in runSkillHook.
-	sCtx := skills.NewSkillContext()
-	sCtx.EventEmitter = emitter
-	sCtx.PipelineCtx = &telemetry.PipelineContext{
-		TicketID: "ticket-42",
-		TaskID:   "task-7",
-		Stage:    "post_pr",
-	}
-
-	skill := &skills.Skill{
-		ID: "test-skill",
-		Steps: []skills.SkillStep{
-			{
-				ID:      "agent-step",
-				Type:    "agentsdk",
-				Content: "do something",
-			},
-		},
-	}
-
-	err := eng.Execute(ctx, skill, sCtx)
-	require.NoError(t, err)
-
-	// Verify all four event types were emitted to the emitter.
-	types := emitter.eventTypes()
-	assert.Contains(t, types, "agent_turn_start", "expected agent_turn_start event")
-	assert.Contains(t, types, "agent_tool_start", "expected agent_tool_start event")
-	assert.Contains(t, types, "agent_tool_end", "expected agent_tool_end event")
-	assert.Contains(t, types, "agent_turn_end", "expected agent_turn_end event")
-
-	// Verify ticket/task IDs are propagated correctly.
-	for _, ev := range emitter.events {
-		assert.Equal(t, "ticket-42", ev.ticketID, "expected ticket ID on emitted event")
-		assert.Equal(t, "task-7", ev.taskID, "expected task ID on emitted event")
-	}
 }

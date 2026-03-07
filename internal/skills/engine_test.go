@@ -12,6 +12,7 @@ import (
 	"github.com/canhta/foreman/internal/git"
 	"github.com/canhta/foreman/internal/models"
 	"github.com/canhta/foreman/internal/runner"
+	"github.com/canhta/foreman/internal/telemetry"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -447,4 +448,76 @@ func TestEngine_OutputFormat_Checklist(t *testing.T) {
 	result, err := e.executeStep(context.Background(), step, NewSkillContext())
 	require.NoError(t, err)
 	assert.Equal(t, 1, result.ExitCode, "expected 1 failed checklist item")
+}
+
+// ---------------------------------------------------------------------------
+// TestOnProgressWiresAgentEventsToEmitter verifies that when the builtin runner
+// fires agent progress events (turn_start, tool_start, tool_end, turn_end),
+// the OnProgress closure built by Engine routes them to the EventEmitter
+// wired through SkillContext — which is exactly what the orchestrator wires via
+// runSkillHook → SkillContext.EventEmitter = o.emitter.
+// ---------------------------------------------------------------------------
+
+func TestOnProgressWiresAgentEventsToEmitter(t *testing.T) {
+	ctx := context.Background()
+	emitter := &mockSkillEventEmitter{}
+
+	// Mock agent runner that fires all four event types via OnProgress.
+	mockRunner := &agent.MockRunner{
+		RunFunc: func(_ context.Context, req agent.AgentRequest) (agent.AgentResult, error) {
+			require.NotNil(t, req.OnProgress, "OnProgress must be set by the engine")
+			req.OnProgress(agent.AgentEvent{Type: agent.AgentEventTurnStart, Turn: 1})
+			req.OnProgress(agent.AgentEvent{Type: agent.AgentEventToolStart, Turn: 1, ToolName: "bash"})
+			req.OnProgress(agent.AgentEvent{Type: agent.AgentEventToolEnd, Turn: 1, ToolName: "bash"})
+			req.OnProgress(agent.AgentEvent{Type: agent.AgentEventTurnEnd, Turn: 1, TokensIn: 100, TokensOut: 50})
+			return agent.AgentResult{Output: "done"}, nil
+		},
+	}
+
+	// Build an Engine with the mock runner.
+	eng := NewEngine(nil, nil, t.TempDir(), "main")
+	eng.SetAgentRunner(mockRunner)
+
+	// Build a SkillContext with an emitter and pipeline context, as the orchestrator
+	// does in runSkillHook.
+	sCtx := NewSkillContext()
+	sCtx.EventEmitter = emitter
+	sCtx.PipelineCtx = &telemetry.PipelineContext{
+		TicketID: "ticket-42",
+		TaskID:   "task-7",
+		Stage:    "post_pr",
+	}
+
+	skill := &Skill{
+		ID: "test-skill",
+		Steps: []SkillStep{
+			{
+				ID:      "agent-step",
+				Type:    "agentsdk",
+				Content: "do something",
+			},
+		},
+	}
+
+	err := eng.Execute(ctx, skill, sCtx)
+	require.NoError(t, err)
+
+	// Verify all four event types were emitted to the emitter.
+	eventTypes := make([]string, len(emitter.emitted))
+	for i, e := range emitter.emitted {
+		eventTypes[i] = e.eventType
+	}
+	assert.Contains(t, eventTypes, "agent_turn_start", "expected agent_turn_start event")
+	assert.Contains(t, eventTypes, "agent_tool_start", "expected agent_tool_start event")
+	assert.Contains(t, eventTypes, "agent_tool_end", "expected agent_tool_end event")
+	assert.Contains(t, eventTypes, "agent_turn_end", "expected agent_turn_end event")
+
+	// Verify ticket/task IDs are propagated correctly.
+	for _, ev := range emitter.emitted {
+		if ev.eventType == "agent_turn_start" || ev.eventType == "agent_tool_start" ||
+			ev.eventType == "agent_tool_end" || ev.eventType == "agent_turn_end" {
+			assert.Equal(t, "ticket-42", ev.ticketID, "expected ticket ID on emitted event")
+			assert.Equal(t, "task-7", ev.taskID, "expected task ID on emitted event")
+		}
+	}
 }
