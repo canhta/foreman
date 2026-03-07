@@ -28,6 +28,8 @@ func (e *EscalationError) Error() string {
 }
 
 // TaskRunnerConfig holds configuration for the pipeline task runner.
+//
+//nolint:govet // fieldalignment: struct field order prioritises readability over padding
 type TaskRunnerConfig struct {
 	Cache                    *appcontext.ContextCache
 	Models                   models.ModelsConfig
@@ -51,6 +53,10 @@ type TaskRunnerConfig struct {
 	// check runs. After every N completed tasks (where N = IntermediateReviewInterval),
 	// a lightweight LLM consistency check is triggered. 0 disables the check.
 	IntermediateReviewInterval int
+	// PromptVersions maps prompt template filenames (e.g. "planner.md.j2") to
+	// their SHA256 hashes computed at startup (REQ-OBS-001). Used to populate
+	// LlmRequest.PromptVersion so each call is traceable to a specific template version.
+	PromptVersions map[string]string
 }
 
 // ConsistencyReviewDB is the subset of db.Database needed by the intermediate
@@ -165,12 +171,13 @@ func (r *PipelineTaskRunner) RunTask(ctx context.Context, task *models.Task) err
 			contextFilePaths = append(contextFilePaths, p)
 		}
 		result, err := r.implementer.Execute(ctx, ImplementerInput{
-			Task:         task,
-			ContextFiles: contextFiles,
-			Model:        r.config.Models.Implementer,
-			Feedback:     feedback.Render(),
-			MaxTokens:    4096,
-			Attempt:      attempt,
+			Task:          task,
+			ContextFiles:  contextFiles,
+			Model:         r.config.Models.Implementer,
+			Feedback:      feedback.Render(),
+			PromptVersion: r.promptVersion("implementer"),
+			MaxTokens:     4096,
+			Attempt:       attempt,
 		})
 		if err != nil {
 			return fmt.Errorf("implementer (attempt %d): %w", attempt, err)
@@ -308,6 +315,7 @@ func (r *PipelineTaskRunner) runSpecReview(
 		Diff:               diff,
 		TestOutput:         testOutput,
 		AcceptanceCriteria: task.AcceptanceCriteria,
+		PromptVersion:      r.promptVersion("spec_reviewer"),
 	})
 	if err != nil {
 		return fmt.Errorf("spec review: %w", err)
@@ -333,6 +341,7 @@ func (r *PipelineTaskRunner) runQualityReview(
 	result, err := r.qualityReviewer.Review(ctx, QualityReviewInput{
 		Diff:             diff,
 		CodebasePatterns: r.config.CodebasePatterns,
+		PromptVersion:    r.promptVersion("quality_reviewer"),
 	})
 	if err != nil {
 		return fmt.Errorf("quality review: %w", err)
@@ -603,4 +612,13 @@ func (r *PipelineTaskRunner) writeContextFeedback(ctx context.Context, task *mod
 	if err := r.db.WriteContextFeedback(ctx, row); err != nil {
 		log.Warn().Err(err).Str("task_id", task.ID).Msg("context_feedback: failed to write feedback row")
 	}
+}
+
+// promptVersion looks up the SHA256 hash for a named template (e.g. "implementer")
+// from the PromptVersions map. Returns empty string if not found (REQ-OBS-001).
+func (r *PipelineTaskRunner) promptVersion(templateName string) string {
+	if r.config.PromptVersions == nil {
+		return ""
+	}
+	return r.config.PromptVersions[templateName+".md.j2"]
 }

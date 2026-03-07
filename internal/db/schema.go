@@ -81,6 +81,7 @@ CREATE TABLE IF NOT EXISTS llm_calls (
     error_message TEXT,
     cache_read_input_tokens INTEGER NOT NULL DEFAULT 0,
     cache_creation_input_tokens INTEGER NOT NULL DEFAULT 0,
+    prompt_version TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -184,6 +185,13 @@ CREATE TABLE IF NOT EXISTS context_feedback (
 );
 
 CREATE INDEX IF NOT EXISTS idx_context_feedback_created ON context_feedback(created_at);
+
+CREATE TABLE IF NOT EXISTS prompt_snapshots (
+    id TEXT PRIMARY KEY,
+    template_name TEXT NOT NULL UNIQUE,
+    sha256 TEXT NOT NULL,
+    recorded_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 
 CREATE INDEX IF NOT EXISTS idx_embeddings_repo_sha
     ON embeddings(repo_path, head_sha);

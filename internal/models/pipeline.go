@@ -90,6 +90,7 @@ type LlmRequest struct {
 	Model             string           `json:"model"`
 	SystemPrompt      string           `json:"system_prompt"`
 	UserPrompt        string           `json:"user_prompt"`
+	PromptVersion     string           `json:"prompt_version,omitempty"` // SHA256 of the prompt template used
 	StopSequences     []string         `json:"stop_sequences,omitempty"`
 	Messages          []Message        `json:"messages,omitempty"`
 	Tools             []ToolDef        `json:"tools,omitempty"`

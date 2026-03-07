@@ -40,6 +40,8 @@ type DAGTaskRunnerFactory interface {
 }
 
 // TaskRunnerFactoryInput holds the parameters needed to create a task runner.
+//
+//nolint:govet // fieldalignment: struct field order prioritises readability over padding
 type TaskRunnerFactoryInput struct {
 	ContextCache             *appcontext.ContextCache
 	Models                   models.ModelsConfig
@@ -59,6 +61,9 @@ type TaskRunnerFactoryInput struct {
 	// IntermediateReviewInterval controls how often the cross-task consistency
 	// check runs (REQ-PIPE-006). 0 disables it.
 	IntermediateReviewInterval int
+	// PromptVersions maps prompt template filenames (e.g. "planner.md.j2") to
+	// their SHA256 hashes for LlmRequest.PromptVersion (REQ-OBS-001).
+	PromptVersions map[string]string
 }
 
 // PlanResult mirrors pipeline.PlannerResult without creating an import cycle.
@@ -90,6 +95,8 @@ type PlannedTask struct {
 }
 
 // OrchestratorConfig holds configuration for the orchestrator.
+//
+//nolint:govet // fieldalignment: struct field order prioritises readability over padding
 type OrchestratorConfig struct {
 	Models                 models.ModelsConfig
 	WorkDir                string
@@ -119,6 +126,10 @@ type OrchestratorConfig struct {
 	// check runs. After every N completed tasks a lightweight LLM check fires.
 	// 0 disables the check (REQ-PIPE-006).
 	IntermediateReviewInterval int
+	// PromptVersions maps prompt template filenames (e.g. "planner.md.j2") to
+	// their SHA256 hashes, computed at startup (REQ-OBS-001). Passed to the
+	// task runner so LlmRequest.PromptVersion is populated for each LLM call.
+	PromptVersions map[string]string
 }
 
 // Orchestrator coordinates the full ticket-to-PR lifecycle.
@@ -384,6 +395,7 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 		EnableTDDVerification:      o.config.EnableTDDVerification,
 		IntermediateReviewInterval: o.config.IntermediateReviewInterval,
 		ContextCache:               ticketCache,
+		PromptVersions:             o.config.PromptVersions,
 	})
 
 	// Build DAG tasks (resolve title->ID dependencies).

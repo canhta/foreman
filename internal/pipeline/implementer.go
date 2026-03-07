@@ -21,12 +21,13 @@ func NewImplementer(provider LLMProvider) *Implementer {
 
 // ImplementerInput holds all parameters for a single implementer call.
 type ImplementerInput struct {
-	Task         *models.Task
-	ContextFiles map[string]string
-	Model        string
-	Feedback     string
-	MaxTokens    int
-	Attempt      int
+	Task          *models.Task
+	ContextFiles  map[string]string
+	Model         string
+	Feedback      string
+	PromptVersion string
+	MaxTokens     int
+	Attempt       int
 }
 
 // ImplementerResult holds the raw LLM response from the implementer.
@@ -40,11 +41,12 @@ func (impl *Implementer) Execute(ctx context.Context, input ImplementerInput) (*
 	userPrompt := buildImplementerUserPrompt(input)
 
 	resp, err := impl.llm.Complete(ctx, models.LlmRequest{
-		Model:        input.Model,
-		SystemPrompt: systemPrompt,
-		UserPrompt:   userPrompt,
-		MaxTokens:    input.MaxTokens,
-		Temperature:  0.0,
+		Model:         input.Model,
+		SystemPrompt:  systemPrompt,
+		UserPrompt:    userPrompt,
+		PromptVersion: input.PromptVersion,
+		MaxTokens:     input.MaxTokens,
+		Temperature:   0.0,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("implementer LLM call: %w", err)

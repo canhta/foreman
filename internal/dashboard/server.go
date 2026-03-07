@@ -105,6 +105,7 @@ func NewServer(db DashboardDB, emitter EventSubscriber, statusProvider DaemonSta
 		}
 		http.NotFound(w, r)
 	})))
+	mux.Handle("/api/prompts/versions", auth(http.HandlerFunc(api.handlePromptVersions)))
 
 	// Metrics endpoint
 	if reg != nil {
@@ -150,6 +151,11 @@ func (s *Server) SetChannelHealth(name string, h interface{ IsConnected() bool }
 // SetMCPHealthProvider wires a provider for MCP server health into the status endpoint.
 func (s *Server) SetMCPHealthProvider(p MCPHealthProvider) {
 	s.api.SetMCPHealthProvider(p)
+}
+
+// SetPromptSnapshotQuerier wires the prompt snapshot querier for GET /api/prompts/versions.
+func (s *Server) SetPromptSnapshotQuerier(q PromptSnapshotQuerier) {
+	s.api.SetPromptSnapshotQuerier(q)
 }
 
 // Handler returns the HTTP handler, useful for testing with httptest.NewServer.

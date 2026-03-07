@@ -102,6 +102,10 @@ func runSQLiteMigrations(db *sql.DB) error {
 	_, _ = db.ExecContext(ctx,
 		`ALTER TABLE tickets ADD COLUMN pr_head_sha TEXT NOT NULL DEFAULT ''`)
 
+	// Add prompt_version column to llm_calls for prompt version tracking (REQ-OBS-001).
+	_, _ = db.ExecContext(ctx,
+		`ALTER TABLE llm_calls ADD COLUMN prompt_version TEXT NOT NULL DEFAULT ''`)
+
 	return nil
 }
 
@@ -386,12 +390,12 @@ func (s *SQLiteDB) RecordLlmCall(ctx context.Context, call *models.LlmCallRecord
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO llm_calls (id, ticket_id, task_id, role, provider, model, attempt,
 		 tokens_input, tokens_output, cost_usd, duration_ms, prompt_hash, response_summary, status, error_message,
-		 cache_read_input_tokens, cache_creation_input_tokens, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 cache_read_input_tokens, cache_creation_input_tokens, prompt_version, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		call.ID, call.TicketID, taskID, call.Role, call.Provider, call.Model, call.Attempt,
 		call.TokensInput, call.TokensOutput, call.CostUSD, call.DurationMs,
 		call.PromptHash, call.ResponseSummary, call.Status, call.ErrorMessage,
-		call.CacheReadTokens, call.CacheCreationTokens, call.CreatedAt,
+		call.CacheReadTokens, call.CacheCreationTokens, call.PromptVersion, call.CreatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("record llm call: %w", err)
@@ -707,7 +711,7 @@ func (s *SQLiteDB) ListLlmCalls(ctx context.Context, ticketID string) ([]models.
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, ticket_id, task_id, role, provider, model, attempt,
 		        tokens_input, tokens_output, cost_usd, duration_ms, status,
-		        cache_read_input_tokens, cache_creation_input_tokens, created_at
+		        cache_read_input_tokens, cache_creation_input_tokens, prompt_version, created_at
 		 FROM llm_calls WHERE ticket_id = ? ORDER BY created_at DESC`,
 		ticketID)
 	if err != nil {
@@ -722,7 +726,7 @@ func (s *SQLiteDB) ListLlmCalls(ctx context.Context, ticketID string) ([]models.
 		var status string
 		if err := rows.Scan(&c.ID, &c.TicketID, &taskID, &c.Role, &c.Provider, &c.Model, &c.Attempt,
 			&c.TokensInput, &c.TokensOutput, &c.CostUSD, &c.DurationMs, &status,
-			&c.CacheReadTokens, &c.CacheCreationTokens, &c.CreatedAt); err != nil {
+			&c.CacheReadTokens, &c.CacheCreationTokens, &c.PromptVersion, &c.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan llm call row: %w", err)
 		}
 		c.TaskID = taskID.String
@@ -1249,4 +1253,44 @@ func jaccardSimilarity(a, b map[string]struct{}) float64 {
 		return 0
 	}
 	return float64(intersection) / float64(union)
+}
+
+// --- Prompt Snapshots (REQ-OBS-001) ---
+
+// UpsertPromptSnapshot inserts or updates the SHA256 hash for a named prompt template.
+func (s *SQLiteDB) UpsertPromptSnapshot(ctx context.Context, name, sha256 string) error {
+	id := uuid.New().String()
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO prompt_snapshots (id, template_name, sha256, recorded_at)
+		 VALUES (?, ?, ?, ?)
+		 ON CONFLICT(template_name) DO UPDATE SET sha256 = excluded.sha256, recorded_at = excluded.recorded_at`,
+		id, name, sha256, time.Now().UTC(),
+	)
+	if err != nil {
+		return fmt.Errorf("upsert prompt snapshot: %w", err)
+	}
+	return nil
+}
+
+// GetPromptSnapshots returns all recorded prompt template snapshots.
+func (s *SQLiteDB) GetPromptSnapshots(ctx context.Context) ([]PromptSnapshot, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, template_name, sha256, recorded_at FROM prompt_snapshots ORDER BY template_name`)
+	if err != nil {
+		return nil, fmt.Errorf("get prompt snapshots: %w", err)
+	}
+	defer rows.Close()
+
+	var snapshots []PromptSnapshot
+	for rows.Next() {
+		var ps PromptSnapshot
+		if err := rows.Scan(&ps.ID, &ps.TemplateName, &ps.SHA256, &ps.RecordedAt); err != nil {
+			return nil, fmt.Errorf("scan prompt snapshot row: %w", err)
+		}
+		snapshots = append(snapshots, ps)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate prompt snapshot rows: %w", err)
+	}
+	return snapshots, nil
 }

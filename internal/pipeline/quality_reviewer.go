@@ -12,6 +12,7 @@ import (
 type QualityReviewInput struct {
 	Diff             string
 	CodebasePatterns string
+	PromptVersion    string
 }
 
 // QualityReviewRunner is the interface for code quality checking.
@@ -43,10 +44,11 @@ func (r *QualityReviewer) Review(ctx context.Context, input QualityReviewInput) 
 	}
 
 	resp, err := r.llm.Complete(ctx, models.LlmRequest{
-		SystemPrompt: system,
-		UserPrompt:   "Please provide your review.",
-		MaxTokens:    2048,
-		Temperature:  0.1,
+		SystemPrompt:  system,
+		UserPrompt:    "Please provide your review.",
+		PromptVersion: input.PromptVersion,
+		MaxTokens:     2048,
+		Temperature:   0.1,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("quality review LLM call: %w", err)

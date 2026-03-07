@@ -219,6 +219,10 @@ func (m *orchMockDB) WriteContextFeedback(_ context.Context, _ db.ContextFeedbac
 func (m *orchMockDB) QueryContextFeedback(_ context.Context, _ []string, _ float64) ([]db.ContextFeedbackRow, error) {
 	return nil, nil
 }
+func (m *orchMockDB) UpsertPromptSnapshot(_ context.Context, _, _ string) error { return nil }
+func (m *orchMockDB) GetPromptSnapshots(_ context.Context) ([]db.PromptSnapshot, error) {
+	return nil, nil
+}
 
 func (m *orchMockDB) lastStatus(id string) models.TicketStatus {
 	for i := len(m.statusUpdates) - 1; i >= 0; i-- {

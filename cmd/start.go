@@ -103,6 +103,7 @@ func (f *taskRunnerFactory) Create(input daemon.TaskRunnerFactoryInput) daemon.T
 		EnableTDDVerification:      input.EnableTDDVerification,
 		IntermediateReviewInterval: input.IntermediateReviewInterval,
 		Cache:                      input.ContextCache,
+		PromptVersions:             input.PromptVersions,
 	}
 	tr := pipeline.NewPipelineTaskRunner(f.llm, f.db, f.gitProv, f.cmdRunner, cfg)
 	return pipeline.NewDAGTaskAdapterWithConsistency(tr, f.db, input.TicketID, f.llm, f.db, f.gitProv, cfg)
@@ -132,6 +133,24 @@ func newStartCmd() *cobra.Command {
 						log.Info().Msg("dashboard auth token seeded from config")
 					}
 				}
+			}
+
+			// 1c. Hash prompt templates and record snapshots (REQ-OBS-001).
+			promptsDir := cfg.PromptsDir
+			if promptsDir == "" {
+				promptsDir = "prompts"
+			}
+			hashes, hashErr := telemetry.HashPromptTemplates(promptsDir)
+			if hashErr != nil {
+				log.Warn().Err(hashErr).Str("prompts_dir", promptsDir).Msg("could not hash prompt templates; skipping")
+				hashes = nil
+			} else {
+				for name, sha := range hashes {
+					if upsertErr := database.UpsertPromptSnapshot(cmd.Context(), name, sha); upsertErr != nil {
+						log.Warn().Err(upsertErr).Str("template", name).Msg("failed to record prompt snapshot")
+					}
+				}
+				log.Info().Int("count", len(hashes)).Str("prompts_dir", promptsDir).Msg("prompt templates hashed")
 			}
 
 			// 2. Initialize LLM provider.
@@ -213,6 +232,7 @@ func newStartCmd() *cobra.Command {
 					EnableTDDVerification:      cfg.Limits.EnableTDDVerification,
 					EnableClarification:        cfg.Limits.EnableClarification,
 					IntermediateReviewInterval: cfg.Limits.IntermediateReviewInterval,
+					PromptVersions:             hashes,
 				},
 			)
 
@@ -282,6 +302,7 @@ func newStartCmd() *cobra.Command {
 				}
 				srv := dashboard.NewServer(database, emitter, d, reg, cfg.Cost, "0.1.0", host, port)
 				srv.SetDaemonController(d)
+				srv.SetPromptSnapshotQuerier(database)
 				go func() {
 					if err := srv.Start(); err != nil {
 						log.Error().Err(err).Msg("dashboard server error")

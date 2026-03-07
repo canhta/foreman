@@ -72,6 +72,7 @@ type LlmCallRecord struct {
 	CreatedAt           time.Time
 	ResponseSummary     string
 	PromptHash          string
+	PromptVersion       string
 	Role                string
 	Provider            string
 	Model               string

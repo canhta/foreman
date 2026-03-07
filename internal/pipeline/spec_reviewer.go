@@ -9,11 +9,14 @@ import (
 )
 
 // SpecReviewInput is what the spec reviewer needs.
+//
+//nolint:govet // fieldalignment: struct field order prioritises readability over padding
 type SpecReviewInput struct {
 	TaskTitle          string
 	Diff               string
 	TestOutput         string
 	AcceptanceCriteria []string
+	PromptVersion      string
 }
 
 // SpecReviewRunner is the interface for spec compliance checking.
@@ -50,10 +53,11 @@ func (r *SpecReviewer) Review(ctx context.Context, input SpecReviewInput) (*Revi
 	}
 
 	resp, err := r.llm.Complete(ctx, models.LlmRequest{
-		SystemPrompt: system,
-		UserPrompt:   "Please provide your review.",
-		MaxTokens:    2048,
-		Temperature:  0.1,
+		SystemPrompt:  system,
+		UserPrompt:    "Please provide your review.",
+		PromptVersion: input.PromptVersion,
+		MaxTokens:     2048,
+		Temperature:   0.1,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("spec review LLM call: %w", err)

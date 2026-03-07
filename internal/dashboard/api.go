@@ -79,18 +79,25 @@ type MCPHealthProvider interface {
 	HealthStatus() map[string]bool
 }
 
+// PromptSnapshotQuerier returns the recorded prompt template snapshots.
+// Defined as a separate interface to avoid widening DashboardDB.
+type PromptSnapshotQuerier interface {
+	GetPromptSnapshots(ctx context.Context) ([]db.PromptSnapshot, error)
+}
+
 // API handles REST API requests for the dashboard.
 type API struct {
-	startedAt      time.Time
-	db             DashboardDB
-	emitter        EventSubscriber
-	statusProvider DaemonStatusProvider
-	controller     DaemonController
-	retrier        TicketRetrier
-	mcpHealth      MCPHealthProvider
-	channelHealth  map[string]interface{ IsConnected() bool }
-	version        string
-	costCfg        models.CostConfig
+	startedAt       time.Time
+	db              DashboardDB
+	emitter         EventSubscriber
+	statusProvider  DaemonStatusProvider
+	controller      DaemonController
+	retrier         TicketRetrier
+	mcpHealth       MCPHealthProvider
+	promptSnapshots PromptSnapshotQuerier
+	channelHealth   map[string]interface{ IsConnected() bool }
+	version         string
+	costCfg         models.CostConfig
 }
 
 // SetChannelHealth registers a HealthChecker for a named channel.
@@ -115,6 +122,11 @@ func (a *API) SetDaemonController(c DaemonController) {
 // SetTicketRetrier wires a TicketRetrier for ticket retry.
 func (a *API) SetTicketRetrier(r TicketRetrier) {
 	a.retrier = r
+}
+
+// SetPromptSnapshotQuerier wires a PromptSnapshotQuerier for the versions endpoint.
+func (a *API) SetPromptSnapshotQuerier(q PromptSnapshotQuerier) {
+	a.promptSnapshots = q
 }
 
 // NewAPI creates a new API instance.
@@ -500,6 +512,26 @@ func (a *API) handleDaemonResume(w http.ResponseWriter, r *http.Request) {
 	}
 	a.controller.Resume()
 	writeJSON(w, http.StatusOK, map[string]string{"status": "resumed"})
+}
+
+func (a *API) handlePromptVersions(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if a.promptSnapshots == nil {
+		writeJSON(w, http.StatusOK, []db.PromptSnapshot{})
+		return
+	}
+	snapshots, err := a.promptSnapshots.GetPromptSnapshots(r.Context())
+	if err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if snapshots == nil {
+		snapshots = []db.PromptSnapshot{}
+	}
+	writeJSON(w, http.StatusOK, snapshots)
 }
 
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {

@@ -158,6 +158,10 @@ func (m *mockDB) WriteContextFeedback(_ context.Context, _ db.ContextFeedbackRow
 func (m *mockDB) QueryContextFeedback(_ context.Context, _ []string, _ float64) ([]db.ContextFeedbackRow, error) {
 	return nil, nil
 }
+func (m *mockDB) UpsertPromptSnapshot(_ context.Context, _, _ string) error { return nil }
+func (m *mockDB) GetPromptSnapshots(_ context.Context) ([]db.PromptSnapshot, error) {
+	return nil, nil
+}
 
 // --- Helpers ---
 

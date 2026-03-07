@@ -195,3 +195,35 @@ func TestRecordingProvider_HealthCheckDelegatesToInner(t *testing.T) {
 		t.Errorf("unexpected HealthCheck error: %v", err)
 	}
 }
+
+// TestRecordingProvider_PromptVersionSerializedIntoStoredPrompt verifies that
+// when req.PromptVersion is set, storeDetails() marshals it into the full prompt
+// JSON persisted via StoreCallDetails. This is the production observability path
+// for REQ-OBS-001: prompt_version is queryable in llm_call_details.full_prompt.
+func TestRecordingProvider_PromptVersionSerializedIntoStoredPrompt(t *testing.T) {
+	inner := &mockLlmProvider{
+		name: "test-provider",
+		response: &models.LlmResponse{
+			Content: "response",
+		},
+	}
+	db := &mockDatabase{}
+	rp := NewRecordingProvider(inner, db)
+
+	req := models.LlmRequest{
+		Model:         "gpt-4",
+		UserPrompt:    "say hello",
+		PromptVersion: "abc123",
+	}
+	_, err := rp.Complete(context.Background(), req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if db.storeCalled != 1 {
+		t.Fatalf("StoreCallDetails called %d times, want 1", db.storeCalled)
+	}
+	if !strings.Contains(db.storedFullPrompt, `"prompt_version":"abc123"`) {
+		t.Errorf("storedFullPrompt should contain prompt_version field, got: %q", db.storedFullPrompt)
+	}
+}

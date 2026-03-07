@@ -37,8 +37,16 @@ func NewPostgresDB(url string, maxConns int) (*PostgresDB, error) {
 }
 
 func runPostgresSchema(db *sqlx.DB) error {
-	_, err := db.ExecContext(context.Background(), schema)
-	return err
+	ctx := context.Background()
+	if _, err := db.ExecContext(ctx, schema); err != nil {
+		return err
+	}
+	// Additive migrations for existing Postgres deployments (idempotent via IF NOT EXISTS).
+	if _, err := db.ExecContext(ctx,
+		`ALTER TABLE llm_calls ADD COLUMN IF NOT EXISTS prompt_version TEXT NOT NULL DEFAULT ''`); err != nil {
+		return fmt.Errorf("migrate llm_calls.prompt_version: %w", err)
+	}
+	return nil
 }
 
 func (p *PostgresDB) Close() error { return p.db.Close() }
@@ -292,12 +300,12 @@ func (p *PostgresDB) RecordLlmCall(ctx context.Context, call *models.LlmCallReco
 	_, err := p.db.ExecContext(ctx,
 		`INSERT INTO llm_calls (id, ticket_id, task_id, role, provider, model, attempt,
 		 tokens_input, tokens_output, cost_usd, duration_ms, prompt_hash, response_summary, status, error_message,
-		 cache_read_input_tokens, cache_creation_input_tokens, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
+		 cache_read_input_tokens, cache_creation_input_tokens, prompt_version, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
 		call.ID, call.TicketID, taskID, call.Role, call.Provider, call.Model, call.Attempt,
 		call.TokensInput, call.TokensOutput, call.CostUSD, call.DurationMs,
 		call.PromptHash, call.ResponseSummary, call.Status, call.ErrorMessage,
-		call.CacheReadTokens, call.CacheCreationTokens, call.CreatedAt,
+		call.CacheReadTokens, call.CacheCreationTokens, call.PromptVersion, call.CreatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("record llm call: %w", err)
@@ -605,7 +613,7 @@ func (p *PostgresDB) ListLlmCalls(ctx context.Context, ticketID string) ([]model
 	rows, err := p.db.QueryContext(ctx,
 		`SELECT id, ticket_id, task_id, role, provider, model, attempt,
 		        tokens_input, tokens_output, cost_usd, duration_ms, status,
-		        cache_read_input_tokens, cache_creation_input_tokens, created_at
+		        cache_read_input_tokens, cache_creation_input_tokens, prompt_version, created_at
 		 FROM llm_calls WHERE ticket_id = $1 ORDER BY created_at DESC`,
 		ticketID)
 	if err != nil {
@@ -620,7 +628,7 @@ func (p *PostgresDB) ListLlmCalls(ctx context.Context, ticketID string) ([]model
 		var status string
 		if err := rows.Scan(&c.ID, &c.TicketID, &taskID, &c.Role, &c.Provider, &c.Model, &c.Attempt,
 			&c.TokensInput, &c.TokensOutput, &c.CostUSD, &c.DurationMs, &status,
-			&c.CacheReadTokens, &c.CacheCreationTokens, &c.CreatedAt); err != nil {
+			&c.CacheReadTokens, &c.CacheCreationTokens, &c.PromptVersion, &c.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan llm call row: %w", err)
 		}
 		c.TaskID = taskID.String
@@ -1109,4 +1117,44 @@ func (p *PostgresDB) QueryContextFeedback(ctx context.Context, candidates []stri
 		return nil, fmt.Errorf("iterate context feedback rows: %w", err)
 	}
 	return results, nil
+}
+
+// --- Prompt Snapshots (REQ-OBS-001) ---
+
+// UpsertPromptSnapshot inserts or updates the SHA256 hash for a named prompt template.
+func (p *PostgresDB) UpsertPromptSnapshot(ctx context.Context, name, sha256 string) error {
+	id := uuid.New().String()
+	_, err := p.db.ExecContext(ctx,
+		`INSERT INTO prompt_snapshots (id, template_name, sha256, recorded_at)
+		 VALUES ($1, $2, $3, $4)
+		 ON CONFLICT(template_name) DO UPDATE SET sha256 = EXCLUDED.sha256, recorded_at = EXCLUDED.recorded_at`,
+		id, name, sha256, time.Now().UTC(),
+	)
+	if err != nil {
+		return fmt.Errorf("upsert prompt snapshot: %w", err)
+	}
+	return nil
+}
+
+// GetPromptSnapshots returns all recorded prompt template snapshots.
+func (p *PostgresDB) GetPromptSnapshots(ctx context.Context) ([]PromptSnapshot, error) {
+	rows, err := p.db.QueryContext(ctx,
+		`SELECT id, template_name, sha256, recorded_at FROM prompt_snapshots ORDER BY template_name`)
+	if err != nil {
+		return nil, fmt.Errorf("get prompt snapshots: %w", err)
+	}
+	defer rows.Close()
+
+	var snapshots []PromptSnapshot
+	for rows.Next() {
+		var ps PromptSnapshot
+		if err := rows.Scan(&ps.ID, &ps.TemplateName, &ps.SHA256, &ps.RecordedAt); err != nil {
+			return nil, fmt.Errorf("scan prompt snapshot row: %w", err)
+		}
+		snapshots = append(snapshots, ps)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate prompt snapshot rows: %w", err)
+	}
+	return snapshots, nil
 }

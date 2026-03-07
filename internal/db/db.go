@@ -12,6 +12,14 @@ import (
 // ErrNotFound is returned by database methods when a requested record does not exist.
 var ErrNotFound = errors.New("not found")
 
+// PromptSnapshot records the SHA256 hash of a prompt template file at a point in time.
+type PromptSnapshot struct {
+	RecordedAt   time.Time `json:"recorded_at"`
+	ID           string    `json:"id"`
+	TemplateName string    `json:"template_name"`
+	SHA256       string    `json:"sha256"`
+}
+
 // ContextFeedbackRow represents a recorded observation of files selected vs files touched
 // for a completed or failed task. It is used to boost context file scores for similar tasks.
 //
@@ -125,6 +133,12 @@ type Database interface {
 	// QueryContextFeedback returns prior feedback rows whose files_selected set has
 	// Jaccard similarity >= minJaccard with the provided candidates set.
 	QueryContextFeedback(ctx context.Context, candidates []string, minJaccard float64) ([]ContextFeedbackRow, error)
+
+	// Prompt version snapshots (REQ-OBS-001)
+	// UpsertPromptSnapshot stores (or updates) the SHA256 hash for a named prompt template.
+	UpsertPromptSnapshot(ctx context.Context, name, sha256 string) error
+	// GetPromptSnapshots returns all recorded prompt template snapshots.
+	GetPromptSnapshots(ctx context.Context) ([]PromptSnapshot, error)
 
 	io.Closer
 }

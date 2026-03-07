@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/canhta/foreman/internal/db"
 	"github.com/canhta/foreman/internal/models"
 )
 
@@ -725,5 +726,75 @@ func TestAPIGetStatus_WithoutMCPHealth(t *testing.T) {
 	}
 	if _, ok := resp["mcp_servers"]; ok {
 		t.Error("expected no mcp_servers key when no MCPHealthProvider registered")
+	}
+}
+
+// mockPromptQuerier is a test double for PromptSnapshotQuerier.
+type mockPromptQuerier struct {
+	snapshots []db.PromptSnapshot
+	err       error
+}
+
+func (m *mockPromptQuerier) GetPromptSnapshots(_ context.Context) ([]db.PromptSnapshot, error) {
+	return m.snapshots, m.err
+}
+
+func TestAPIPromptVersions_NoQuerier(t *testing.T) {
+	dbm := &mockDashboardDB{}
+	api := NewAPI(dbm, nil, nil, models.CostConfig{}, "1.0.0")
+	// No SetPromptSnapshotQuerier called — should return empty array.
+
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/prompts/versions", nil)
+	rec := httptest.NewRecorder()
+	api.handlePromptVersions(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var result []interface{}
+	if err := json.NewDecoder(rec.Body).Decode(&result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(result) != 0 {
+		t.Errorf("expected empty array, got %v", result)
+	}
+}
+
+func TestAPIPromptVersions_WithSnapshots(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	snapshots := []db.PromptSnapshot{
+		{ID: "snap1", TemplateName: "implementer.md.j2", SHA256: "abc123", RecordedAt: now},
+		{ID: "snap2", TemplateName: "planner.md.j2", SHA256: "def456", RecordedAt: now},
+	}
+	dbm := &mockDashboardDB{}
+	api := NewAPI(dbm, nil, nil, models.CostConfig{}, "1.0.0")
+	api.SetPromptSnapshotQuerier(&mockPromptQuerier{snapshots: snapshots})
+
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/prompts/versions", nil)
+	rec := httptest.NewRecorder()
+	api.handlePromptVersions(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var result []map[string]interface{}
+	if err := json.NewDecoder(rec.Body).Decode(&result); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(result) != 2 {
+		t.Fatalf("expected 2 snapshots, got %d", len(result))
+	}
+}
+
+func TestAPIPromptVersions_MethodNotAllowed(t *testing.T) {
+	dbm := &mockDashboardDB{}
+	api := NewAPI(dbm, nil, nil, models.CostConfig{}, "1.0.0")
+
+	req := httptest.NewRequestWithContext(t.Context(), "POST", "/api/prompts/versions", nil)
+	rec := httptest.NewRecorder()
+	api.handlePromptVersions(rec, req)
+
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405, got %d", rec.Code)
 	}
 }

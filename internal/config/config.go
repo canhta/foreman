@@ -137,6 +137,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("skills.agent_runner.copilot.timeout_secs_default", 180)
 
 	v.SetDefault("database.driver", "sqlite")
+	v.SetDefault("prompts_dir", "prompts")
 	v.SetDefault("database.sqlite.path", "~/.foreman/foreman.db")
 	v.SetDefault("database.sqlite.busy_timeout_ms", 5000)
 	v.SetDefault("database.sqlite.wal_mode", true)
