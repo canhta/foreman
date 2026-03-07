@@ -208,10 +208,29 @@ func TestValidateConfig_ZeroCostBudget(t *testing.T) {
 func TestValidateConfig_FullyValid(t *testing.T) {
 	cfg, _ := LoadDefaults()
 	cfg.LLM.Anthropic.APIKey = "sk-test-key"
+	cfg.Dashboard.AuthToken = "test-token"
 
 	errs := Validate(cfg)
 	if len(errs) != 0 {
 		t.Errorf("expected no validation errors for valid config, got %v", errs)
+	}
+}
+
+func TestValidateConfig_DashboardEnabledWithoutAuthToken(t *testing.T) {
+	cfg, _ := LoadDefaults()
+	cfg.LLM.Anthropic.APIKey = "sk-test-key"
+	cfg.Dashboard.Enabled = true
+	cfg.Dashboard.AuthToken = ""
+
+	errs := Validate(cfg)
+	found := false
+	for _, e := range errs {
+		if strings.Contains(e.Error(), "dashboard.auth_token is required when dashboard is enabled") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected validation error for missing dashboard.auth_token, got %v", errs)
 	}
 }
 

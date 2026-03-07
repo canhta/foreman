@@ -201,6 +201,11 @@ func Validate(cfg *models.Config) []error {
 		errs = append(errs, fmt.Errorf("dashboard.port must be 1-65535 (got %d)", cfg.Dashboard.Port))
 	}
 
+	// Validate dashboard auth token
+	if cfg.Dashboard.Enabled && cfg.Dashboard.AuthToken == "" {
+		errs = append(errs, fmt.Errorf("dashboard.auth_token is required when dashboard is enabled"))
+	}
+
 	// Validate cost budgets are positive
 	if cfg.Cost.MaxCostPerTicketUSD <= 0 {
 		errs = append(errs, fmt.Errorf("cost.max_cost_per_ticket_usd must be positive"))
