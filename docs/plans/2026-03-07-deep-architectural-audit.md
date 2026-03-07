@@ -17,7 +17,7 @@ Foreman is an ambitious autonomous development daemon with solid foundational ar
 4. **Stateless-by-design is carried too far** — eliminates the possibility of intelligent context reuse
 5. **Silent failure propagation** — tool errors, context errors, and hook errors are all swallowed
 
-These are not just bugs (the existing `2026-03-06-architectural-review-design.md` covers specific bugs well). These are **structural patterns** that need architectural redesign.
+These are not just bugs (the existing `2026-03-07-deep-architectural-audit.md` covers specific bugs well). These are **structural patterns** that need architectural redesign.
 
 ---
 
@@ -632,4 +632,4 @@ Foreman's interface-first design and pluggable architecture are genuine strength
 3. **Defensive agent control** (depth limits, doom loop detection, budget enforcement)
 4. **Intelligent state reuse** (caching, shared discovery, structured handoffs)
 
-The existing bug-fix plan (`2026-03-06-architectural-review-design.md`) should be executed first — it addresses correctness. This audit addresses **scalability and stability** — the issues that emerge when Foreman processes real workloads at scale.
+The existing bug-fix plan (`2026-03-07-deep-architectural-audit.md`) should be executed first — it addresses correctness. This audit addresses **scalability and stability** — the issues that emerge when Foreman processes real workloads at scale.

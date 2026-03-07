@@ -2,7 +2,7 @@
 
 **Date:** 2026-03-07
 **Status:** Approved for implementation
-**Predecessor:** `2026-03-06-architectural-review-design.md` (bug fixes), `2026-03-07-deep-architectural-audit.md` (architecture)
+**Predecessor:** `2026-03-07-deep-architectural-audit.md` (bug fixes), `2026-03-07-deep-architectural-audit.md` (architecture)
 
 ---
 

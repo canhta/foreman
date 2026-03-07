@@ -14,7 +14,7 @@
 
 Every item from all source documents is listed below. Each has a unique canonical ID, its source, and its assigned wave.
 
-### Source: `2026-03-06-architectural-review-design.md` (Bug Fixes)
+### Source: `2026-03-07-deep-architectural-audit.md` (Bug Fixes)
 
 | Canonical ID | Source ID | Description | Wave |
 |---|---|---|---|
@@ -570,7 +570,7 @@ Provide base + head file content alongside conflict markers.
 
 **Files:** Various across `internal/daemon/`, `internal/pipeline/`, `internal/dashboard/`, `internal/channel/`, `internal/llm/`
 
-Execute each M1-M14 fix per the `2026-03-06-architectural-review-design.md` spec. Each fix is 1-2 files with a targeted test.
+Execute each M1-M14 fix per the `2026-03-07-deep-architectural-audit.md` spec. Each fix is 1-2 files with a targeted test.
 
 ### Task 2.10: Provider Circuit Breaker (ARCH-F02)
 
