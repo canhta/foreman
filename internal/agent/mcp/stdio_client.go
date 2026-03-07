@@ -51,11 +51,14 @@ type StdioClient struct {
 	transport    Transport
 	capabilities map[string]json.RawMessage
 	readerDone   chan struct{}
-	pending      sync.Map
-	serverName   string
-	nextID       atomic.Int64
-	writeMu      sync.Mutex
-	initialized  bool
+	// early stores responses that arrived before sendRequest observed its pending entry.
+	// Key: request ID (int64), Value: jsonRPCResponse.
+	early       sync.Map
+	pending     sync.Map
+	serverName  string
+	nextID      atomic.Int64
+	writeMu     sync.Mutex
+	initialized bool
 }
 
 // NewStdioClientWithTransport creates a new StdioClient with the given transport.
@@ -86,7 +89,11 @@ func (c *StdioClient) readLoop() {
 			if pr, ok := val.(*pendingRequest); ok {
 				pr.resp <- resp
 			}
+			continue
 		}
+		// Response arrived before the caller could observe pending registration.
+		// Buffer it so sendRequest can consume it immediately.
+		c.early.Store(resp.ID, resp)
 	}
 }
 
@@ -114,6 +121,17 @@ func (c *StdioClient) sendRequest(ctx context.Context, method string, params int
 	c.writeMu.Unlock()
 	if err != nil {
 		return nil, fmt.Errorf("send request: %w", err)
+	}
+
+	// Handle the edge case where readLoop consumed the response before this
+	// goroutine entered its select.
+	if val, ok := c.early.LoadAndDelete(id); ok {
+		if resp, ok := val.(jsonRPCResponse); ok {
+			if resp.Error != nil {
+				return nil, fmt.Errorf("jsonrpc error %d: %s", resp.Error.Code, resp.Error.Message)
+			}
+			return resp.Result, nil
+		}
 	}
 
 	select {
