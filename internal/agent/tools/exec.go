@@ -7,16 +7,18 @@ import (
 	"strings"
 
 	"github.com/canhta/foreman/internal/agent/agentconst"
+	"github.com/canhta/foreman/internal/agent/mcp"
 	"github.com/canhta/foreman/internal/runner"
 )
 
 // hardBlockedCommands are never allowed regardless of AllowedCommands config.
 var hardBlockedCommands = []string{"rm", "curl", "wget", "ssh", "scp", "git push", "git reset", "dd", "mkfs", "shutdown", "reboot"}
 
-func registerExec(r *Registry, cmd runner.CommandRunner) {
+func registerExec(r *Registry, cmd runner.CommandRunner, mcpMgr *mcp.Manager) {
 	r.Register(&bashTool{cmd: cmd, registry: r})
 	r.Register(&runTestTool{cmd: cmd, registry: r})
 	r.Register(&subagentTool{registry: r})
+	r.Register(&listMCPToolsTool{mcpMgr: mcpMgr})
 }
 
 // --- Bash ---
@@ -197,4 +199,31 @@ func (t *subagentTool) Execute(ctx context.Context, workDir string, input json.R
 		return "", fmt.Errorf("subagent: %w", err)
 	}
 	return result, nil
+}
+
+// --- ListMCPTools ---
+
+// listMCPToolsTool returns the in-memory MCP tool summaries from the Manager.
+// It makes no network calls — results come from the cache populated during init.
+type listMCPToolsTool struct {
+	mcpMgr *mcp.Manager
+}
+
+func (t *listMCPToolsTool) Name() string { return "ListMCPTools" }
+func (t *listMCPToolsTool) Description() string {
+	return "List all MCP tools available at runtime. Returns normalized_name, original_name, server_name, and description for each tool. Reads from in-memory cache only — no network calls."
+}
+func (t *listMCPToolsTool) Schema() json.RawMessage {
+	return json.RawMessage(`{"type":"object","properties":{}}`)
+}
+func (t *listMCPToolsTool) Execute(_ context.Context, _ string, _ json.RawMessage) (string, error) {
+	if t.mcpMgr == nil {
+		return "[]", nil
+	}
+	summaries := t.mcpMgr.ListToolSummaries()
+	b, err := json.Marshal(summaries)
+	if err != nil {
+		return "", fmt.Errorf("ListMCPTools: marshal: %w", err)
+	}
+	return string(b), nil
 }

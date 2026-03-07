@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/canhta/foreman/internal/agent/mcp"
 	"github.com/canhta/foreman/internal/agent/tools"
 )
 
@@ -116,5 +117,86 @@ func TestSubagent_WithRunFn(t *testing.T) {
 	}
 	if out != "subagent result" {
 		t.Errorf("expected 'subagent result', got %q", out)
+	}
+}
+
+// --- ListMCPTools ---
+
+func TestListMCPTools_NoManager(t *testing.T) {
+	// When no MCP manager is wired, ListMCPTools should return an empty JSON array, not an error.
+	reg := tools.NewRegistry(nil, nil, tools.ToolHooks{})
+	out := execTool(t, reg, t.TempDir(), "ListMCPTools", map[string]any{})
+	if !strings.Contains(out, "[]") {
+		t.Errorf("expected empty JSON array, got %q", out)
+	}
+}
+
+func TestListMCPTools_WithCachedTools(t *testing.T) {
+	// Populate manager with two cached tool summaries.
+	mgr := mcp.NewManager()
+	mgr.SetToolCache([]mcp.MCPToolSummary{
+		{NormalizedName: "mcp_server_a_tool1", OriginalName: "tool1", ServerName: "server-a", Description: "Tool one"},
+		{NormalizedName: "mcp_server_b_tool2", OriginalName: "tool2", ServerName: "server-b", Description: "Tool two"},
+	})
+
+	reg := tools.NewRegistryWithMCP(nil, nil, tools.ToolHooks{}, mgr)
+	out := execTool(t, reg, t.TempDir(), "ListMCPTools", map[string]any{})
+
+	if !strings.Contains(out, "mcp_server_a_tool1") {
+		t.Errorf("expected tool1 in output, got %q", out)
+	}
+	if !strings.Contains(out, "server-a") {
+		t.Errorf("expected server-a in output, got %q", out)
+	}
+	if !strings.Contains(out, "Tool one") {
+		t.Errorf("expected description in output, got %q", out)
+	}
+	if !strings.Contains(out, "tool1") {
+		t.Errorf("expected original_name in output, got %q", out)
+	}
+	if !strings.Contains(out, "mcp_server_b_tool2") {
+		t.Errorf("expected tool2 in output, got %q", out)
+	}
+}
+
+func TestListMCPTools_EmptyCache(t *testing.T) {
+	// Manager with no cached tools returns empty list, not an error.
+	mgr := mcp.NewManager()
+	reg := tools.NewRegistryWithMCP(nil, nil, tools.ToolHooks{}, mgr)
+	out := execTool(t, reg, t.TempDir(), "ListMCPTools", map[string]any{})
+	if !strings.Contains(out, "[]") {
+		t.Errorf("expected empty JSON array, got %q", out)
+	}
+}
+
+func TestListMCPTools_ToolSummaryFields(t *testing.T) {
+	// All four required fields are present in the output.
+	mgr := mcp.NewManager()
+	mgr.SetToolCache([]mcp.MCPToolSummary{
+		{NormalizedName: "mcp_srv_action", OriginalName: "action", ServerName: "srv", Description: "Does something"},
+	})
+
+	reg := tools.NewRegistryWithMCP(nil, nil, tools.ToolHooks{}, mgr)
+	out := execTool(t, reg, t.TempDir(), "ListMCPTools", map[string]any{})
+
+	var summaries []mcp.MCPToolSummary
+	if err := json.Unmarshal([]byte(out), &summaries); err != nil {
+		t.Fatalf("output is not valid JSON array: %v — output: %q", err, out)
+	}
+	if len(summaries) != 1 {
+		t.Fatalf("expected 1 summary, got %d", len(summaries))
+	}
+	s := summaries[0]
+	if s.NormalizedName != "mcp_srv_action" {
+		t.Errorf("normalized_name: expected %q, got %q", "mcp_srv_action", s.NormalizedName)
+	}
+	if s.OriginalName != "action" {
+		t.Errorf("original_name: expected %q, got %q", "action", s.OriginalName)
+	}
+	if s.ServerName != "srv" {
+		t.Errorf("server_name: expected %q, got %q", "srv", s.ServerName)
+	}
+	if s.Description != "Does something" {
+		t.Errorf("description: expected %q, got %q", "Does something", s.Description)
 	}
 }

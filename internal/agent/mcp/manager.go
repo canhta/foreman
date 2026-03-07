@@ -10,10 +10,21 @@ import (
 	"github.com/canhta/foreman/internal/telemetry"
 )
 
+// MCPToolSummary holds the essential metadata for a single MCP tool.
+// It includes both the normalized name (used for LLM calls) and the original
+// name from the MCP server, as well as the server it belongs to.
+type MCPToolSummary struct {
+	NormalizedName string `json:"normalized_name"`
+	OriginalName   string `json:"original_name"`
+	ServerName     string `json:"server_name"`
+	Description    string `json:"description"`
+}
+
 // Manager coordinates multiple MCP server clients.
 type Manager struct {
-	clients map[string]Client
-	metrics *telemetry.Metrics
+	clients   map[string]Client
+	metrics   *telemetry.Metrics
+	toolCache []MCPToolSummary
 }
 
 // NewManager creates a new MCP Manager.
@@ -120,4 +131,51 @@ func (m *Manager) Close() error {
 		}
 	}
 	return firstErr
+}
+
+// SetToolCache replaces the in-memory tool cache with the provided summaries.
+// This is used during initialisation (after MCP servers are ready) and in tests.
+func (m *Manager) SetToolCache(summaries []MCPToolSummary) {
+	m.toolCache = summaries
+}
+
+// ListToolSummaries returns the cached MCP tool summaries without making any
+// network calls. Returns an empty (non-nil) slice when no tools are cached.
+func (m *Manager) ListToolSummaries() []MCPToolSummary {
+	if m.toolCache == nil {
+		return []MCPToolSummary{}
+	}
+	return m.toolCache
+}
+
+// CacheToolSummaries queries every registered MCP client for its tools and
+// stores the results in the in-memory cache.  This is the only method that
+// makes network calls; all subsequent ListToolSummaries calls are in-memory.
+func (m *Manager) CacheToolSummaries(ctx context.Context) {
+	var summaries []MCPToolSummary
+	for serverName, c := range m.clients {
+		toolDefs, err := c.ListTools(ctx)
+		if err != nil {
+			continue
+		}
+		for _, td := range toolDefs {
+			// td.Name is already the normalized form (MCPToolName(server, tool))
+			// We reverse-derive the original name by stripping the server prefix.
+			prefix := "mcp_" + normalize(serverName) + "_"
+			originalName := td.Name
+			if strings.HasPrefix(td.Name, prefix) {
+				originalName = td.Name[len(prefix):]
+			}
+			summaries = append(summaries, MCPToolSummary{
+				NormalizedName: td.Name,
+				OriginalName:   originalName,
+				ServerName:     serverName,
+				Description:    td.Description,
+			})
+		}
+	}
+	if summaries == nil {
+		summaries = []MCPToolSummary{}
+	}
+	m.toolCache = summaries
 }

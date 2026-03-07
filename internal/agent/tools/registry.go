@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/canhta/foreman/internal/agent/mcp"
 	"github.com/canhta/foreman/internal/db"
 	"github.com/canhta/foreman/internal/git"
 	"github.com/canhta/foreman/internal/llm"
@@ -49,7 +50,21 @@ func NewRegistry(gitProvider git.GitProvider, cmdRunner runner.CommandRunner, ho
 	registerFS(r)
 	registerGit(r, gitProvider)
 	registerCode(r, cmdRunner)
-	registerExec(r, cmdRunner)
+	registerExec(r, cmdRunner, nil)
+	return r
+}
+
+// NewRegistryWithMCP creates a Registry with an optional MCP Manager wired into
+// the ListMCPTools tool.  All other parameters behave the same as NewRegistry.
+func NewRegistryWithMCP(gitProvider git.GitProvider, cmdRunner runner.CommandRunner, hooks ToolHooks, mcpMgr *mcp.Manager) *Registry {
+	r := &Registry{
+		tools: make(map[string]Tool),
+		hooks: hooks,
+	}
+	registerFS(r)
+	registerGit(r, gitProvider)
+	registerCode(r, cmdRunner)
+	registerExec(r, cmdRunner, mcpMgr)
 	return r
 }
 
