@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	appcontext "github.com/canhta/foreman/internal/context"
 	"github.com/canhta/foreman/internal/llm"
 	"github.com/canhta/foreman/internal/models"
 )
@@ -37,11 +38,11 @@ func AttemptConflictResolution(ctx context.Context, provider llm.LlmProvider, co
 	sb.WriteString("\n```\n\n")
 
 	// Estimate tokens used so far.
-	used := len(sb.String()) / 4 // rough 4-char-per-token estimate
+	used := appcontext.EstimateTokens(sb.String())
 	remaining := tokenBudget - used
 
 	if baseContent != "" && remaining > 200 {
-		baseTokens := len(baseContent) / 4
+		baseTokens := appcontext.EstimateTokens(baseContent)
 		if baseTokens > remaining/2 {
 			// Truncate to half of remaining budget.
 			maxChars := (remaining / 2) * 4
@@ -50,11 +51,11 @@ func AttemptConflictResolution(ctx context.Context, provider llm.LlmProvider, co
 			}
 		}
 		fmt.Fprintf(&sb, "## Base Version (before your changes)\n```\n%s\n```\n\n", baseContent)
-		remaining -= len(baseContent) / 4
+		remaining -= appcontext.EstimateTokens(baseContent)
 	}
 
 	if headContent != "" && remaining > 200 {
-		headTokens := len(headContent) / 4
+		headTokens := appcontext.EstimateTokens(headContent)
 		if headTokens > remaining {
 			maxChars := remaining * 4
 			if maxChars < len(headContent) {
