@@ -137,6 +137,10 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 	}
 
 	for turn := 0; turn < maxTurns; turn++ {
+		if req.OnProgress != nil {
+			req.OnProgress(AgentEvent{Type: AgentEventTurnStart, Turn: turn + 1})
+		}
+
 		// Update remaining budget for the subagent tool before each LLM call.
 		if r.registry != nil {
 			remaining := maxTurns - turn
@@ -178,6 +182,15 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 		usage.DurationMs += int(resp.DurationMs)
 		usage.NumTurns++
 
+		if req.OnProgress != nil {
+			req.OnProgress(AgentEvent{
+				Type:      AgentEventTurnEnd,
+				Turn:      turn + 1,
+				TokensIn:  resp.TokensInput,
+				TokensOut: resp.TokensOutput,
+			})
+		}
+
 		if resp.StopReason == models.StopReasonEndTurn || resp.StopReason == models.StopReasonMaxTokens {
 			return AgentResult{Output: resp.Content, Usage: usage}, nil
 		}
@@ -194,6 +207,9 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 			g, gctx := errgroup.WithContext(ctx)
 			for i, tc := range resp.ToolCalls {
 				i, tc := i, tc
+				if req.OnProgress != nil {
+					req.OnProgress(AgentEvent{Type: AgentEventToolStart, Turn: turn + 1, ToolName: tc.Name})
+				}
 				g.Go(func() error {
 					var out string
 					var err error
@@ -206,6 +222,9 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 						results[i] = models.ToolResult{ToolCallID: tc.ID, Content: err.Error(), IsError: true}
 					} else {
 						results[i] = models.ToolResult{ToolCallID: tc.ID, Content: out}
+					}
+					if req.OnProgress != nil {
+						req.OnProgress(AgentEvent{Type: AgentEventToolEnd, Turn: turn + 1, ToolName: tc.Name})
 					}
 					return nil // tool errors become result content, not Go errors
 				})

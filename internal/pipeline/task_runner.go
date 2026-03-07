@@ -7,6 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/rs/zerolog/log"
+
+	appcontext "github.com/canhta/foreman/internal/context"
 	"github.com/canhta/foreman/internal/git"
 	"github.com/canhta/foreman/internal/models"
 	"github.com/canhta/foreman/internal/runner"
@@ -24,6 +27,7 @@ func (e *EscalationError) Error() string {
 
 // TaskRunnerConfig holds configuration for the pipeline task runner.
 type TaskRunnerConfig struct {
+	Cache                    *appcontext.ContextCache
 	Models                   models.ModelsConfig
 	WorkDir                  string
 	CodebasePatterns         string
@@ -41,6 +45,7 @@ type TaskRunnerDB interface {
 	GetTicket(ctx context.Context, id string) (*models.Ticket, error)
 	ListTasks(ctx context.Context, ticketID string) ([]models.Task, error)
 	UpdateTaskStatus(ctx context.Context, id string, status models.TaskStatus) error
+	SetTaskErrorType(ctx context.Context, id, errorType string) error
 	IncrementTaskLlmCalls(ctx context.Context, id string) (int, error)
 }
 
@@ -95,6 +100,14 @@ func (r *PipelineTaskRunner) RunTask(ctx context.Context, task *models.Task) err
 		// Revert only the files this task is supposed to modify, preserving
 		// committed changes from prior tasks in the pipeline.
 		if attempt > 1 {
+			// Classify the error before retry for targeted feedback and metrics.
+			feedbackText := feedback.Render()
+			errType := ClassifyRetryError(feedbackText)
+			if dbErr := r.db.SetTaskErrorType(ctx, task.ID, string(errType)); dbErr != nil {
+				log.Warn().Err(dbErr).Str("task_id", task.ID).Str("error_type", string(errType)).
+					Msg("failed to record task error type")
+			}
+
 			if resetErr := r.resetWorkingTree(ctx, task.FilesToModify); resetErr != nil {
 				return fmt.Errorf("reset working tree before retry: %w", resetErr)
 			}
@@ -197,6 +210,10 @@ func (r *PipelineTaskRunner) RunTask(ctx context.Context, task *models.Task) err
 		_, err = r.git.Commit(ctx, r.config.WorkDir, commitMsg)
 		if err != nil {
 			return fmt.Errorf("git commit: %w", err)
+		}
+		// Invalidate the context cache after commit so the next task sees fresh HEAD.
+		if r.config.Cache != nil {
+			r.config.Cache.Invalidate()
 		}
 
 		if err := r.db.UpdateTaskStatus(ctx, task.ID, models.TaskStatusDone); err != nil {
@@ -311,6 +328,10 @@ func (r *PipelineTaskRunner) loadContextFiles(paths []string) map[string]string 
 		fullPath := filepath.Join(r.config.WorkDir, p)
 		data, err := os.ReadFile(fullPath)
 		if err != nil {
+			// Log the missing file and inject a note into context so the
+			// implementer knows the file was referenced but not found.
+			log.Warn().Str("path", p).Err(err).Msg("context file referenced by planner not found on disk")
+			files[p] = fmt.Sprintf("[FILE NOT FOUND: %q was referenced but could not be read: %s]", p, err)
 			continue
 		}
 		files[p] = string(data)

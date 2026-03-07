@@ -208,6 +208,11 @@ func (p *PostgresDB) UpdateTaskStatus(ctx context.Context, id string, status mod
 	return err
 }
 
+func (p *PostgresDB) SetTaskErrorType(ctx context.Context, id, errorType string) error {
+	_, err := p.db.ExecContext(ctx, `UPDATE tasks SET last_error_type = $1 WHERE id = $2`, errorType, id)
+	return err
+}
+
 func (p *PostgresDB) IncrementTaskLlmCalls(ctx context.Context, id string) (int, error) {
 	var count int
 	err := p.db.QueryRowContext(ctx,

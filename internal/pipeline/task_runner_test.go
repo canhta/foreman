@@ -49,6 +49,8 @@ func (m *mockTaskRunnerDB) IncrementTaskLlmCalls(_ context.Context, id string) (
 	return m.callCounts[id], nil
 }
 
+func (m *mockTaskRunnerDB) SetTaskErrorType(_ context.Context, _, _ string) error { return nil }
+
 // --- Tests ---
 
 func TestDetectEscalation(t *testing.T) {

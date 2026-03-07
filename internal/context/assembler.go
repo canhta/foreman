@@ -28,8 +28,9 @@ type FeedbackContext struct {
 }
 
 // AssemblePlannerContext builds the context for a planner LLM call.
-func AssemblePlannerContext(workDir string, ticket *models.Ticket, tokenBudget int) (*AssembledContext, error) {
-	repoInfo, err := AnalyzeRepo(workDir)
+// cache is optional (nil = no caching).
+func AssemblePlannerContext(workDir string, ticket *models.Ticket, tokenBudget int, cache *ContextCache) (*AssembledContext, error) {
+	repoInfo, err := GetOrAnalyzeRepo(cache, workDir)
 	if err != nil {
 		return nil, fmt.Errorf("analyzing repo: %w", err)
 	}
@@ -101,8 +102,9 @@ Do NOT wrap the YAML in markdown fences. Output ONLY the YAML.`
 }
 
 // AssembleImplementerContext builds the context for an implementer LLM call.
-func AssembleImplementerContext(workDir string, task *models.Task, feedback *FeedbackContext, tokenBudget int) (*AssembledContext, error) {
-	repoInfo, err := AnalyzeRepo(workDir)
+// cache is optional (nil = no caching).
+func AssembleImplementerContext(workDir string, task *models.Task, feedback *FeedbackContext, tokenBudget int, cache *ContextCache) (*AssembledContext, error) {
+	repoInfo, err := GetOrAnalyzeRepo(cache, workDir)
 	if err != nil {
 		return nil, fmt.Errorf("analyzing repo: %w", err)
 	}
@@ -138,7 +140,7 @@ IMPORTANT:
 - ALWAYS output test files BEFORE implementation files.`
 
 	// Select files for context
-	files, err := SelectFilesForTask(task, workDir, tokenBudget/2)
+	files, err := SelectFilesForTask(task, workDir, tokenBudget/2, cache)
 	if err != nil {
 		return nil, fmt.Errorf("selecting files: %w", err)
 	}

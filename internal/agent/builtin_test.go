@@ -365,8 +365,8 @@ func TestSubagent_EnforcesMaxDepth(t *testing.T) {
 
 // mockDuplicateToolLLM calls Read("main.go") twice (identical args), then ends.
 type mockDuplicateToolLLM struct {
+	receivedPrompt []string
 	calls          int
-	receivedPrompt []string // captures user message content in each request
 }
 
 func (m *mockDuplicateToolLLM) Complete(_ context.Context, req models.LlmRequest) (*models.LlmResponse, error) {

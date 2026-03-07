@@ -41,8 +41,11 @@ func NewPlannerWithModel(llm LLMProvider, limits *models.LimitsConfig, model str
 
 // Plan generates a task plan for the given ticket.
 func (p *Planner) Plan(ctx context.Context, workDir string, ticket *models.Ticket) (*PlannerResult, error) {
-	// Assemble planner context
-	assembled, err := appcontext.AssemblePlannerContext(workDir, ticket, p.limits.ContextTokenBudget)
+	// Extract per-ticket context cache (injected by the orchestrator via context.Context).
+	cache := appcontext.CacheFromContext(ctx)
+
+	// Assemble planner context, reusing cached file tree if available.
+	assembled, err := appcontext.AssemblePlannerContext(workDir, ticket, p.limits.ContextTokenBudget, cache)
 	if err != nil {
 		return nil, fmt.Errorf("assembling planner context: %w", err)
 	}

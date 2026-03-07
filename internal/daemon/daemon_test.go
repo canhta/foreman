@@ -103,10 +103,9 @@ func TestDaemon_Status_Paused(t *testing.T) {
 
 // daemonMockDB is a simple mock db for daemon-level tests.
 type daemonMockDB struct {
-	orchMockDB // embed the full DB mock from orchestrator_test.go
-
+	orchMockDB
+	queuedTickets []models.Ticket
 	mu            sync.Mutex
-	queuedTickets []models.Ticket // returned by ListTickets when filtering queued
 }
 
 func newDaemonMockDB() *daemonMockDB {
@@ -176,9 +175,9 @@ func (m *daemonMockTracker) FetchReadyTickets(_ context.Context) ([]tracker.Tick
 
 // daemonMockProcessor implements TicketProcessor for daemon tests.
 type daemonMockProcessor struct {
-	mu       sync.Mutex
-	calls    []string // ticket IDs processed
 	blocking chan struct{}
+	calls    []string
+	mu       sync.Mutex
 	started  atomic.Int32
 }
 

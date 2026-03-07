@@ -38,7 +38,7 @@ func TestSelectFilesForTask_ExplicitFiles(t *testing.T) {
 		FilesToModify: []string{"internal/handler.go"},
 	}
 
-	files, err := SelectFilesForTask(task, workDir, 80000)
+	files, err := SelectFilesForTask(task, workDir, 80000, nil)
 	require.NoError(t, err)
 	assert.NotEmpty(t, files)
 
@@ -53,7 +53,7 @@ func TestSelectFilesForTask_TestSibling(t *testing.T) {
 		FilesToModify: []string{"internal/handler.go"},
 	}
 
-	files, err := SelectFilesForTask(task, workDir, 80000)
+	files, err := SelectFilesForTask(task, workDir, 80000, nil)
 	require.NoError(t, err)
 
 	paths := filePaths(files)
@@ -67,7 +67,7 @@ func TestSelectFilesForTask_ProximityBoost(t *testing.T) {
 		FilesToModify: []string{"internal/handler.go"},
 	}
 
-	files, err := SelectFilesForTask(task, workDir, 80000)
+	files, err := SelectFilesForTask(task, workDir, 80000, nil)
 	require.NoError(t, err)
 
 	// internal/models/user.go is NOT in the same directory (it's in internal/models/)
@@ -87,7 +87,7 @@ func TestSelectFilesForTask_ScoreOrdering(t *testing.T) {
 		FilesToModify: []string{"internal/handler.go"},
 	}
 
-	files, err := SelectFilesForTask(task, workDir, 80000)
+	files, err := SelectFilesForTask(task, workDir, 80000, nil)
 	require.NoError(t, err)
 	require.NotEmpty(t, files)
 
@@ -102,7 +102,7 @@ func TestSelectFilesForTask_TokenBudget(t *testing.T) {
 	}
 
 	// Very small budget should limit results
-	files, err := SelectFilesForTask(task, workDir, 100)
+	files, err := SelectFilesForTask(task, workDir, 100, nil)
 	require.NoError(t, err)
 	// Should include at least the explicit file
 	assert.NotEmpty(t, files)

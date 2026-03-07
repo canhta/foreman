@@ -21,8 +21,30 @@ type AgentRunner interface {
 	Close() error
 }
 
+// AgentEventType identifies the kind of progress event emitted during agent execution.
+type AgentEventType string
+
+const (
+	AgentEventTurnStart AgentEventType = "turn_start"
+	AgentEventToolStart AgentEventType = "tool_start"
+	AgentEventToolEnd   AgentEventType = "tool_end"
+	AgentEventTurnEnd   AgentEventType = "turn_end"
+)
+
+// AgentEvent carries real-time progress information from a running agent session.
+// It is delivered via the OnProgress callback in AgentRequest.
+type AgentEvent struct {
+	Type      AgentEventType
+	ToolName  string
+	Turn      int
+	TokensIn  int
+	TokensOut int
+	CostUSD   float64
+}
+
 // AgentRequest defines the input for a single agent task.
 type AgentRequest struct {
+	OnProgress      func(AgentEvent)
 	Prompt          string
 	SystemPrompt    string
 	WorkDir         string
@@ -33,7 +55,7 @@ type AgentRequest struct {
 	MaxTurns        int
 	TimeoutSecs     int
 	AgentDepth      int
-	RemainingBudget int // turns remaining from the parent agent; 0 means unconstrained
+	RemainingBudget int
 }
 
 // MaxAgentDepth is the maximum allowed nesting depth for subagent calls.

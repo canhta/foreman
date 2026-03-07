@@ -24,21 +24,19 @@ import (
 // ---------------------------------------------------------------------------
 
 type orchMockDB struct {
-	statusUpdates []struct {
+	reserveErr     error
+	releaseErr     error
+	ticketsByExtID map[string]*models.Ticket
+	reservedFiles  map[string]string
+	statusUpdates  []struct {
 		id     string
 		status models.TicketStatus
 	}
 	createdTasks   []models.Task
 	createdTickets []*models.Ticket
-	ticketsByExtID map[string]*models.Ticket
-
-	dailyCost   float64
-	monthlyCost float64
-	tasks       []models.Task
-
-	reservedFiles map[string]string
-	reserveErr    error
-	releaseErr    error
+	tasks          []models.Task
+	dailyCost      float64
+	monthlyCost    float64
 }
 
 func newOrchMockDB() *orchMockDB {
@@ -183,8 +181,9 @@ func (m *orchMockDB) GetTicketSummaries(_ context.Context, _ models.TicketFilter
 func (m *orchMockDB) GetGlobalEvents(_ context.Context, _, _ int) ([]models.EventRecord, error) {
 	return nil, nil
 }
-func (m *orchMockDB) DeleteTicket(_ context.Context, _ string) error { return nil }
-func (m *orchMockDB) Close() error                                   { return nil }
+func (m *orchMockDB) DeleteTicket(_ context.Context, _ string) error        { return nil }
+func (m *orchMockDB) SetTaskErrorType(_ context.Context, _, _ string) error { return nil }
+func (m *orchMockDB) Close() error                                          { return nil }
 
 func (m *orchMockDB) lastStatus(id string) models.TicketStatus {
 	for i := len(m.statusUpdates) - 1; i >= 0; i-- {
@@ -330,8 +329,8 @@ func (m *orchMockPlanner) Plan(_ context.Context, _ string, _ *models.Ticket) (*
 // ---------------------------------------------------------------------------
 
 type orchMockClarity struct {
-	clear bool
 	err   error
+	clear bool
 }
 
 func (m *orchMockClarity) CheckTicketClarity(_ *models.Ticket) (bool, error) {

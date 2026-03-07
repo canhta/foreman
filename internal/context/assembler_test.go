@@ -19,7 +19,7 @@ func TestAssemblePlannerContext(t *testing.T) {
 		AcceptanceCriteria: "GET /users returns list of users",
 	}
 
-	ctx, err := AssemblePlannerContext(workDir, ticket, 30000)
+	ctx, err := AssemblePlannerContext(workDir, ticket, 30000, nil)
 	require.NoError(t, err)
 	assert.NotEmpty(t, ctx.SystemPrompt)
 	assert.NotEmpty(t, ctx.UserPrompt)
@@ -39,7 +39,7 @@ func TestAssembleImplementerContext(t *testing.T) {
 		FilesToModify:      []string{"internal/handler.go"},
 	}
 
-	ctx, err := AssembleImplementerContext(workDir, task, nil, 60000)
+	ctx, err := AssembleImplementerContext(workDir, task, nil, 60000, nil)
 	require.NoError(t, err)
 	assert.NotEmpty(t, ctx.SystemPrompt)
 	assert.NotEmpty(t, ctx.UserPrompt)
@@ -67,7 +67,7 @@ func TestAssembleImplementerContext_WithFeedback(t *testing.T) {
 		TDDFeedback:     "test ran before implementation",
 	}
 
-	ctx, err := AssembleImplementerContext(workDir, task, fb, 60000)
+	ctx, err := AssembleImplementerContext(workDir, task, fb, 60000, nil)
 	require.NoError(t, err)
 	assert.Contains(t, ctx.UserPrompt, "RETRY")
 	assert.Contains(t, ctx.UserPrompt, "nil pointer dereference")
@@ -111,7 +111,7 @@ func TestAssembleContext_SecretsFiltered(t *testing.T) {
 		FilesToModify: []string{"internal/handler.go"},
 	}
 
-	ctx, err := AssembleImplementerContext(workDir, task, nil, 60000)
+	ctx, err := AssembleImplementerContext(workDir, task, nil, 60000, nil)
 	require.NoError(t, err)
 	// .env should not appear in the context
 	assert.NotContains(t, ctx.UserPrompt, "sk-ant-secret")

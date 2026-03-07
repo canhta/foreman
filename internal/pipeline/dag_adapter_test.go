@@ -57,13 +57,15 @@ func (m *mockAdapterDB) IncrementTaskLlmCalls(_ context.Context, id string) (int
 	return m.callCounts[id], nil
 }
 
+func (m *mockAdapterDB) SetTaskErrorType(_ context.Context, _, _ string) error { return nil }
+
 // realMockGitProvider implements git.GitProvider using the real package types.
 type realMockGitProvider struct {
 	commitErr   error
-	diffOutput  string
-	commitSHA   string
 	cleanErr    error
 	cleanCalled *int
+	diffOutput  string
+	commitSHA   string
 }
 
 func (m *realMockGitProvider) EnsureRepo(_ context.Context, _ string) error      { return nil }

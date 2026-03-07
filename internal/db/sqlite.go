@@ -52,12 +52,21 @@ func NewSQLiteDB(path string) (*SQLiteDB, error) {
 	return &SQLiteDB{db: db}, nil
 }
 
-// runSQLiteMigrations applies one-time data fixes that are safe to re-run.
+// runSQLiteMigrations applies additive, idempotent schema changes for existing DBs.
 func runSQLiteMigrations(db *sql.DB) error {
+	ctx := context.Background()
+
 	// Backfill tickets where id was stored as empty string — use external_id as id.
-	_, err := db.ExecContext(context.Background(),
-		`UPDATE tickets SET id = external_id WHERE id = '' AND external_id != ''`)
-	return err
+	if _, err := db.ExecContext(ctx,
+		`UPDATE tickets SET id = external_id WHERE id = '' AND external_id != ''`); err != nil {
+		return err
+	}
+
+	// Add last_error_type column to tasks (ignored if already present).
+	_, _ = db.ExecContext(ctx,
+		`ALTER TABLE tasks ADD COLUMN last_error_type TEXT NOT NULL DEFAULT ''`)
+
+	return nil
 }
 
 func (s *SQLiteDB) Close() error {
@@ -237,6 +246,11 @@ func (s *SQLiteDB) CreateTasks(ctx context.Context, ticketID string, tasks []mod
 
 func (s *SQLiteDB) UpdateTaskStatus(ctx context.Context, id string, status models.TaskStatus) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE tasks SET status = ? WHERE id = ?`, string(status), id)
+	return err
+}
+
+func (s *SQLiteDB) SetTaskErrorType(ctx context.Context, id, errorType string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE tasks SET last_error_type = ? WHERE id = ?`, errorType, id)
 	return err
 }
 

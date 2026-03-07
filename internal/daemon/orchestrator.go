@@ -11,6 +11,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/canhta/foreman/internal/channel"
+	appcontext "github.com/canhta/foreman/internal/context"
 	"github.com/canhta/foreman/internal/db"
 	"github.com/canhta/foreman/internal/git"
 	"github.com/canhta/foreman/internal/models"
@@ -40,8 +41,9 @@ type DAGTaskRunnerFactory interface {
 
 // TaskRunnerFactoryInput holds the parameters needed to create a task runner.
 type TaskRunnerFactoryInput struct {
-	TicketID                 string
+	ContextCache             *appcontext.ContextCache
 	Models                   models.ModelsConfig
+	TicketID                 string
 	WorkDir                  string
 	CodebasePatterns         string
 	TestCommand              string
@@ -209,6 +211,14 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 		}
 	}()
 
+	// Create a per-ticket context cache. It is injected into ctx so the planner
+	// can reuse the file tree across repeated AssemblePlannerContext calls, and
+	// is passed to the task runner factory so each task also benefits from the
+	// cache. The cache is invalidated automatically by the task runner after
+	// every git commit.
+	ticketCache := appcontext.NewContextCache()
+	ctx = appcontext.WithCache(ctx, ticketCache)
+
 	// Status: queued -> planning
 	if err := o.db.UpdateTicketStatus(ctx, ticket.ID, models.TicketStatusPlanning); err != nil {
 		returnErr = fmt.Errorf("update status to planning: %w", err)
@@ -352,6 +362,7 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 		MaxQualityReviewCycles:   o.config.MaxQualityReviewCycles,
 		MaxLlmCallsPerTask:       o.config.MaxLlmCallsPerTask,
 		EnableTDDVerification:    o.config.EnableTDDVerification,
+		ContextCache:             ticketCache,
 	})
 
 	// Build DAG tasks (resolve title->ID dependencies).

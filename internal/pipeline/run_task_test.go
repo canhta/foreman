@@ -573,8 +573,10 @@ func TestLoadContextFiles_SkipsMissingFiles(t *testing.T) {
 	r := &PipelineTaskRunner{config: TaskRunnerConfig{WorkDir: workDir}}
 	files := r.loadContextFiles([]string{"exists.go", "does_not_exist.go"})
 
-	assert.Len(t, files, 1)
+	// Missing files now produce a [FILE NOT FOUND: ...] placeholder entry (BUG-M14 fix).
+	assert.Len(t, files, 2)
 	assert.Contains(t, files, "exists.go")
+	assert.Contains(t, files["does_not_exist.go"], "[FILE NOT FOUND:")
 }
 
 func TestLoadContextFiles_EmptyPaths(t *testing.T) {

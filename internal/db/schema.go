@@ -50,6 +50,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     quality_review_attempts INTEGER DEFAULT 0,
     total_llm_calls INTEGER DEFAULT 0,
     commit_sha TEXT,
+    last_error_type TEXT NOT NULL DEFAULT '',
     cost_usd REAL DEFAULT 0.0,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     started_at TIMESTAMP,

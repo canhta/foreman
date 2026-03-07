@@ -12,9 +12,9 @@ import (
 
 // mockDB implements the minimal DB interface needed for scheduler tests.
 type mockDB struct {
+	reservations map[string]string
+	reserved     map[string][]string
 	mu           sync.Mutex
-	reservations map[string]string   // path → ticketID
-	reserved     map[string][]string // ticketID → paths
 }
 
 func newMockDB() *mockDB {

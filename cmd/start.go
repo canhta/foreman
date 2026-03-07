@@ -93,6 +93,7 @@ func (f *taskRunnerFactory) Create(input daemon.TaskRunnerFactoryInput) daemon.T
 			MaxQualityReviewCycles:   input.MaxQualityReviewCycles,
 			MaxLlmCallsPerTask:       input.MaxLlmCallsPerTask,
 			EnableTDDVerification:    input.EnableTDDVerification,
+			Cache:                    input.ContextCache,
 		},
 	)
 	return pipeline.NewDAGTaskAdapter(tr, f.db, input.TicketID)

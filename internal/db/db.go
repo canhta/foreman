@@ -21,6 +21,7 @@ type Database interface {
 	// Tasks
 	CreateTasks(ctx context.Context, ticketID string, tasks []models.Task) error
 	UpdateTaskStatus(ctx context.Context, id string, status models.TaskStatus) error
+	SetTaskErrorType(ctx context.Context, id, errorType string) error
 	IncrementTaskLlmCalls(ctx context.Context, id string) (int, error)
 	ListTasks(ctx context.Context, ticketID string) ([]models.Task, error)
 

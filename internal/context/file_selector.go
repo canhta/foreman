@@ -19,7 +19,8 @@ type ScoredFile struct {
 }
 
 // SelectFilesForTask returns the most relevant files within the token budget.
-func SelectFilesForTask(task *models.Task, workDir string, tokenBudget int) ([]ScoredFile, error) {
+// cache is optional (nil = no caching for the source file walk).
+func SelectFilesForTask(task *models.Task, workDir string, tokenBudget int, cache *ContextCache) ([]ScoredFile, error) {
 	candidates := map[string]*ScoredFile{}
 
 	// Signal 1: Explicit planner references (highest priority)
@@ -42,7 +43,7 @@ func SelectFilesForTask(task *models.Task, workDir string, tokenBudget int) ([]S
 
 	// Signal 3: Directory proximity
 	taskDirs := extractDirectories(task.FilesToModify)
-	allFiles := listSourceFiles(workDir)
+	allFiles := GetOrListSourceFiles(cache, workDir)
 	for _, f := range allFiles {
 		if _, exists := candidates[f]; exists {
 			continue
