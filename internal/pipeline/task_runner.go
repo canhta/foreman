@@ -492,6 +492,9 @@ func (r *PipelineTaskRunner) selectContextFiles(ctx context.Context, task *model
 	}
 
 	// Emit cache hit ratio metric (REQ-TELE-001).
+	// This gauge reflects the lifetime ratio at the point of this call; it is
+	// only updated when selectContextFiles runs (zero-task plans or early
+	// failures will not update the gauge).
 	if r.config.Cache != nil && r.metrics != nil {
 		r.metrics.ContextCacheHitRatio.Set(r.config.Cache.HitRatio())
 	}

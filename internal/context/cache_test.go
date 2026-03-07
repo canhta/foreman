@@ -140,18 +140,19 @@ func TestContextCache_HitRatio_NotClearedByInvalidate(t *testing.T) {
 	workDir := setupTestRepo(t)
 	cache := NewContextCache()
 
-	// First call: miss.
+	// First call: miss (total=1, hits=0).
 	_, err := GetOrAnalyzeRepo(cache, workDir)
 	require.NoError(t, err)
+
+	// Second call: hit (total=2, hits=1) → ratio=0.5.
+	_, err = GetOrAnalyzeRepo(cache, workDir)
+	require.NoError(t, err)
+	assert.InDelta(t, 0.5, cache.HitRatio(), 1e-9, "sanity check before Invalidate")
 
 	// Invalidate clears cached data but NOT the lifetime counters.
 	cache.Invalidate()
 
-	// Second call: miss again (cache was cleared). total=2, hits=0.
-	_, err = GetOrAnalyzeRepo(cache, workDir)
-	require.NoError(t, err)
-
-	// Ratio should be 0.0 (two misses), not reset to 0.0 from a fresh counter.
-	// The key invariant: counters survive Invalidate.
-	assert.InDelta(t, 0.0, cache.HitRatio(), 1e-9)
+	// After Invalidate the counters must still show the pre-invalidate ratio.
+	// If Invalidate incorrectly zeroed the counters, HitRatio() would return 0.0.
+	assert.InDelta(t, 0.5, cache.HitRatio(), 1e-9, "counters must survive Invalidate")
 }
