@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/rs/zerolog/log"
+
 	"github.com/canhta/foreman/internal/agent"
 	"github.com/canhta/foreman/internal/git"
 	"github.com/canhta/foreman/internal/llm"
@@ -204,6 +206,15 @@ func (e *Engine) executeAgentSDK(ctx context.Context, step SkillStep) (*StepResu
 		MaxTurns:      step.MaxTurns,
 		TimeoutSecs:   step.TimeoutSecs,
 		FallbackModel: step.FallbackModel,
+		OnProgress: func(e agent.AgentEvent) {
+			log.Debug().
+				Str("event", string(e.Type)).
+				Int("turn", e.Turn).
+				Str("tool", e.ToolName).
+				Int("tokens_in", e.TokensIn).
+				Int("tokens_out", e.TokensOut).
+				Msg("agent progress")
+		},
 	}
 
 	// Marshal OutputSchema map → json.RawMessage
