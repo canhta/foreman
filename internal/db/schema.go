@@ -98,6 +98,8 @@ CREATE TABLE IF NOT EXISTS handoffs (
     to_role TEXT,
     key TEXT NOT NULL,
     value TEXT NOT NULL,
+    version INTEGER NOT NULL DEFAULT 0,
+    supersedes TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 

@@ -106,6 +106,12 @@ func runSQLiteMigrations(db *sql.DB) error {
 	_, _ = db.ExecContext(ctx,
 		`ALTER TABLE llm_calls ADD COLUMN prompt_version TEXT NOT NULL DEFAULT ''`)
 
+	// Add version and supersedes columns to handoffs for handoff versioning (ARCH-M02).
+	_, _ = db.ExecContext(ctx,
+		`ALTER TABLE handoffs ADD COLUMN version INTEGER NOT NULL DEFAULT 0`)
+	_, _ = db.ExecContext(ctx,
+		`ALTER TABLE handoffs ADD COLUMN supersedes TEXT NOT NULL DEFAULT ''`)
+
 	return nil
 }
 
@@ -432,8 +438,8 @@ func (s *SQLiteDB) GetCallDetails(ctx context.Context, callID string) (string, s
 
 func (s *SQLiteDB) SetHandoff(ctx context.Context, h *models.HandoffRecord) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO handoffs (id, ticket_id, from_role, to_role, key, value, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO handoffs (id, ticket_id, from_role, to_role, key, value, version, supersedes, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, 0, '', ?)`,
 		h.ID, h.TicketID, h.FromRole, h.ToRole, h.Key, h.Value, h.CreatedAt,
 	)
 	if err != nil {
@@ -442,9 +448,27 @@ func (s *SQLiteDB) SetHandoff(ctx context.Context, h *models.HandoffRecord) erro
 	return nil
 }
 
+func (s *SQLiteDB) UpdateHandoff(ctx context.Context, id string, value string, supersedes string) error {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE handoffs SET value = ?, version = version + 1, supersedes = ? WHERE id = ?`,
+		value, supersedes, id,
+	)
+	if err != nil {
+		return fmt.Errorf("update handoff: %w", err)
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("update handoff rows affected: %w", err)
+	}
+	if rows == 0 {
+		return fmt.Errorf("update handoff %q: %w", id, ErrNotFound)
+	}
+	return nil
+}
+
 func (s *SQLiteDB) GetHandoffs(ctx context.Context, ticketID, forRole string) ([]models.HandoffRecord, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, ticket_id, from_role, to_role, key, value, created_at FROM handoffs
+		`SELECT id, ticket_id, from_role, to_role, key, value, version, supersedes, created_at FROM handoffs
 		 WHERE ticket_id = ? AND (to_role = ? OR to_role IS NULL OR to_role = '')
 		 ORDER BY created_at`, ticketID, forRole)
 	if err != nil {
@@ -455,7 +479,7 @@ func (s *SQLiteDB) GetHandoffs(ctx context.Context, ticketID, forRole string) ([
 	var handoffs []models.HandoffRecord
 	for rows.Next() {
 		var h models.HandoffRecord
-		if err := rows.Scan(&h.ID, &h.TicketID, &h.FromRole, &h.ToRole, &h.Key, &h.Value, &h.CreatedAt); err != nil {
+		if err := rows.Scan(&h.ID, &h.TicketID, &h.FromRole, &h.ToRole, &h.Key, &h.Value, &h.Version, &h.Supersedes, &h.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan handoff row: %w", err)
 		}
 		handoffs = append(handoffs, h)

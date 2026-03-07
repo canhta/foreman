@@ -46,6 +46,15 @@ func runPostgresSchema(db *sqlx.DB) error {
 		`ALTER TABLE llm_calls ADD COLUMN IF NOT EXISTS prompt_version TEXT NOT NULL DEFAULT ''`); err != nil {
 		return fmt.Errorf("migrate llm_calls.prompt_version: %w", err)
 	}
+	// Add version and supersedes columns to handoffs for handoff versioning (ARCH-M02).
+	if _, err := db.ExecContext(ctx,
+		`ALTER TABLE handoffs ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 0`); err != nil {
+		return fmt.Errorf("migrate handoffs.version: %w", err)
+	}
+	if _, err := db.ExecContext(ctx,
+		`ALTER TABLE handoffs ADD COLUMN IF NOT EXISTS supersedes TEXT NOT NULL DEFAULT ''`); err != nil {
+		return fmt.Errorf("migrate handoffs.supersedes: %w", err)
+	}
 	return nil
 }
 
@@ -344,8 +353,8 @@ func (p *PostgresDB) GetCallDetails(ctx context.Context, callID string) (string,
 
 func (p *PostgresDB) SetHandoff(ctx context.Context, h *models.HandoffRecord) error {
 	_, err := p.db.ExecContext(ctx,
-		`INSERT INTO handoffs (id, ticket_id, from_role, to_role, key, value, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		`INSERT INTO handoffs (id, ticket_id, from_role, to_role, key, value, version, supersedes, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, 0, '', $7)`,
 		h.ID, h.TicketID, h.FromRole, h.ToRole, h.Key, h.Value, h.CreatedAt,
 	)
 	if err != nil {
@@ -354,9 +363,27 @@ func (p *PostgresDB) SetHandoff(ctx context.Context, h *models.HandoffRecord) er
 	return nil
 }
 
+func (p *PostgresDB) UpdateHandoff(ctx context.Context, id string, value string, supersedes string) error {
+	res, err := p.db.ExecContext(ctx,
+		`UPDATE handoffs SET value = $1, version = version + 1, supersedes = $2 WHERE id = $3`,
+		value, supersedes, id,
+	)
+	if err != nil {
+		return fmt.Errorf("update handoff: %w", err)
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("update handoff rows affected: %w", err)
+	}
+	if rows == 0 {
+		return fmt.Errorf("update handoff %q: %w", id, ErrNotFound)
+	}
+	return nil
+}
+
 func (p *PostgresDB) GetHandoffs(ctx context.Context, ticketID, forRole string) ([]models.HandoffRecord, error) {
 	rows, err := p.db.QueryContext(ctx,
-		`SELECT id, ticket_id, from_role, to_role, key, value, created_at FROM handoffs
+		`SELECT id, ticket_id, from_role, to_role, key, value, version, supersedes, created_at FROM handoffs
 		 WHERE ticket_id = $1 AND (to_role = $2 OR to_role IS NULL OR to_role = '')
 		 ORDER BY created_at`, ticketID, forRole)
 	if err != nil {
@@ -367,7 +394,7 @@ func (p *PostgresDB) GetHandoffs(ctx context.Context, ticketID, forRole string) 
 	var handoffs []models.HandoffRecord
 	for rows.Next() {
 		var h models.HandoffRecord
-		if err := rows.Scan(&h.ID, &h.TicketID, &h.FromRole, &h.ToRole, &h.Key, &h.Value, &h.CreatedAt); err != nil {
+		if err := rows.Scan(&h.ID, &h.TicketID, &h.FromRole, &h.ToRole, &h.Key, &h.Value, &h.Version, &h.Supersedes, &h.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan handoff row: %w", err)
 		}
 		handoffs = append(handoffs, h)

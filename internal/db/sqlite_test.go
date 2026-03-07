@@ -382,6 +382,92 @@ func TestSQLiteDB_SetAndGetHandoffs(t *testing.T) {
 	assert.Equal(t, `{"tasks":[]}`, got[0].Value)
 }
 
+// TestHandoffVersioning verifies SetHandoff creates Version=0, Supersedes="",
+// UpdateHandoff increments Version, returns error for missing IDs,
+// and GetHandoffs reflects the updated value.
+func TestHandoffVersioning_SetCreatesVersionZero(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	require.NoError(t, db.CreateTicket(ctx, &models.Ticket{
+		ID: "t-1", ExternalID: "X-1", Title: "t", Description: "d",
+		Status: models.TicketStatusQueued, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}))
+
+	h := &models.HandoffRecord{
+		ID: "h-ver-1", TicketID: "t-1", FromRole: "planner", ToRole: "implementer",
+		Key: "plan", Value: "v0", CreatedAt: time.Now(),
+	}
+	require.NoError(t, db.SetHandoff(ctx, h))
+
+	got, err := db.GetHandoffs(ctx, "t-1", "implementer")
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, 0, got[0].Version)
+	assert.Equal(t, "", got[0].Supersedes)
+	assert.Equal(t, "v0", got[0].Value)
+}
+
+func TestHandoffVersioning_UpdateHandoffIncrementsVersion(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	require.NoError(t, db.CreateTicket(ctx, &models.Ticket{
+		ID: "t-1", ExternalID: "X-1", Title: "t", Description: "d",
+		Status: models.TicketStatusQueued, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}))
+
+	h := &models.HandoffRecord{
+		ID: "h-upd-1", TicketID: "t-1", FromRole: "planner", ToRole: "implementer",
+		Key: "plan", Value: "original", CreatedAt: time.Now(),
+	}
+	require.NoError(t, db.SetHandoff(ctx, h))
+
+	require.NoError(t, db.UpdateHandoff(ctx, "h-upd-1", "updated", ""))
+
+	got, err := db.GetHandoffs(ctx, "t-1", "implementer")
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, "updated", got[0].Value)
+	assert.Equal(t, 1, got[0].Version)
+}
+
+func TestHandoffVersioning_UpdateHandoffNonExistentReturnsError(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	err := db.UpdateHandoff(ctx, "does-not-exist", "value", "")
+	require.Error(t, err)
+}
+
+func TestHandoffVersioning_SupersedesIsStoredOnUpdate(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	require.NoError(t, db.CreateTicket(ctx, &models.Ticket{
+		ID: "t-1", ExternalID: "X-1", Title: "t", Description: "d",
+		Status: models.TicketStatusQueued, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}))
+
+	h := &models.HandoffRecord{
+		ID: "h-sup-1", TicketID: "t-1", FromRole: "planner", ToRole: "implementer",
+		Key: "plan", Value: "v1", CreatedAt: time.Now(),
+	}
+	require.NoError(t, db.SetHandoff(ctx, h))
+
+	require.NoError(t, db.UpdateHandoff(ctx, "h-sup-1", "v2", "h-sup-1"))
+
+	got, err := db.GetHandoffs(ctx, "t-1", "implementer")
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, "v2", got[0].Value)
+	assert.Equal(t, "h-sup-1", got[0].Supersedes)
+}
+
 func TestSQLiteDB_SaveAndGetProgressPatterns(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()

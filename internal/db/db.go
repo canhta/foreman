@@ -71,6 +71,7 @@ type Database interface {
 	// Handoffs
 	SetHandoff(ctx context.Context, h *models.HandoffRecord) error
 	GetHandoffs(ctx context.Context, ticketID, forRole string) ([]models.HandoffRecord, error)
+	UpdateHandoff(ctx context.Context, id string, value string, supersedes string) error
 
 	// Progress patterns
 	SaveProgressPattern(ctx context.Context, p *models.ProgressPattern) error

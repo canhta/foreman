@@ -95,6 +95,9 @@ func (m *orchMockDB) SetHandoff(_ context.Context, _ *models.HandoffRecord) erro
 func (m *orchMockDB) GetHandoffs(_ context.Context, _, _ string) ([]models.HandoffRecord, error) {
 	return nil, nil
 }
+func (m *orchMockDB) UpdateHandoff(_ context.Context, _ string, _ string, _ string) error {
+	return nil
+}
 func (m *orchMockDB) SaveProgressPattern(_ context.Context, _ *models.ProgressPattern) error {
 	return nil
 }

@@ -102,6 +102,7 @@ func (m *mockDB) SetHandoff(_ context.Context, _ *models.HandoffRecord) error { 
 func (m *mockDB) GetHandoffs(_ context.Context, _, _ string) ([]models.HandoffRecord, error) {
 	return nil, nil
 }
+func (m *mockDB) UpdateHandoff(_ context.Context, _ string, _ string, _ string) error { return nil }
 func (m *mockDB) SaveProgressPattern(_ context.Context, _ *models.ProgressPattern) error {
 	return nil
 }

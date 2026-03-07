@@ -91,13 +91,15 @@ type LlmCallRecord struct {
 }
 
 type HandoffRecord struct {
-	CreatedAt time.Time
-	ID        string
-	TicketID  string
-	FromRole  string
-	ToRole    string
-	Key       string
-	Value     string
+	CreatedAt  time.Time
+	ID         string
+	TicketID   string
+	FromRole   string
+	ToRole     string
+	Key        string
+	Value      string
+	Supersedes string
+	Version    int
 }
 
 type ProgressPattern struct {
