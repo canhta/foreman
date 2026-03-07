@@ -460,9 +460,9 @@ func (r *PipelineTaskRunner) selectContextFiles(ctx context.Context, task *model
 		patterns = append(patterns, boardPatterns...)
 	}
 
-	scored, err := appcontext.SelectFilesForTask(task, r.config.WorkDir, budget, r.config.Cache, r.db, boost, patterns...)
+	scored, err := appcontext.GetOrSelectFiles(r.config.Cache, task, r.config.WorkDir, budget, r.db, boost, patterns...)
 	if err != nil {
-		log.Warn().Err(err).Str("task_id", task.ID).Msg("context_assembly: SelectFilesForTask failed, falling back to explicit files")
+		log.Warn().Err(err).Str("task_id", task.ID).Msg("context_assembly: GetOrSelectFiles failed, falling back to explicit files")
 		return r.loadContextFiles(task.FilesToRead, budget)
 	}
 

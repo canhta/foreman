@@ -5,6 +5,8 @@ import (
 	goctx "context"
 	"sync"
 	"sync/atomic"
+
+	"github.com/canhta/foreman/internal/models"
 )
 
 type contextKeyType struct{}
@@ -20,14 +22,20 @@ var contextKey = contextKeyType{}
 // via WithCache, and shared across all pipeline stages for that ticket. Concurrent
 // access is safe. After git operations (commit, checkout, rebase) that change
 // HEAD, call Invalidate so the next read re-scans from disk.
+//
+// Field ordering is chosen to minimise GC-scan pointer bytes (all pointer fields
+// first, then non-pointer atomics and mutex last).
 type ContextCache struct {
+	// scoredFiles caches SelectFilesForTask results keyed by task ID.
+	// It is cleared on Invalidate because scored results depend on tree state.
+	scoredFiles map[string][]ScoredFile
 	repoInfo    *RepoInfo
 	sourceFiles []string
-	mu          sync.RWMutex
 	// hits and total are lifetime counters for computing the cache hit ratio.
 	// They are NOT reset by Invalidate — they track the lifetime ratio.
 	hits  atomic.Int64
 	total atomic.Int64
+	mu    sync.RWMutex
 }
 
 // NewContextCache creates an empty ContextCache.
@@ -72,6 +80,7 @@ func (c *ContextCache) Invalidate() {
 	defer c.mu.Unlock()
 	c.repoInfo = nil
 	c.sourceFiles = nil
+	c.scoredFiles = nil
 }
 
 // HitRatio returns the fraction of cache lookups that were served from the
@@ -131,4 +140,44 @@ func GetOrListSourceFiles(cache *ContextCache, workDir string) []string {
 		cache.SetSourceFiles(files)
 	}
 	return files
+}
+
+// GetScoredFiles returns the cached scored file list for taskID, or nil/false if
+// not yet cached.
+func (c *ContextCache) GetScoredFiles(taskID string) ([]ScoredFile, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	files, ok := c.scoredFiles[taskID]
+	return files, ok
+}
+
+// SetScoredFiles stores a scored file list for taskID in the cache.
+func (c *ContextCache) SetScoredFiles(taskID string, files []ScoredFile) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.scoredFiles == nil {
+		c.scoredFiles = make(map[string][]ScoredFile)
+	}
+	c.scoredFiles[taskID] = files
+}
+
+// GetOrSelectFiles returns the cached scored file list for the task if available;
+// otherwise it calls SelectFilesForTask, caches the result, and returns it.
+// cache may be nil (disables caching).
+func GetOrSelectFiles(cache *ContextCache, task *models.Task, workDir string, tokenBudget int, fq FeedbackQuerier, feedbackBoost float64, patterns ...models.ProgressPattern) ([]ScoredFile, error) {
+	if cache != nil {
+		cache.total.Add(1)
+		if files, ok := cache.GetScoredFiles(task.ID); ok {
+			cache.hits.Add(1)
+			return files, nil
+		}
+	}
+	files, err := SelectFilesForTask(task, workDir, tokenBudget, cache, fq, feedbackBoost, patterns...)
+	if err != nil {
+		return nil, err
+	}
+	if cache != nil {
+		cache.SetScoredFiles(task.ID, files)
+	}
+	return files, nil
 }

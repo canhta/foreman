@@ -5,6 +5,7 @@ import (
 	goctx "context"
 	"testing"
 
+	"github.com/canhta/foreman/internal/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -155,4 +156,68 @@ func TestContextCache_HitRatio_NotClearedByInvalidate(t *testing.T) {
 	// After Invalidate the counters must still show the pre-invalidate ratio.
 	// If Invalidate incorrectly zeroed the counters, HitRatio() would return 0.0.
 	assert.InDelta(t, 0.5, cache.HitRatio(), 1e-9, "counters must survive Invalidate")
+}
+
+// ---------------------------------------------------------------------------
+// GetOrSelectFiles tests
+// ---------------------------------------------------------------------------
+
+func TestContextCache_GetOrSelectFiles_CacheHit(t *testing.T) {
+	workDir := setupTestRepo(t)
+	cache := NewContextCache()
+	task := &models.Task{
+		ID:            "task-1",
+		FilesToModify: []string{"internal/handler.go"},
+	}
+
+	// First call: cache miss — computes from disk.
+	files1, err := GetOrSelectFiles(cache, task, workDir, 80000, nil, 1.5)
+	require.NoError(t, err)
+	assert.NotEmpty(t, files1)
+
+	// Second call with same taskID: cache hit — must return identical data.
+	files2, err := GetOrSelectFiles(cache, task, workDir, 80000, nil, 1.5)
+	require.NoError(t, err)
+	assert.Equal(t, files1, files2, "expected cache hit to return same scored files")
+}
+
+func TestContextCache_GetOrSelectFiles_InvalidateClearsScoredFiles(t *testing.T) {
+	workDir := setupTestRepo(t)
+	cache := NewContextCache()
+	task := &models.Task{
+		ID:            "task-2",
+		FilesToModify: []string{"internal/handler.go"},
+	}
+
+	// Warm the cache.
+	files1, err := GetOrSelectFiles(cache, task, workDir, 80000, nil, 1.5)
+	require.NoError(t, err)
+	assert.NotEmpty(t, files1)
+
+	// Confirm it is stored in cache.
+	_, ok := cache.GetScoredFiles(task.ID)
+	assert.True(t, ok, "expected scored files to be cached before Invalidate")
+
+	// Invalidate clears scored files.
+	cache.Invalidate()
+	_, ok = cache.GetScoredFiles(task.ID)
+	assert.False(t, ok, "expected scored files to be cleared after Invalidate")
+
+	// Third call recomputes (new miss after invalidation).
+	files3, err := GetOrSelectFiles(cache, task, workDir, 80000, nil, 1.5)
+	require.NoError(t, err)
+	assert.Equal(t, files1, files3, "recomputed result should be equivalent to original")
+}
+
+func TestContextCache_GetOrSelectFiles_NilCacheSafe(t *testing.T) {
+	workDir := setupTestRepo(t)
+	task := &models.Task{
+		ID:            "task-3",
+		FilesToModify: []string{"internal/handler.go"},
+	}
+
+	// Passing nil cache should not panic and should return correct results.
+	files, err := GetOrSelectFiles(nil, task, workDir, 80000, nil, 1.5)
+	require.NoError(t, err)
+	assert.NotEmpty(t, files)
 }
