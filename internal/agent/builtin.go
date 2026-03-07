@@ -268,29 +268,31 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 			// Phase 2 (85%): LLM summarization takes priority — preserve as much context as possible.
 			// Skip if the first message is already a summary (avoid progressive fidelity loss).
 			if currentTokens > p2Threshold {
-				oldMessages, recentMessages := splitForSummarization(messages)
 				alreadySummarized := len(messages) > 0 && strings.HasPrefix(messages[0].Content, "[context summary]")
-				if len(oldMessages) > 0 && !alreadySummarized {
-					summaryMsg := SummarizeHistory(ctx, r.provider, r.model, oldMessages)
-					messages = append([]models.Message{summaryMsg}, recentMessages...)
-					log.Info().
-						Int("tokens_before", currentTokens).
-						Int("old_messages", len(oldMessages)).
-						Int("remaining", len(messages)).
-						Msg("builtin: context summarized via LLM")
+				if !alreadySummarized {
+					oldMessages, recentMessages := splitForSummarization(messages)
+					if len(oldMessages) > 0 {
+						summaryMsg := SummarizeHistory(ctx, unwrapProvider(r.provider), r.model, oldMessages)
+						messages = append([]models.Message{summaryMsg}, recentMessages...)
+						log.Info().
+							Int("tokens_before", currentTokens).
+							Int("old_messages", len(oldMessages)).
+							Int("remaining", len(messages)).
+							Msg("builtin: context summarized via LLM")
+					}
 				}
 			}
 
 			// Phase 1 (70%): fall-through truncation if still over budget
 			// (e.g., last 3 turns alone are large, or summarization was skipped).
-			if countAllTokens(messages) > p1Threshold {
+			if tokensAfterP2 := countAllTokens(messages); tokensAfterP2 > p1Threshold {
 				before := len(messages)
 				messages = CompactMessages(messages, budget)
 				after := len(messages)
 				if after < before {
 					dropped := before - after
 					log.Info().
-						Int("tokens_before", currentTokens).
+						Int("tokens_before", tokensAfterP2).
 						Int("messages_dropped", dropped).
 						Int("budget", budget).
 						Msg("builtin: context compacted")
@@ -481,4 +483,21 @@ func toolCallFingerprint(toolName string, input json.RawMessage) string {
 	h.Write(input)
 done:
 	return fmt.Sprintf("%x", h.Sum(nil))
+}
+
+// unwrapProvider returns the innermost non-recording provider.
+// This is used to bypass RecordingProvider for internal summarization calls
+// that should not appear in the observability store.
+func unwrapProvider(p llm.LlmProvider) llm.LlmProvider {
+	type hasInner interface {
+		Inner() llm.LlmProvider
+	}
+	for {
+		if u, ok := p.(hasInner); ok {
+			p = u.Inner()
+		} else {
+			break
+		}
+	}
+	return p
 }

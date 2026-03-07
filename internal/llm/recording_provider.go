@@ -31,6 +31,9 @@ func NewRecordingProvider(provider LlmProvider, db CallDetailsStore) *RecordingP
 	return &RecordingProvider{inner: provider, db: db}
 }
 
+// Inner returns the wrapped LlmProvider. Useful for bypassing recording for internal calls.
+func (r *RecordingProvider) Inner() LlmProvider { return r.inner }
+
 // ProviderName delegates to the inner provider.
 func (r *RecordingProvider) ProviderName() string { return r.inner.ProviderName() }
 

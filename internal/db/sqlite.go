@@ -66,21 +66,25 @@ func runSQLiteMigrations(db *sql.DB) error {
 	_, _ = db.ExecContext(ctx,
 		`ALTER TABLE tasks ADD COLUMN last_error_type TEXT NOT NULL DEFAULT ''`)
 
-	// Recreate llm_call_details without the FK constraint on llm_calls(id).
-	// The original table was created with REFERENCES llm_calls(id) which
-	// prevents RecordingProvider from inserting its own generated IDs.
-	// Data in this table is purely observability logging — dropping it is safe.
-	if _, err := db.ExecContext(ctx,
-		`DROP TABLE IF EXISTS llm_call_details`); err != nil {
-		return err
-	}
-	if _, err := db.ExecContext(ctx,
-		`CREATE TABLE IF NOT EXISTS llm_call_details (
-		    llm_call_id TEXT PRIMARY KEY,
-		    full_prompt TEXT NOT NULL DEFAULT '',
-		    full_response TEXT NOT NULL DEFAULT ''
-		)`); err != nil {
-		return err
+	// Recreate llm_call_details without the FK constraint on llm_calls(id), but ONLY if
+	// the old FK schema is still present. Once migrated (no REFERENCES clause), skip to
+	// avoid wiping observability data on every restart.
+	var tblSQL string
+	_ = db.QueryRowContext(ctx,
+		`SELECT sql FROM sqlite_master WHERE type='table' AND name='llm_call_details'`,
+	).Scan(&tblSQL)
+	if strings.Contains(tblSQL, "REFERENCES") {
+		if _, err := db.ExecContext(ctx, `DROP TABLE IF EXISTS llm_call_details`); err != nil {
+			return err
+		}
+		if _, err := db.ExecContext(ctx,
+			`CREATE TABLE IF NOT EXISTS llm_call_details (
+			    llm_call_id TEXT PRIMARY KEY,
+			    full_prompt TEXT NOT NULL DEFAULT '',
+			    full_response TEXT NOT NULL DEFAULT ''
+			)`); err != nil {
+			return err
+		}
 	}
 
 	return nil
