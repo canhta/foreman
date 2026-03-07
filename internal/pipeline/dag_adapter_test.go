@@ -64,6 +64,10 @@ func (m *mockAdapterDB) WriteContextFeedback(_ context.Context, _ dbpkg.ContextF
 	return nil
 }
 
+func (m *mockAdapterDB) QueryContextFeedback(_ context.Context, _ []string, _ float64) ([]dbpkg.ContextFeedbackRow, error) {
+	return nil, nil
+}
+
 // realMockGitProvider implements git.GitProvider using the real package types.
 type realMockGitProvider struct {
 	commitErr   error

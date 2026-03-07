@@ -122,7 +122,9 @@ Do NOT wrap the YAML in markdown fences. Output ONLY the YAML.`
 
 // AssembleImplementerContext builds the context for an implementer LLM call.
 // cache is optional (nil = no caching).
-func AssembleImplementerContext(workDir string, task *models.Task, feedback *FeedbackContext, tokenBudget int, cache *ContextCache) (*AssembledContext, error) {
+// fq is an optional FeedbackQuerier for REQ-CTX-003 feedback boosting; pass nil to disable.
+// feedbackBoost is the score multiplier applied to files that appeared in prior similar tasks.
+func AssembleImplementerContext(workDir string, task *models.Task, feedback *FeedbackContext, tokenBudget int, cache *ContextCache, fq FeedbackQuerier, feedbackBoost float64) (*AssembledContext, error) {
 	repoInfo, err := GetOrAnalyzeRepo(cache, workDir)
 	if err != nil {
 		return nil, fmt.Errorf("analyzing repo: %w", err)
@@ -159,7 +161,7 @@ IMPORTANT:
 - ALWAYS output test files BEFORE implementation files.`
 
 	// Select files for context
-	files, err := SelectFilesForTask(task, workDir, tokenBudget/2, cache, nil, 1.5)
+	files, err := SelectFilesForTask(task, workDir, tokenBudget/2, cache, fq, feedbackBoost)
 	if err != nil {
 		return nil, fmt.Errorf("selecting files: %w", err)
 	}

@@ -59,6 +59,10 @@ func (m *mockTaskRunnerDB) WriteContextFeedback(_ context.Context, _ dbpkg.Conte
 	return nil
 }
 
+func (m *mockTaskRunnerDB) QueryContextFeedback(_ context.Context, _ []string, _ float64) ([]dbpkg.ContextFeedbackRow, error) {
+	return nil, nil
+}
+
 // --- Tests ---
 
 func TestDetectEscalation(t *testing.T) {

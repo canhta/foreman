@@ -140,6 +140,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("database.sqlite.busy_timeout_ms", 5000)
 	v.SetDefault("database.sqlite.wal_mode", true)
 	v.SetDefault("database.sqlite.event_flush_interval_ms", 100)
+
+	// Context assembly defaults (REQ-CTX-003)
+	v.SetDefault("context.context_feedback_boost", 1.5)
 }
 
 func expandEnvVars(cfg *models.Config) {

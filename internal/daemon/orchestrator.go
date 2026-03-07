@@ -52,7 +52,10 @@ type TaskRunnerFactoryInput struct {
 	MaxQualityReviewCycles   int
 	MaxLlmCallsPerTask       int
 	ContextTokenBudget       int
-	EnableTDDVerification    bool
+	// ContextFeedbackBoost is the score multiplier for files that appeared in
+	// files_touched of prior similar tasks. Default 1.5 (REQ-CTX-003).
+	ContextFeedbackBoost  float64
+	EnableTDDVerification bool
 }
 
 // PlanResult mirrors pipeline.PlannerResult without creating an import cycle.
@@ -100,12 +103,15 @@ type OrchestratorConfig struct {
 	MaxSpecReviewCycles    int
 	MaxQualityReviewCycles int
 	ContextTokenBudget     int
-	PRDraft                bool
-	RebaseBeforePR         bool
-	AutoPush               bool
-	EnablePartialPR        bool
-	EnableTDDVerification  bool
-	EnableClarification    bool
+	// ContextFeedbackBoost is the score multiplier for files that appeared in
+	// files_touched of prior similar tasks. Default 1.5 (REQ-CTX-003).
+	ContextFeedbackBoost  float64
+	PRDraft               bool
+	RebaseBeforePR        bool
+	AutoPush              bool
+	EnablePartialPR       bool
+	EnableTDDVerification bool
+	EnableClarification   bool
 }
 
 // Orchestrator coordinates the full ticket-to-PR lifecycle.
@@ -367,6 +373,7 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 		MaxQualityReviewCycles:   o.config.MaxQualityReviewCycles,
 		MaxLlmCallsPerTask:       o.config.MaxLlmCallsPerTask,
 		ContextTokenBudget:       o.config.ContextTokenBudget,
+		ContextFeedbackBoost:     o.config.ContextFeedbackBoost,
 		EnableTDDVerification:    o.config.EnableTDDVerification,
 		ContextCache:             ticketCache,
 	})

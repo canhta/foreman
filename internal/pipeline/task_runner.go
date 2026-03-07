@@ -57,6 +57,7 @@ type TaskRunnerDB interface {
 	SetTaskErrorType(ctx context.Context, id, errorType string) error
 	IncrementTaskLlmCalls(ctx context.Context, id string) (int, error)
 	WriteContextFeedback(ctx context.Context, row dbpkg.ContextFeedbackRow) error
+	QueryContextFeedback(ctx context.Context, candidates []string, minJaccard float64) ([]dbpkg.ContextFeedbackRow, error)
 }
 
 // PipelineTaskRunner implements daemon.TaskRunner by orchestrating the full
@@ -148,7 +149,7 @@ func (r *PipelineTaskRunner) RunTask(ctx context.Context, task *models.Task) err
 			Int("dynamic_budget", ctxBudget).
 			Str("task_id", task.ID).
 			Msg("context_assembly: dynamic budget computed")
-		contextFiles := r.loadContextFiles(task.FilesToRead, ctxBudget)
+		contextFiles := r.selectContextFiles(task, ctxBudget)
 		result, err := r.implementer.Execute(ctx, ImplementerInput{
 			Task:         task,
 			ContextFiles: contextFiles,
@@ -359,6 +360,47 @@ func (r *PipelineTaskRunner) resetWorkingTree(ctx context.Context, filesToModify
 		}
 	}
 	return nil
+}
+
+// selectContextFiles selects relevant files for the task using scored selection
+// with feedback boosting (REQ-CTX-003). Falls back to loadContextFiles if
+// SelectFilesForTask fails. The result is a map of relative path → file content.
+func (r *PipelineTaskRunner) selectContextFiles(task *models.Task, budget int) map[string]string {
+	boost := r.config.ContextFeedbackBoost
+	if boost <= 0 {
+		boost = 1.5
+	}
+	scored, err := appcontext.SelectFilesForTask(task, r.config.WorkDir, budget, r.config.Cache, r.db, boost)
+	if err != nil {
+		log.Warn().Err(err).Str("task_id", task.ID).Msg("context_assembly: SelectFilesForTask failed, falling back to explicit files")
+		return r.loadContextFiles(task.FilesToRead, budget)
+	}
+
+	files := make(map[string]string, len(scored))
+	tokensUsed := 0
+	realFilesAdded := 0
+	for _, sf := range scored {
+		fullPath := filepath.Join(r.config.WorkDir, sf.Path)
+		data, err := os.ReadFile(fullPath)
+		if err != nil {
+			log.Warn().Str("path", sf.Path).Err(err).Msg("context file not readable after selection")
+			files[sf.Path] = fmt.Sprintf("[FILE NOT FOUND: %q was referenced but could not be read: %s]", sf.Path, err)
+			continue
+		}
+		content := string(data)
+		if budget > 0 && realFilesAdded > 0 {
+			est := appcontext.EstimateTokens(content)
+			if tokensUsed+est > budget {
+				continue
+			}
+			tokensUsed += est
+		} else if budget > 0 {
+			tokensUsed += appcontext.EstimateTokens(content)
+		}
+		files[sf.Path] = content
+		realFilesAdded++
+	}
+	return files
 }
 
 // loadContextFiles reads all paths. If budget > 0, stops adding files once the
