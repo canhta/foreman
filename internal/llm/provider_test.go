@@ -11,8 +11,8 @@ func TestNewProviderFromConfig(t *testing.T) {
 	tests := []struct {
 		name     string
 		provider string
-		cfg      models.LLMConfig
 		wantName string
+		cfg      models.LLMConfig
 		wantErr  bool
 	}{
 		{

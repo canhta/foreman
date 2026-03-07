@@ -37,10 +37,10 @@ func (p *OpenAIProvider) ProviderName() string { return "openai" }
 
 //nolint:govet // fieldalignment: Temperature must be *float64 so callers can send 0.0 explicitly
 type openaiRequest struct {
-	Messages            []openaiMessage `json:"messages"`
-	Stop                []string        `json:"stop,omitempty"`
 	Temperature         *float64        `json:"temperature,omitempty"`
 	Model               string          `json:"model"`
+	Messages            []openaiMessage `json:"messages"`
+	Stop                []string        `json:"stop,omitempty"`
 	MaxTokens           int             `json:"max_tokens,omitempty"`
 	MaxCompletionTokens int             `json:"max_completion_tokens,omitempty"`
 }
