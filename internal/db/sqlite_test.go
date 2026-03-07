@@ -681,6 +681,124 @@ func TestSQLiteDB_IncrementTaskLlmCalls_Concurrent(t *testing.T) {
 	assert.Len(t, seen, workers, "expected %d distinct count values", workers)
 }
 
+// ---------------------------------------------------------------------------
+// BUG-M15: Distributed locking tests
+// ---------------------------------------------------------------------------
+
+// TestAcquireLock_PreventsConcurrentPickup verifies that when two goroutines
+// race to acquire the same lock, exactly one succeeds and the other fails.
+func TestAcquireLock_PreventsConcurrentPickup(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	const lockName = "ticket:concurrent-test"
+
+	type result struct {
+		acquired bool
+		err      error
+	}
+	chA := make(chan result, 1)
+	chB := make(chan result, 1)
+
+	start := make(chan struct{})
+	go func() {
+		<-start
+		acquired, err := db.AcquireLock(ctx, lockName, 300)
+		chA <- result{acquired, err}
+	}()
+	go func() {
+		<-start
+		acquired, err := db.AcquireLock(ctx, lockName, 300)
+		chB <- result{acquired, err}
+	}()
+	close(start)
+
+	resA := <-chA
+	resB := <-chB
+
+	require.NoError(t, resA.err)
+	require.NoError(t, resB.err)
+
+	// Exactly one must have acquired the lock, the other must not.
+	assert.True(t, resA.acquired != resB.acquired,
+		"exactly one goroutine must win the lock race, got A=%v B=%v", resA.acquired, resB.acquired)
+}
+
+// TestReleaseLock_AllowsReacquisition verifies that after releasing a lock,
+// another caller can acquire it.
+func TestReleaseLock_AllowsReacquisition(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	const lockName = "ticket:reacquire-test"
+
+	acquired, err := db.AcquireLock(ctx, lockName, 300)
+	require.NoError(t, err)
+	require.True(t, acquired, "first acquire must succeed")
+
+	// Release the lock.
+	require.NoError(t, db.ReleaseLock(ctx, lockName))
+
+	// Now a second acquire should succeed.
+	acquired, err = db.AcquireLock(ctx, lockName, 300)
+	require.NoError(t, err)
+	assert.True(t, acquired, "re-acquire after release must succeed")
+}
+
+// TestExpiredLock_CanBeOverridden verifies that an expired lock (TTL=0) can
+// be acquired by a new caller.
+func TestExpiredLock_CanBeOverridden(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	const lockName = "ticket:expired-test"
+
+	// Cast to *SQLiteDB to directly manipulate the underlying DB for setup.
+	sdb := db.(*SQLiteDB)
+
+	// Insert a lock that is already expired (expires_at in the past).
+	_, err := sdb.db.ExecContext(ctx,
+		`INSERT INTO distributed_locks (lock_name, acquired_at, expires_at, holder_id)
+		 VALUES (?, datetime('now', '-10 seconds'), datetime('now', '-5 seconds'), 'old-holder:99')`,
+		lockName)
+	require.NoError(t, err, "setup: insert expired lock")
+
+	// AcquireLock should clean up the expired lock and succeed.
+	acquired, err := db.AcquireLock(ctx, lockName, 300)
+	require.NoError(t, err)
+	assert.True(t, acquired, "acquiring an expired lock must succeed")
+}
+
+// TestReleaseLock_OnlyReleaseOwnLock verifies that a holder cannot release
+// a lock it does not own.
+func TestReleaseLock_OnlyReleaseOwnLock(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	const lockName = "ticket:ownership-test"
+
+	// Cast to *SQLiteDB to insert a lock owned by someone else.
+	sdb := db.(*SQLiteDB)
+	_, err := sdb.db.ExecContext(ctx,
+		`INSERT INTO distributed_locks (lock_name, acquired_at, expires_at, holder_id)
+		 VALUES (?, datetime('now'), datetime('now', '+300 seconds'), 'other-host:9999')`,
+		lockName)
+	require.NoError(t, err, "setup: insert lock by another holder")
+
+	// ReleaseLock should be a no-op (no error, but lock remains).
+	require.NoError(t, db.ReleaseLock(ctx, lockName))
+
+	// Lock must still exist.
+	var count int
+	require.NoError(t, sdb.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM distributed_locks WHERE lock_name = ?`, lockName).Scan(&count))
+	assert.Equal(t, 1, count, "lock held by another must not be released")
+}
+
 // TestSQLiteDB_StoreCallDetails_NoFKRequired verifies that StoreCallDetails succeeds
 // with a call ID that has no corresponding row in llm_calls. The table must be a
 // standalone log table without a FK constraint.

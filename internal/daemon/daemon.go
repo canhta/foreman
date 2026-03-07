@@ -385,21 +385,37 @@ func (d *Daemon) processQueuedTickets(ctx context.Context, database db.Database)
 			return // All slots full
 		}
 
+		// Acquire a distributed lock for this ticket to prevent concurrent pickup
+		// across multiple Foreman instances (BUG-M15).
+		lockName := fmt.Sprintf("ticket:%s", ticket.ID)
+		acquired, err := database.AcquireLock(ctx, lockName, 300) // 5min TTL
+		if err != nil {
+			<-d.tickets // Release slot on failure
+			log.Warn().Err(err).Str("ticket_id", ticket.ID).Msg("failed to acquire distributed lock for ticket")
+			continue
+		}
+		if !acquired {
+			<-d.tickets // Release slot — another instance picked it up
+			continue
+		}
+
 		// Mark planning BEFORE launching goroutine to prevent double pickup
 		if err := database.UpdateTicketStatus(ctx, ticket.ID, models.TicketStatusPlanning); err != nil {
 			<-d.tickets // Release on failure
+			_ = database.ReleaseLock(ctx, lockName)
 			log.Warn().Err(err).Str("ticket_id", ticket.ID).Msg("failed to mark ticket planning")
 			continue
 		}
 
 		d.wg.Add(1)
-		go func(t models.Ticket) {
+		go func(t models.Ticket, lk string) {
 			defer d.wg.Done()
 			defer func() { <-d.tickets }()
+			defer func() { _ = database.ReleaseLock(ctx, lk) }()
 			if err := d.orchestrator.ProcessTicket(ctx, t); err != nil {
 				log.Error().Err(err).Str("ticket_id", t.ID).Msg("ticket processing failed")
 			}
-		}(ticket)
+		}(ticket, lockName)
 	}
 }
 

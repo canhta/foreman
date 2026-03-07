@@ -15,6 +15,12 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
+// holderID uniquely identifies this process as a lock holder (hostname:pid).
+var holderID = func() string {
+	host, _ := os.Hostname()
+	return fmt.Sprintf("%s:%d", host, os.Getpid())
+}()
+
 type SQLiteDB struct {
 	db *sql.DB
 }
@@ -85,6 +91,17 @@ func runSQLiteMigrations(db *sql.DB) error {
 			)`); err != nil {
 			return err
 		}
+	}
+
+	// Add distributed_locks table for cross-instance advisory locking (BUG-M15).
+	if _, err := db.ExecContext(ctx,
+		`CREATE TABLE IF NOT EXISTS distributed_locks (
+		    lock_name   TEXT PRIMARY KEY,
+		    acquired_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		    expires_at  DATETIME NOT NULL,
+		    holder_id   TEXT NOT NULL
+		)`); err != nil {
+		return err
 	}
 
 	return nil
@@ -982,4 +999,42 @@ func (s *SQLiteDB) GetGlobalEvents(ctx context.Context, limit, offset int) ([]mo
 		return nil, fmt.Errorf("iterate global event rows: %w", err)
 	}
 	return events, nil
+}
+
+// --- Distributed Locks (BUG-M15) ---
+
+// AcquireLock attempts to acquire an advisory lock named lockName with the given TTL.
+// It first cleans up any expired locks, then atomically inserts the lock row.
+// Returns acquired=true if this caller now holds the lock.
+func (s *SQLiteDB) AcquireLock(ctx context.Context, lockName string, ttlSeconds int) (bool, error) {
+	// Clean up expired locks first.
+	if _, err := s.db.ExecContext(ctx,
+		`DELETE FROM distributed_locks WHERE expires_at < datetime('now')`); err != nil {
+		return false, fmt.Errorf("acquire lock cleanup: %w", err)
+	}
+
+	// Attempt atomic insert; INSERT OR IGNORE silently skips if the row already exists.
+	res, err := s.db.ExecContext(ctx,
+		`INSERT OR IGNORE INTO distributed_locks (lock_name, expires_at, holder_id)
+		 VALUES (?, datetime('now', '+' || ? || ' seconds'), ?)`,
+		lockName, ttlSeconds, holderID)
+	if err != nil {
+		return false, fmt.Errorf("acquire lock insert: %w", err)
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("acquire lock rows affected: %w", err)
+	}
+	return rows == 1, nil
+}
+
+// ReleaseLock releases the named lock only if this process holds it.
+func (s *SQLiteDB) ReleaseLock(ctx context.Context, lockName string) error {
+	_, err := s.db.ExecContext(ctx,
+		`DELETE FROM distributed_locks WHERE lock_name = ? AND holder_id = ?`,
+		lockName, holderID)
+	if err != nil {
+		return fmt.Errorf("release lock: %w", err)
+	}
+	return nil
 }

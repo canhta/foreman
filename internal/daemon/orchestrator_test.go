@@ -189,6 +189,11 @@ func (m *orchMockDB) GetCallDetails(_ context.Context, _ string) (string, string
 }
 func (m *orchMockDB) Close() error { return nil }
 
+func (m *orchMockDB) AcquireLock(_ context.Context, _ string, _ int) (bool, error) {
+	return true, nil
+}
+func (m *orchMockDB) ReleaseLock(_ context.Context, _ string) error { return nil }
+
 func (m *orchMockDB) lastStatus(id string) models.TicketStatus {
 	for i := len(m.statusUpdates) - 1; i >= 0; i-- {
 		if m.statusUpdates[i].id == id {

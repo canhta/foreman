@@ -149,6 +149,13 @@ CREATE TABLE IF NOT EXISTS pending_pairings (
     created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS distributed_locks (
+    lock_name   TEXT PRIMARY KEY,
+    acquired_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at  DATETIME NOT NULL,
+    holder_id   TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status);
 CREATE INDEX IF NOT EXISTS idx_tickets_external_id ON tickets(external_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_ticket_id ON tasks(ticket_id);

@@ -78,5 +78,9 @@ type Database interface {
 	GetTicketSummaries(ctx context.Context, filter models.TicketFilter) ([]models.TicketSummary, error)
 	GetGlobalEvents(ctx context.Context, limit, offset int) ([]models.EventRecord, error)
 
+	// Distributed Locks
+	AcquireLock(ctx context.Context, lockName string, ttlSeconds int) (acquired bool, err error)
+	ReleaseLock(ctx context.Context, lockName string) error
+
 	io.Closer
 }

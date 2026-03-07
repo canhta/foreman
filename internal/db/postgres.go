@@ -911,3 +911,42 @@ func (p *PostgresDB) GetGlobalEvents(ctx context.Context, limit, offset int) ([]
 	}
 	return events, nil
 }
+
+// --- Distributed Locks (BUG-M15) ---
+
+// AcquireLock attempts to acquire an advisory lock named lockName with the given TTL.
+// It first cleans up any expired locks, then atomically inserts using ON CONFLICT DO NOTHING.
+// Returns acquired=true if this caller now holds the lock.
+func (p *PostgresDB) AcquireLock(ctx context.Context, lockName string, ttlSeconds int) (bool, error) {
+	// Clean up expired locks first.
+	if _, err := p.db.ExecContext(ctx,
+		`DELETE FROM distributed_locks WHERE expires_at < NOW()`); err != nil {
+		return false, fmt.Errorf("acquire lock cleanup: %w", err)
+	}
+
+	// Attempt atomic insert; ON CONFLICT DO NOTHING skips if row already exists.
+	res, err := p.db.ExecContext(ctx,
+		`INSERT INTO distributed_locks (lock_name, expires_at, holder_id)
+		 VALUES ($1, NOW() + ($2 || ' seconds')::interval, $3)
+		 ON CONFLICT DO NOTHING`,
+		lockName, ttlSeconds, holderID)
+	if err != nil {
+		return false, fmt.Errorf("acquire lock insert: %w", err)
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("acquire lock rows affected: %w", err)
+	}
+	return rows == 1, nil
+}
+
+// ReleaseLock releases the named lock only if this process holds it.
+func (p *PostgresDB) ReleaseLock(ctx context.Context, lockName string) error {
+	_, err := p.db.ExecContext(ctx,
+		`DELETE FROM distributed_locks WHERE lock_name = $1 AND holder_id = $2`,
+		lockName, holderID)
+	if err != nil {
+		return fmt.Errorf("release lock: %w", err)
+	}
+	return nil
+}
