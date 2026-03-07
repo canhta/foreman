@@ -163,6 +163,10 @@ func (m *mockDB) UpsertPromptSnapshot(_ context.Context, _, _ string) error { re
 func (m *mockDB) GetPromptSnapshots(_ context.Context) ([]db.PromptSnapshot, error) {
 	return nil, nil
 }
+func (m *mockDB) SaveDAGState(_ context.Context, _ string, _ db.DAGState) error { return nil }
+func (m *mockDB) GetDAGState(_ context.Context, _ string) (*db.DAGState, error) {
+	return nil, nil
+}
 
 // --- Helpers ---
 

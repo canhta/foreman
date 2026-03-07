@@ -226,6 +226,10 @@ func (m *orchMockDB) UpsertPromptSnapshot(_ context.Context, _, _ string) error 
 func (m *orchMockDB) GetPromptSnapshots(_ context.Context) ([]db.PromptSnapshot, error) {
 	return nil, nil
 }
+func (m *orchMockDB) SaveDAGState(_ context.Context, _ string, _ db.DAGState) error { return nil }
+func (m *orchMockDB) GetDAGState(_ context.Context, _ string) (*db.DAGState, error) {
+	return nil, nil
+}
 
 func (m *orchMockDB) lastStatus(id string) models.TicketStatus {
 	for i := len(m.statusUpdates) - 1; i >= 0; i-- {

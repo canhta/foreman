@@ -112,6 +112,14 @@ func runSQLiteMigrations(db *sql.DB) error {
 	_, _ = db.ExecContext(ctx,
 		`ALTER TABLE handoffs ADD COLUMN supersedes TEXT NOT NULL DEFAULT ''`)
 
+	// Create dag_states table for DAG-aware crash recovery (ARCH-F03).
+	_, _ = db.ExecContext(ctx,
+		`CREATE TABLE IF NOT EXISTS dag_states (
+		    ticket_id   TEXT PRIMARY KEY,
+		    state_json  TEXT NOT NULL,
+		    updated_at  DATETIME NOT NULL
+		)`)
+
 	return nil
 }
 
@@ -1317,4 +1325,44 @@ func (s *SQLiteDB) GetPromptSnapshots(ctx context.Context) ([]PromptSnapshot, er
 		return nil, fmt.Errorf("iterate prompt snapshot rows: %w", err)
 	}
 	return snapshots, nil
+}
+
+// --- DAG State (ARCH-F03) ---
+
+// SaveDAGState persists or replaces the DAG execution state for a ticket.
+func (s *SQLiteDB) SaveDAGState(ctx context.Context, ticketID string, state DAGState) error {
+	b, err := json.Marshal(state)
+	if err != nil {
+		return fmt.Errorf("marshal dag state: %w", err)
+	}
+	_, err = s.db.ExecContext(ctx,
+		`INSERT INTO dag_states (ticket_id, state_json, updated_at)
+		 VALUES (?, ?, ?)
+		 ON CONFLICT(ticket_id) DO UPDATE SET state_json = excluded.state_json, updated_at = excluded.updated_at`,
+		ticketID, string(b), time.Now().UTC().Format(time.RFC3339),
+	)
+	if err != nil {
+		return fmt.Errorf("save dag state: %w", err)
+	}
+	return nil
+}
+
+// GetDAGState returns the persisted DAG execution state for a ticket.
+// Returns (nil, nil) when no state has been saved yet.
+func (s *SQLiteDB) GetDAGState(ctx context.Context, ticketID string) (*DAGState, error) {
+	var stateJSON string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT state_json FROM dag_states WHERE ticket_id = ?`, ticketID,
+	).Scan(&stateJSON)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get dag state: %w", err)
+	}
+	var state DAGState
+	if err := json.Unmarshal([]byte(stateJSON), &state); err != nil {
+		return nil, fmt.Errorf("unmarshal dag state: %w", err)
+	}
+	return &state, nil
 }

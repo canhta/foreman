@@ -3,6 +3,7 @@ package daemon
 import (
 	"testing"
 
+	"github.com/canhta/foreman/internal/db"
 	"github.com/canhta/foreman/internal/models"
 	"github.com/stretchr/testify/assert"
 )
@@ -148,4 +149,43 @@ func TestClassifyRecovery_AwaitingMerge(t *testing.T) {
 		assert.Equal(t, RecoverySkip, action.Action,
 			"status %s should be RecoverySkip to avoid duplicate PRs", status)
 	}
+}
+
+// TestRecovery_SkipsCompletedDAGTasks verifies that TasksForDAGRecovery filters out
+// tasks that are already recorded as completed in the DAGState. Given tasks A, B, C
+// where A is in the DAGState.CompletedTasks list, only B and C are returned for
+// re-execution.
+func TestRecovery_SkipsCompletedDAGTasks(t *testing.T) {
+	dagState := &db.DAGState{
+		TicketID:       "ticket-1",
+		CompletedTasks: []string{"task-A"},
+		FailedTasks:    nil,
+	}
+
+	allTasks := []DAGTask{
+		{ID: "task-A"},
+		{ID: "task-B"},
+		{ID: "task-C"},
+	}
+
+	pending := TasksForDAGRecovery(allTasks, dagState)
+
+	ids := make([]string, 0, len(pending))
+	for _, t := range pending {
+		ids = append(ids, t.ID)
+	}
+	assert.ElementsMatch(t, []string{"task-B", "task-C"}, ids,
+		"completed task-A must be skipped; task-B and task-C must be scheduled")
+}
+
+// TestRecovery_NilDAGState_ReturnsAllTasks verifies that when no DAGState exists
+// (first run or state lost), all tasks are returned for execution.
+func TestRecovery_NilDAGState_ReturnsAllTasks(t *testing.T) {
+	allTasks := []DAGTask{
+		{ID: "task-A"},
+		{ID: "task-B"},
+	}
+
+	pending := TasksForDAGRecovery(allTasks, nil)
+	assert.Len(t, pending, 2, "nil DAGState must return all tasks unchanged")
 }

@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"github.com/canhta/foreman/internal/db"
 	"github.com/canhta/foreman/internal/models"
 	"github.com/rs/zerolog/log"
 )
@@ -76,4 +77,26 @@ func TasksToReset(tasks []models.Task, lastCompletedSeq int) []models.Task {
 		}
 	}
 	return toReset
+}
+
+// TasksForDAGRecovery filters a DAG task list to only the tasks that still need
+// execution. If dagState is nil (no prior state recorded), all tasks are returned.
+// Tasks whose IDs appear in dagState.CompletedTasks are skipped.
+func TasksForDAGRecovery(tasks []DAGTask, dagState *db.DAGState) []DAGTask {
+	if dagState == nil {
+		return tasks
+	}
+
+	completed := make(map[string]struct{}, len(dagState.CompletedTasks))
+	for _, id := range dagState.CompletedTasks {
+		completed[id] = struct{}{}
+	}
+
+	pending := make([]DAGTask, 0, len(tasks))
+	for _, t := range tasks {
+		if _, done := completed[t.ID]; !done {
+			pending = append(pending, t)
+		}
+	}
+	return pending
 }

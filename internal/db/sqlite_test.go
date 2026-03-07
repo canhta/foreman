@@ -1042,6 +1042,68 @@ func TestDB_ContextFeedback_WriteAndQuery(t *testing.T) {
 	assert.Equal(t, "task-2", rows3[0].TaskID)
 }
 
+// --- DAGState tests (ARCH-F03) ---
+
+func TestDAGState_SaveAndLoad(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	state := DAGState{
+		TicketID:       "ticket-dag-1",
+		CompletedTasks: []string{"task-A", "task-B"},
+		FailedTasks:    []string{"task-C"},
+		SavedAt:        time.Now().UTC().Truncate(time.Second),
+	}
+	require.NoError(t, db.SaveDAGState(ctx, state.TicketID, state))
+
+	got, err := db.GetDAGState(ctx, state.TicketID)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, state.TicketID, got.TicketID)
+	assert.Equal(t, state.CompletedTasks, got.CompletedTasks)
+	assert.Equal(t, state.FailedTasks, got.FailedTasks)
+	assert.Equal(t, state.SavedAt.Unix(), got.SavedAt.Unix())
+}
+
+func TestDAGState_UpdateExistingState(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	initial := DAGState{
+		TicketID:       "ticket-dag-2",
+		CompletedTasks: []string{"task-A"},
+		FailedTasks:    nil,
+		SavedAt:        time.Now().UTC().Truncate(time.Second),
+	}
+	require.NoError(t, db.SaveDAGState(ctx, initial.TicketID, initial))
+
+	updated := DAGState{
+		TicketID:       "ticket-dag-2",
+		CompletedTasks: []string{"task-A", "task-B", "task-C"},
+		FailedTasks:    []string{"task-D"},
+		SavedAt:        time.Now().UTC().Truncate(time.Second),
+	}
+	require.NoError(t, db.SaveDAGState(ctx, updated.TicketID, updated))
+
+	got, err := db.GetDAGState(ctx, "ticket-dag-2")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, []string{"task-A", "task-B", "task-C"}, got.CompletedTasks)
+	assert.Equal(t, []string{"task-D"}, got.FailedTasks)
+}
+
+func TestDAGState_GetMissing_ReturnsNil(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	got, err := db.GetDAGState(ctx, "nonexistent-ticket")
+	require.NoError(t, err)
+	assert.Nil(t, got)
+}
+
 // TestSQLiteDB_StoreCallDetails_NoFKRequired verifies that StoreCallDetails succeeds
 // with a call ID that has no corresponding row in llm_calls. The table must be a
 // standalone log table without a FK constraint.

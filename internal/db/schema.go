@@ -195,6 +195,12 @@ CREATE TABLE IF NOT EXISTS prompt_snapshots (
     recorded_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS dag_states (
+    ticket_id   TEXT PRIMARY KEY,
+    state_json  TEXT NOT NULL,
+    updated_at  DATETIME NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_embeddings_repo_sha
     ON embeddings(repo_path, head_sha);
 

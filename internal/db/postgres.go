@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -54,6 +55,15 @@ func runPostgresSchema(db *sqlx.DB) error {
 	if _, err := db.ExecContext(ctx,
 		`ALTER TABLE handoffs ADD COLUMN IF NOT EXISTS supersedes TEXT NOT NULL DEFAULT ''`); err != nil {
 		return fmt.Errorf("migrate handoffs.supersedes: %w", err)
+	}
+	// Create dag_states table for DAG-aware crash recovery (ARCH-F03).
+	if _, err := db.ExecContext(ctx,
+		`CREATE TABLE IF NOT EXISTS dag_states (
+		    ticket_id   TEXT PRIMARY KEY,
+		    state_json  TEXT NOT NULL,
+		    updated_at  TIMESTAMPTZ NOT NULL
+		)`); err != nil {
+		return fmt.Errorf("migrate dag_states: %w", err)
 	}
 	return nil
 }
@@ -1184,4 +1194,44 @@ func (p *PostgresDB) GetPromptSnapshots(ctx context.Context) ([]PromptSnapshot, 
 		return nil, fmt.Errorf("iterate prompt snapshot rows: %w", err)
 	}
 	return snapshots, nil
+}
+
+// --- DAG State (ARCH-F03) ---
+
+// SaveDAGState persists or replaces the DAG execution state for a ticket.
+func (p *PostgresDB) SaveDAGState(ctx context.Context, ticketID string, state DAGState) error {
+	b, err := json.Marshal(state)
+	if err != nil {
+		return fmt.Errorf("marshal dag state: %w", err)
+	}
+	_, err = p.db.ExecContext(ctx,
+		`INSERT INTO dag_states (ticket_id, state_json, updated_at)
+		 VALUES ($1, $2, $3)
+		 ON CONFLICT (ticket_id) DO UPDATE SET state_json = EXCLUDED.state_json, updated_at = EXCLUDED.updated_at`,
+		ticketID, string(b), time.Now().UTC(),
+	)
+	if err != nil {
+		return fmt.Errorf("save dag state: %w", err)
+	}
+	return nil
+}
+
+// GetDAGState returns the persisted DAG execution state for a ticket.
+// Returns (nil, nil) when no state has been saved yet.
+func (p *PostgresDB) GetDAGState(ctx context.Context, ticketID string) (*DAGState, error) {
+	var stateJSON string
+	err := p.db.QueryRowContext(ctx,
+		`SELECT state_json FROM dag_states WHERE ticket_id = $1`, ticketID,
+	).Scan(&stateJSON)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get dag state: %w", err)
+	}
+	var state DAGState
+	if err := json.Unmarshal([]byte(stateJSON), &state); err != nil {
+		return nil, fmt.Errorf("unmarshal dag state: %w", err)
+	}
+	return &state, nil
 }

@@ -5,7 +5,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/canhta/foreman/internal/db"
 	"github.com/canhta/foreman/internal/models"
+	"github.com/rs/zerolog/log"
 )
 
 // TaskRunner is the interface that task executors must implement.
@@ -26,9 +28,16 @@ type DAGTask struct {
 	DependsOn []string
 }
 
+// dagStateStore is the minimal database interface needed to persist DAG execution state.
+type dagStateStore interface {
+	SaveDAGState(ctx context.Context, ticketID string, state db.DAGState) error
+}
+
 // DAGExecutor runs tasks respecting their dependency graph with bounded concurrency.
 type DAGExecutor struct {
+	store       dagStateStore
 	runner      TaskRunner
+	ticketID    string
 	maxWorkers  int
 	taskTimeout time.Duration
 }
@@ -40,6 +49,15 @@ func NewDAGExecutor(runner TaskRunner, maxWorkers int, taskTimeout time.Duration
 		maxWorkers:  maxWorkers,
 		taskTimeout: taskTimeout,
 	}
+}
+
+// WithDAGStore attaches a database store and ticket ID so the executor persists
+// DAG execution state after each task completes. This enables crash recovery to
+// skip already-completed tasks on restart (ARCH-F03).
+func (e *DAGExecutor) WithDAGStore(store dagStateStore, ticketID string) *DAGExecutor {
+	e.store = store
+	e.ticketID = ticketID
+	return e
 }
 
 // Execute runs all tasks in the DAG respecting dependencies.
@@ -107,6 +125,11 @@ func (e *DAGExecutor) Execute(ctx context.Context, tasks []DAGTask) map[string]T
 		close(resultChan)
 	}()
 
+	// stateMu protects the in-progress accounting for DAG state snapshots.
+	var stateMu sync.Mutex
+	completedIDs := make([]string, 0, len(tasks))
+	failedIDs := make([]string, 0)
+
 	// Coordinator: collect results, propagate failures, push ready tasks.
 	remaining := len(tasks)
 	for remaining > 0 {
@@ -124,6 +147,11 @@ func (e *DAGExecutor) Execute(ctx context.Context, tasks []DAGTask) map[string]T
 			remaining--
 
 			if res.Status == models.TaskStatusDone {
+				stateMu.Lock()
+				completedIDs = append(completedIDs, res.TaskID)
+				stateMu.Unlock()
+				e.persistDAGState(ctx, completedIDs, failedIDs)
+
 				// Check dependents; push newly ready ones.
 				for _, child := range dependents[res.TaskID] {
 					inDegree[child]--
@@ -132,6 +160,13 @@ func (e *DAGExecutor) Execute(ctx context.Context, tasks []DAGTask) map[string]T
 					}
 				}
 			} else {
+				stateMu.Lock()
+				if res.Status == models.TaskStatusFailed {
+					failedIDs = append(failedIDs, res.TaskID)
+				}
+				stateMu.Unlock()
+				e.persistDAGState(ctx, completedIDs, failedIDs)
+
 				// BFS failure propagation: skip all transitive dependents.
 				queue := []string{res.TaskID}
 				for len(queue) > 0 {
@@ -155,4 +190,28 @@ func (e *DAGExecutor) Execute(ctx context.Context, tasks []DAGTask) map[string]T
 	close(readyChan)
 
 	return results
+}
+
+// persistDAGState saves the current execution state to the database so crash
+// recovery can skip already-completed tasks. It is a no-op when no store is
+// configured (e.g. in unit tests).
+func (e *DAGExecutor) persistDAGState(ctx context.Context, completed, failed []string) {
+	if e.store == nil || e.ticketID == "" {
+		return
+	}
+	// Copy slices to avoid races with the coordinator's appends.
+	c := make([]string, len(completed))
+	copy(c, completed)
+	f := make([]string, len(failed))
+	copy(f, failed)
+
+	state := db.DAGState{
+		TicketID:       e.ticketID,
+		CompletedTasks: c,
+		FailedTasks:    f,
+		SavedAt:        time.Now().UTC(),
+	}
+	if err := e.store.SaveDAGState(ctx, e.ticketID, state); err != nil {
+		log.Warn().Err(err).Str("ticket_id", e.ticketID).Msg("failed to persist DAG state; recovery may re-run completed tasks")
+	}
 }
