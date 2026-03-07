@@ -12,6 +12,10 @@ import (
 // hardBlockedCommands are never allowed regardless of AllowedCommands config.
 var hardBlockedCommands = []string{"rm", "curl", "wget", "ssh", "scp", "git push", "git reset", "dd", "mkfs", "shutdown", "reboot"}
 
+// maxAgentDepth mirrors agent.MaxAgentDepth; defined here to avoid an import cycle.
+// Keep in sync with internal/agent/runner.go.
+const maxAgentDepth = 3
+
 func registerExec(r *Registry, cmd runner.CommandRunner) {
 	r.Register(&bashTool{cmd: cmd, registry: r})
 	r.Register(&runTestTool{cmd: cmd, registry: r})
@@ -165,6 +169,19 @@ func (t *subagentTool) Execute(ctx context.Context, workDir string, input json.R
 	if err := json.Unmarshal(input, &in); err != nil {
 		return "", fmt.Errorf("subagent: %w", err)
 	}
+
+	// Enforce max agent depth before delegating.
+	parentBudget, parentDepth := t.registry.GetParentBudgetAndDepth()
+	if parentDepth >= maxAgentDepth {
+		return "", fmt.Errorf("subagent: max agent depth %d reached; cannot nest further", maxAgentDepth)
+	}
+
+	// Enforce budget: if parent has a remaining budget and it's exhausted, fail.
+	// parentBudget == 0 means unconstrained; parentBudget < 0 means exhausted.
+	if parentBudget < 0 {
+		return "", fmt.Errorf("subagent: parent budget exhausted")
+	}
+
 	maxTurns := in.MaxTurns
 	if maxTurns <= 0 {
 		maxTurns = 5
@@ -172,7 +189,13 @@ func (t *subagentTool) Execute(ctx context.Context, workDir string, input json.R
 	if maxTurns > 10 {
 		maxTurns = 10
 	}
-	result, err := runFn(ctx, in.Task, workDir, in.Tools, maxTurns)
+
+	// Inherit budget: cap subagent turns to parent's remaining budget if constrained.
+	if parentBudget > 0 && maxTurns > parentBudget {
+		maxTurns = parentBudget
+	}
+
+	result, err := runFn(ctx, in.Task, workDir, in.Tools, maxTurns, parentBudget, parentDepth+1)
 	if err != nil {
 		return "", fmt.Errorf("subagent: %w", err)
 	}

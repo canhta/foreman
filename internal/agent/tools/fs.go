@@ -14,6 +14,7 @@ import (
 
 func registerFS(r *Registry) {
 	r.Register(&readTool{})
+	r.Register(&readRangeTool{})
 	r.Register(&writeTool{})
 	r.Register(&editTool{})
 	r.Register(&multiEditTool{})
@@ -59,6 +60,48 @@ func (t *readTool) Execute(_ context.Context, workDir string, input json.RawMess
 	}
 	end := args.EndLine
 	if end == 0 || end > len(lines) {
+		end = len(lines)
+	}
+	return strings.Join(lines[start:end], "\n"), nil
+}
+
+// --- ReadRange ---
+
+type readRangeTool struct{}
+
+func (t *readRangeTool) Name() string { return "ReadRange" }
+func (t *readRangeTool) Description() string {
+	return "Read a specific line range from a file (start_line and end_line required, both 1-based inclusive)"
+}
+func (t *readRangeTool) Schema() json.RawMessage {
+	return json.RawMessage(`{"type":"object","properties":{"path":{"type":"string","description":"File path"},"start_line":{"type":"integer","description":"1-based start line (inclusive, must be >= 1)"},"end_line":{"type":"integer","description":"1-based end line (inclusive, must be >= start_line)"}},"required":["path","start_line","end_line"]}`)
+}
+func (t *readRangeTool) Execute(_ context.Context, workDir string, input json.RawMessage) (string, error) {
+	var args struct {
+		Path      string `json:"path"`
+		StartLine int    `json:"start_line"`
+		EndLine   int    `json:"end_line"`
+	}
+	if err := json.Unmarshal(input, &args); err != nil {
+		return "", fmt.Errorf("ReadRange: %w", err)
+	}
+	if err := ValidatePath(workDir, args.Path); err != nil {
+		return "", fmt.Errorf("ReadRange: %w", err)
+	}
+	if args.StartLine < 1 {
+		return "", fmt.Errorf("ReadRange: start_line must be >= 1, got %d", args.StartLine)
+	}
+	if args.EndLine < args.StartLine {
+		return "", fmt.Errorf("ReadRange: end_line (%d) must be >= start_line (%d)", args.EndLine, args.StartLine)
+	}
+	content, err := os.ReadFile(AbsPath(workDir, args.Path))
+	if err != nil {
+		return "", fmt.Errorf("ReadRange: %w", err)
+	}
+	lines := strings.Split(string(content), "\n")
+	start := args.StartLine - 1
+	end := args.EndLine
+	if end > len(lines) {
 		end = len(lines)
 	}
 	return strings.Join(lines[start:end], "\n"), nil

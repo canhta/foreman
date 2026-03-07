@@ -58,7 +58,7 @@ func (p *SkillsContextProvider) OnFilesAccessed(ctx context.Context, paths []str
 		return "", nil
 	}
 	text := fmtctx.FormatPatternsForPrompt(fresh)
-	p.tokensInjected += len(text) / 4
+	p.tokensInjected += fmtctx.CountTokens(text)
 	return text, nil
 }
 

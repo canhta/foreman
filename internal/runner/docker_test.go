@@ -7,10 +7,11 @@ import (
 
 func TestDockerRunner_FormatRunArgs(t *testing.T) {
 	r := &DockerRunner{
-		image:       "node:22-slim",
-		network:     "none",
-		cpuLimit:    "2.0",
-		memoryLimit: "4g",
+		image:        "node:22-slim",
+		network:      "none",
+		cpuLimit:     "2.0",
+		memoryLimit:  "4g",
+		allowNetwork: true,
 	}
 
 	args := r.formatRunArgs("/work", "t1")
@@ -36,7 +37,7 @@ func TestDockerRunner_FormatRunArgs(t *testing.T) {
 }
 
 func TestDockerRunner_CommandExists(t *testing.T) {
-	r := NewDockerRunner("node:22-slim", false, "none", "2.0", "4g", false)
+	r := NewDockerRunner("node:22-slim", false, "none", "2.0", "4g", false, false)
 	// CommandExists for Docker always returns true — commands are inside the container
 	if !r.CommandExists(context.Background(), "npm") {
 		t.Error("expected CommandExists to return true for Docker runner")
@@ -98,5 +99,53 @@ func TestDockerRunner_ParseContainerList(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestDockerRunner_NetworkNoneByDefault(t *testing.T) {
+	r := NewDockerRunner("image", false, "", "", "", false, false)
+	args := r.formatRunArgs("/workdir", "ticket123")
+
+	idx := -1
+	for i, a := range args {
+		if a == "--network" {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		t.Fatal("expected --network flag in args, not found")
+	}
+	if args[idx+1] != "none" {
+		t.Errorf("expected --network none, got --network %s", args[idx+1])
+	}
+}
+
+func TestDockerRunner_NetworkAllowedWithCustomNet(t *testing.T) {
+	r := NewDockerRunner("image", false, "my-net", "", "", false, true)
+	args := r.formatRunArgs("/workdir", "ticket123")
+
+	found := false
+	for _, a := range args {
+		if a == "my-net" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected custom network 'my-net' in args, got: %v", args)
+	}
+}
+
+func TestDockerRunner_NetworkDefaultBridgeWhenAllowedNoCustomNet(t *testing.T) {
+	r := NewDockerRunner("image", false, "", "", "", false, true)
+	args := r.formatRunArgs("/workdir", "ticket123")
+
+	for i, a := range args {
+		if a == "--network" {
+			if args[i+1] == "none" {
+				t.Errorf("expected no --network none when allow_network=true and no custom network, got: %v", args)
+			}
+		}
 	}
 }

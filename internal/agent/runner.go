@@ -23,17 +23,22 @@ type AgentRunner interface {
 
 // AgentRequest defines the input for a single agent task.
 type AgentRequest struct {
-	Prompt        string
-	SystemPrompt  string
-	WorkDir       string
-	FallbackModel string
-	AllowedTools  []string
-	OutputSchema  json.RawMessage
-	MCPServers    []mcp.MCPServerConfig
-	MaxTurns      int
-	TimeoutSecs   int
-	AgentDepth    int
+	Prompt          string
+	SystemPrompt    string
+	WorkDir         string
+	FallbackModel   string
+	AllowedTools    []string
+	OutputSchema    json.RawMessage
+	MCPServers      []mcp.MCPServerConfig
+	MaxTurns        int
+	TimeoutSecs     int
+	AgentDepth      int
+	RemainingBudget int // turns remaining from the parent agent; 0 means unconstrained
 }
+
+// MaxAgentDepth is the maximum allowed nesting depth for subagent calls.
+// A top-level agent is depth 0; its subagents are depth 1; etc.
+const MaxAgentDepth = 3
 
 // AgentResult holds the output of an agent task.
 type AgentResult struct {

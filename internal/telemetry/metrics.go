@@ -37,6 +37,8 @@ type Metrics struct {
 	DAGTasksFailed    prometheus.Counter
 	DAGTasksSkipped   prometheus.Counter
 	DAGDuration       prometheus.Histogram
+
+	AnthropicCacheSavingsTotal prometheus.Counter
 }
 
 // NewMetrics creates and registers all Prometheus metrics with the given registerer.
@@ -153,6 +155,10 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 			Help:    "DAG execution duration in seconds",
 			Buckets: []float64{10, 30, 60, 120, 300, 600, 1200, 3600},
 		}),
+		AnthropicCacheSavingsTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "foreman_anthropic_cache_savings_tokens_total",
+			Help: "Total tokens served from Anthropic prompt cache (cache_read_input_tokens)",
+		}),
 	}
 
 	reg.MustRegister(
@@ -166,6 +172,7 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 		m.SearchBlockFuzzyMatches, m.SearchBlockMisses,
 		m.ProviderOutages, m.CrashRecoveries,
 		m.DAGTasksCompleted, m.DAGTasksFailed, m.DAGTasksSkipped, m.DAGDuration,
+		m.AnthropicCacheSavingsTotal,
 	)
 
 	return m
@@ -178,6 +185,13 @@ func (m *Metrics) RecordLlmCall(role, model, status string, tokensIn, tokensOut 
 	m.LlmTokensTotal.WithLabelValues("output", model).Add(float64(tokensOut))
 	m.CostUSDTotal.WithLabelValues(model).Add(costUSD)
 	m.LlmDuration.WithLabelValues(role, model).Observe(float64(durationMs) / float64(time.Second/time.Millisecond))
+}
+
+// RecordCacheSavings records Anthropic prompt cache read tokens when cache hits occur.
+func (m *Metrics) RecordCacheSavings(cacheReadTokens int) {
+	if cacheReadTokens > 0 {
+		m.AnthropicCacheSavingsTotal.Add(float64(cacheReadTokens))
+	}
 }
 
 // RecordTicket increments the tickets counter for the given status.

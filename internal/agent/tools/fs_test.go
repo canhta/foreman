@@ -3,6 +3,7 @@ package tools_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -165,5 +166,61 @@ func TestGrep_CaseInsensitive(t *testing.T) {
 	out := execTool(t, reg, dir, "Grep", map[string]any{"pattern": "hello", "path": ".", "case_sensitive": false})
 	if !strings.Contains(out, "f.txt") {
 		t.Errorf("expected case-insensitive match, got %q", out)
+	}
+}
+
+func TestReadRange_ReturnsLineRange(t *testing.T) {
+	reg, dir := newFSRegistry(t)
+	var lines []string
+	for i := 1; i <= 100; i++ {
+		lines = append(lines, fmt.Sprintf("line %d", i))
+	}
+	content := strings.Join(lines, "\n")
+	if err := os.WriteFile(filepath.Join(dir, "test.txt"), []byte(content), 0644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	// Test basic range
+	result := execTool(t, reg, dir, "ReadRange", map[string]any{"path": "test.txt", "start_line": 10, "end_line": 20})
+	if !strings.Contains(result, "line 10") {
+		t.Errorf("expected 'line 10' in result, got %q", result)
+	}
+	if !strings.Contains(result, "line 20") {
+		t.Errorf("expected 'line 20' in result, got %q", result)
+	}
+	if strings.Contains(result, "line 9") {
+		t.Errorf("should not contain 'line 9', got %q", result)
+	}
+	if strings.Contains(result, "line 21") {
+		t.Errorf("should not contain 'line 21', got %q", result)
+	}
+
+	// Test end_line beyond file — should return up to EOF without error
+	result = execTool(t, reg, dir, "ReadRange", map[string]any{"path": "test.txt", "start_line": 90, "end_line": 200})
+	if !strings.Contains(result, "line 90") {
+		t.Errorf("expected 'line 90', got %q", result)
+	}
+	if !strings.Contains(result, "line 100") {
+		t.Errorf("expected 'line 100', got %q", result)
+	}
+
+	// Test start_line < 1 — should error
+	b, _ := json.Marshal(map[string]any{"path": "test.txt", "start_line": 0, "end_line": 5})
+	_, err := reg.Execute(context.Background(), dir, "ReadRange", b)
+	if err == nil {
+		t.Fatal("expected error for start_line < 1")
+	}
+	if !strings.Contains(err.Error(), "start_line must be >= 1") {
+		t.Errorf("expected 'start_line must be >= 1' in error, got %q", err.Error())
+	}
+
+	// Test end_line < start_line — should error
+	b, _ = json.Marshal(map[string]any{"path": "test.txt", "start_line": 10, "end_line": 5})
+	_, err = reg.Execute(context.Background(), dir, "ReadRange", b)
+	if err == nil {
+		t.Fatal("expected error for end_line < start_line")
+	}
+	if !strings.Contains(err.Error(), "end_line") {
+		t.Errorf("expected 'end_line' in error, got %q", err.Error())
 	}
 }

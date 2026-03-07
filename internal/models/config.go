@@ -180,6 +180,7 @@ type DockerRunnerConfig struct {
 	MemoryLimit       string `mapstructure:"memory_limit"`
 	PersistPerTicket  bool   `mapstructure:"persist_per_ticket"`
 	AutoReinstallDeps bool   `mapstructure:"auto_reinstall_deps"`
+	AllowNetwork      bool   `mapstructure:"allow_network"`
 }
 
 type LocalRunnerConfig struct {

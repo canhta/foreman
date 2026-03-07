@@ -163,6 +163,34 @@ func TestSQLiteDB_ListLlmCalls(t *testing.T) {
 	assert.Equal(t, 100, got[0].TokensInput)
 }
 
+func TestSQLiteDB_RecordLlmCall_CacheTokens(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	require.NoError(t, db.CreateTicket(ctx, &models.Ticket{
+		ID: "t-cache", ExternalID: "X-cache", Title: "t", Description: "d",
+		Status: models.TicketStatusQueued, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}))
+
+	call := &models.LlmCallRecord{
+		ID: "llm-cache", TicketID: "t-cache", Role: "implementer",
+		Provider: "anthropic", Model: "claude-3-5-sonnet", Attempt: 1,
+		TokensInput: 500, TokensOutput: 100, CostUSD: 0.005, DurationMs: 300,
+		Status:              "success",
+		CacheReadTokens:     800,
+		CacheCreationTokens: 200,
+		CreatedAt:           time.Now(),
+	}
+	require.NoError(t, db.RecordLlmCall(ctx, call))
+
+	got, err := db.ListLlmCalls(ctx, "t-cache")
+	require.NoError(t, err)
+	require.Len(t, got, 1)
+	assert.Equal(t, 800, got[0].CacheReadTokens)
+	assert.Equal(t, 200, got[0].CacheCreationTokens)
+}
+
 func TestSQLiteDB_ParentChildTickets(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()

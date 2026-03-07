@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,10 +18,20 @@ import (
 	"github.com/canhta/foreman/internal/models"
 )
 
+// Context window thresholds for compaction.
+const (
+	// contextWindowBudget is the token budget for the message history.
+	// Claude's context window is 200K tokens; we reserve headroom for system prompt and response.
+	contextWindowBudget = 150_000
+	// compactionThreshold is the fraction of budget at which compaction is triggered.
+	compactionThreshold = 0.70
+)
+
 // BuiltinConfig holds configuration for the builtin runner.
 type BuiltinConfig struct {
 	DefaultAllowedTools []string
 	MaxTurnsDefault     int
+	ContextWindowBudget int // optional override; defaults to contextWindowBudget
 }
 
 // BuiltinRunner runs a multi-turn tool-use loop against the LlmProvider.
@@ -58,12 +69,15 @@ func NewBuiltinRunner(
 }
 
 // subagentRunFn is injected into the registry for SubagentTool.
-func (r *BuiltinRunner) subagentRunFn(ctx context.Context, task, workDir string, toolNames []string, maxTurns int) (string, error) {
+// It receives remainingBudget and agentDepth from the subagent tool's enforcement logic.
+func (r *BuiltinRunner) subagentRunFn(ctx context.Context, task, workDir string, toolNames []string, maxTurns, remainingBudget, agentDepth int) (string, error) {
 	result, err := r.Run(ctx, AgentRequest{
-		Prompt:       task,
-		WorkDir:      workDir,
-		AllowedTools: toolNames,
-		MaxTurns:     maxTurns,
+		Prompt:          task,
+		WorkDir:         workDir,
+		AllowedTools:    toolNames,
+		MaxTurns:        maxTurns,
+		RemainingBudget: remainingBudget,
+		AgentDepth:      agentDepth,
 		// No ContextProvider for subagents — baseline context only
 	})
 	if err != nil {
@@ -113,7 +127,29 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 	messages := []models.Message{{Role: "user", Content: req.Prompt}}
 	var usage AgentUsage
 
+	// Tool call deduplication: fingerprint → count of times called.
+	// Guidance-only — injects a warning but does NOT block execution.
+	toolCallCounts := make(map[string]int)
+
+	// Wire budget and depth into the registry so SubagentTool can enforce constraints.
+	if r.registry != nil {
+		r.registry.SetParentBudgetAndDepth(req.RemainingBudget, req.AgentDepth)
+	}
+
 	for turn := 0; turn < maxTurns; turn++ {
+		// Update remaining budget for the subagent tool before each LLM call.
+		if r.registry != nil {
+			remaining := maxTurns - turn
+			// Honor the inherited budget cap: subagent can't claim more turns than the parent allows.
+			if req.RemainingBudget > 0 && remaining > req.RemainingBudget {
+				remaining = req.RemainingBudget
+			}
+			// Propagate negative budget (exhausted) as-is.
+			if req.RemainingBudget < 0 {
+				remaining = req.RemainingBudget
+			}
+			r.registry.SetParentBudgetAndDepth(remaining, req.AgentDepth)
+		}
 		llmReq := models.LlmRequest{
 			Model:        r.model,
 			SystemPrompt: systemPrompt,
@@ -197,6 +233,49 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 					messages = append(messages, models.Message{Role: "user", Content: "[context update]\n" + inject})
 				}
 			}
+
+			// Layer 3: context window management — compact if approaching token limit.
+			budget := r.config.ContextWindowBudget
+			if budget <= 0 {
+				budget = contextWindowBudget
+			}
+			threshold := int(float64(budget) * compactionThreshold)
+			currentTokens := countAllTokens(messages)
+			if currentTokens > threshold {
+				before := len(messages)
+				messages = CompactMessages(messages, budget)
+				after := len(messages)
+				if after < before {
+					dropped := before - after
+					log.Info().
+						Int("tokens_before", currentTokens).
+						Int("messages_dropped", dropped).
+						Int("budget", budget).
+						Msg("builtin: context compacted")
+					messages = append(messages, models.Message{
+						Role:    "user",
+						Content: compactionSummary(dropped / 2), // pairs
+					})
+				}
+			}
+
+			// Layer 4: deduplication detector — track fingerprints and warn on repeats.
+			var dupWarnings []string
+			for _, tc := range resp.ToolCalls {
+				fp := toolCallFingerprint(tc.Name, tc.Input)
+				toolCallCounts[fp]++
+				if toolCallCounts[fp] == 2 {
+					// Inject warning on the second occurrence of an identical call.
+					dupWarnings = append(dupWarnings,
+						fmt.Sprintf("[warning: you already called %s with identical arguments. This may indicate a loop. Consider a different approach or check if the prior result was sufficient.]", tc.Name))
+					log.Warn().Str("tool", tc.Name).Str("fingerprint", fp).Msg("builtin: duplicate tool call detected")
+				}
+			}
+			if len(dupWarnings) > 0 {
+				for _, w := range dupWarnings {
+					messages = append(messages, models.Message{Role: "user", Content: w})
+				}
+			}
 			continue
 		}
 
@@ -237,4 +316,22 @@ func extractPath(input json.RawMessage) string {
 	}
 	_ = json.Unmarshal(input, &v)
 	return v.Path
+}
+
+// toolCallFingerprint returns a canonical hash of (toolName, input) for dedup tracking.
+func toolCallFingerprint(toolName string, input json.RawMessage) string {
+	h := sha256.New()
+	h.Write([]byte(toolName))
+	h.Write([]byte("|"))
+	// Canonicalize: re-marshal to remove whitespace differences.
+	var canonical interface{}
+	if err := json.Unmarshal(input, &canonical); err == nil {
+		if b, err := json.Marshal(canonical); err == nil {
+			h.Write(b)
+			goto done
+		}
+	}
+	h.Write(input)
+done:
+	return fmt.Sprintf("%x", h.Sum(nil))
 }

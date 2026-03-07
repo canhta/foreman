@@ -104,7 +104,7 @@ func TestSubagent_NilRunFn(t *testing.T) {
 
 func TestSubagent_WithRunFn(t *testing.T) {
 	called := false
-	var fn tools.RunFn = func(ctx context.Context, task, workDir string, toolNames []string, maxTurns int) (string, error) {
+	var fn tools.RunFn = func(ctx context.Context, task, workDir string, toolNames []string, maxTurns, remainingBudget, agentDepth int) (string, error) {
 		called = true
 		return "subagent result", nil
 	}

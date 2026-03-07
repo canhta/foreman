@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/canhta/foreman/internal/agent/tools"
 	"github.com/canhta/foreman/internal/llm"
 	"github.com/canhta/foreman/internal/models"
 )
@@ -257,3 +259,184 @@ func (m *mockFallbackLLM) Complete(_ context.Context, req models.LlmRequest) (*m
 }
 func (m *mockFallbackLLM) ProviderName() string                { return "mock" }
 func (m *mockFallbackLLM) HealthCheck(_ context.Context) error { return nil }
+
+// --- Task 1.4: Subagent Budget Inheritance + Depth Enforcement tests ---
+
+// mockSubagentCaptureLLM records what MaxTurns the subagent runner receives.
+// First call: returns tool_use requesting Subagent. Second call: returns end_turn.
+type mockSubagentCaptureLLM struct {
+	calls int
+}
+
+func (m *mockSubagentCaptureLLM) Complete(_ context.Context, req models.LlmRequest) (*models.LlmResponse, error) {
+	m.calls++
+	if m.calls == 1 {
+		return &models.LlmResponse{
+			StopReason: models.StopReasonToolUse,
+			ToolCalls: []models.ToolCall{
+				{ID: "c1", Name: "Subagent", Input: json.RawMessage(`{"task":"do something","max_turns":20}`)},
+			},
+			TokensInput: 100, TokensOutput: 50, Model: req.Model,
+		}, nil
+	}
+	return &models.LlmResponse{
+		Content: "done", StopReason: models.StopReasonEndTurn,
+		TokensInput: 50, TokensOutput: 20, Model: req.Model,
+	}, nil
+}
+func (m *mockSubagentCaptureLLM) ProviderName() string                { return "mock" }
+func (m *mockSubagentCaptureLLM) HealthCheck(_ context.Context) error { return nil }
+
+func TestSubagent_InheritsBudget(t *testing.T) {
+	// Parent: MaxTurns=10, currently on turn 7 (RemainingBudget=3)
+	// Subagent requests max_turns=20 but should be capped to min(20, 3) = 3
+	var capturedMaxTurns int
+	reg := tools.NewRegistry(nil, nil, tools.ToolHooks{})
+	reg.SetRunFn(func(_ context.Context, _ string, _ string, _ []string, maxTurns, remainingBudget, agentDepth int) (string, error) {
+		capturedMaxTurns = maxTurns
+		return "subagent done", nil
+	})
+
+	mockLLM := &mockSubagentCaptureLLM{}
+	runner := NewBuiltinRunner(mockLLM, "test-model", BuiltinConfig{MaxTurnsDefault: 10}, reg, nil)
+
+	_, err := runner.Run(context.Background(), AgentRequest{
+		Prompt:          "do a task",
+		WorkDir:         t.TempDir(),
+		RemainingBudget: 3,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// The subagent should receive at most 3 turns (inherited from parent remaining budget)
+	if capturedMaxTurns > 3 {
+		t.Errorf("expected subagent max turns <= 3 (inherited budget), got %d", capturedMaxTurns)
+	}
+}
+
+func TestSubagent_FailsWhenBudgetExhausted(t *testing.T) {
+	// RemainingBudget < 0 means the parent budget is exhausted.
+	// The subagent tool should return an error (fed back as tool error, not fatal).
+	reg := tools.NewRegistry(nil, nil, tools.ToolHooks{})
+	reg.SetRunFn(func(_ context.Context, _ string, _ string, _ []string, _, _, _ int) (string, error) {
+		t.Error("subagent RunFn should not be called when budget is exhausted")
+		return "", nil
+	})
+
+	mockLLM := &mockSubagentCaptureLLM{}
+	runner := NewBuiltinRunner(mockLLM, "test-model", BuiltinConfig{MaxTurnsDefault: 10}, reg, nil)
+
+	result, err := runner.Run(context.Background(), AgentRequest{
+		Prompt:          "do a task",
+		WorkDir:         t.TempDir(),
+		RemainingBudget: -1, // negative = exhausted
+	})
+	// The run itself should complete (error is fed back as tool error, not a fatal error)
+	if err != nil {
+		t.Fatalf("unexpected fatal error: %v", err)
+	}
+	_ = result
+}
+
+func TestSubagent_EnforcesMaxDepth(t *testing.T) {
+	// AgentDepth at max: subagent call should fail with depth error
+	reg := tools.NewRegistry(nil, nil, tools.ToolHooks{})
+	reg.SetRunFn(func(_ context.Context, _ string, _ string, _ []string, _, _, _ int) (string, error) {
+		t.Error("subagent RunFn should not be called when max depth is reached")
+		return "", nil
+	})
+
+	mockLLM := &mockSubagentCaptureLLM{}
+	runner := NewBuiltinRunner(mockLLM, "test-model", BuiltinConfig{MaxTurnsDefault: 10}, reg, nil)
+
+	result, err := runner.Run(context.Background(), AgentRequest{
+		Prompt:     "do a task",
+		WorkDir:    t.TempDir(),
+		AgentDepth: MaxAgentDepth, // at max depth
+	})
+	// Should complete (depth error becomes tool error result, not fatal)
+	if err != nil {
+		t.Fatalf("unexpected fatal error: %v", err)
+	}
+	_ = result
+}
+
+// --- Task 1.5: Tool Call Deduplication Detector tests ---
+
+// mockDuplicateToolLLM calls Read("main.go") twice (identical args), then ends.
+type mockDuplicateToolLLM struct {
+	calls          int
+	receivedPrompt []string // captures user message content in each request
+}
+
+func (m *mockDuplicateToolLLM) Complete(_ context.Context, req models.LlmRequest) (*models.LlmResponse, error) {
+	m.calls++
+	// Capture all user messages to check for dedup warning.
+	for _, msg := range req.Messages {
+		if msg.Role == "user" && msg.Content != "" {
+			m.receivedPrompt = append(m.receivedPrompt, msg.Content)
+		}
+	}
+	switch m.calls {
+	case 1:
+		// First call: request Read("main.go")
+		return &models.LlmResponse{
+			StopReason:  models.StopReasonToolUse,
+			ToolCalls:   []models.ToolCall{{ID: "c1", Name: "Read", Input: json.RawMessage(`{"path":"main.go"}`)}},
+			TokensInput: 100, TokensOutput: 20, Model: req.Model,
+		}, nil
+	case 2:
+		// Second call: request Read("main.go") AGAIN (identical args)
+		return &models.LlmResponse{
+			StopReason:  models.StopReasonToolUse,
+			ToolCalls:   []models.ToolCall{{ID: "c2", Name: "Read", Input: json.RawMessage(`{"path":"main.go"}`)}},
+			TokensInput: 120, TokensOutput: 20, Model: req.Model,
+		}, nil
+	default:
+		// Third call: done
+		return &models.LlmResponse{
+			Content: "all done", StopReason: models.StopReasonEndTurn,
+			TokensInput: 50, TokensOutput: 10, Model: req.Model,
+		}, nil
+	}
+}
+func (m *mockDuplicateToolLLM) ProviderName() string                { return "mock" }
+func (m *mockDuplicateToolLLM) HealthCheck(_ context.Context) error { return nil }
+
+func TestBuiltinRunner_DetectsDuplicateToolCalls(t *testing.T) {
+	dir := t.TempDir()
+	// Create the file so the Read tool doesn't error
+	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main"), 0644)
+
+	mockLLM := &mockDuplicateToolLLM{}
+	runner := NewBuiltinRunner(mockLLM, "test-model", BuiltinConfig{
+		MaxTurnsDefault:     10,
+		DefaultAllowedTools: []string{"Read"},
+	}, nil, nil)
+
+	result, err := runner.Run(context.Background(), AgentRequest{
+		Prompt:  "Read main.go and analyze it",
+		WorkDir: dir,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Output != "all done" {
+		t.Fatalf("unexpected output: %q", result.Output)
+	}
+
+	// Assert that a deduplication warning was injected into the conversation.
+	// The warning should appear in the messages sent to the LLM on the 3rd call.
+	foundWarning := false
+	for _, prompt := range mockLLM.receivedPrompt {
+		if strings.Contains(strings.ToLower(prompt), "duplicate") ||
+			strings.Contains(strings.ToLower(prompt), "repeated") ||
+			strings.Contains(strings.ToLower(prompt), "already called") {
+			foundWarning = true
+			break
+		}
+	}
+	if !foundWarning {
+		t.Errorf("expected a deduplication warning to be injected into the conversation, but none found.\nReceived prompts: %v", mockLLM.receivedPrompt)
+	}
+}

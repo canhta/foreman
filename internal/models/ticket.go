@@ -68,22 +68,24 @@ type Task struct {
 }
 
 type LlmCallRecord struct {
-	CreatedAt       time.Time
-	ResponseSummary string
-	PromptHash      string
-	Role            string
-	Provider        string
-	Model           string
-	TicketID        string
-	TaskID          string
-	ErrorMessage    string
-	Status          string
-	ID              string
-	TokensOutput    int
-	DurationMs      int64
-	TokensInput     int
-	CostUSD         float64
-	Attempt         int
+	CreatedAt           time.Time
+	ResponseSummary     string
+	PromptHash          string
+	Role                string
+	Provider            string
+	Model               string
+	TicketID            string
+	TaskID              string
+	ErrorMessage        string
+	Status              string
+	ID                  string
+	TokensOutput        int
+	DurationMs          int64
+	TokensInput         int
+	CostUSD             float64
+	Attempt             int
+	CacheReadTokens     int
+	CacheCreationTokens int
 }
 
 type HandoffRecord struct {

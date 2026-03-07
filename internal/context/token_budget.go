@@ -1,12 +1,9 @@
 package context
 
-// EstimateTokens provides a rough token estimate.
-// Approximation: ~4 characters per token for English/code.
+// EstimateTokens returns the token count for content.
+// Uses tiktoken for accuracy; falls back to len/4 heuristic if unavailable.
 func EstimateTokens(content string) int {
-	if len(content) == 0 {
-		return 0
-	}
-	return (len(content) + 3) / 4
+	return CountTokens(content)
 }
 
 // TokenBudget tracks token usage against a limit.

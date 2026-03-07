@@ -340,7 +340,7 @@ func buildCommandRunner(cfg *models.Config) runner.CommandRunner {
 	switch cfg.Runner.Mode {
 	case "docker":
 		d := cfg.Runner.Docker
-		return runner.NewDockerRunner(d.Image, d.PersistPerTicket, d.Network, d.CPULimit, d.MemoryLimit, d.AutoReinstallDeps)
+		return runner.NewDockerRunner(d.Image, d.PersistPerTicket, d.Network, d.CPULimit, d.MemoryLimit, d.AutoReinstallDeps, d.AllowNetwork)
 	default:
 		return runner.NewLocalRunner(&cfg.Runner.Local)
 	}

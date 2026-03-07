@@ -187,7 +187,7 @@ func (d *Daemon) Start(ctx context.Context) {
 			for _, t := range activeTickets {
 				activeIDs[t.ID] = true
 			}
-			dockerRunner := runner.NewDockerRunner("", false, "", "", "", false)
+			dockerRunner := runner.NewDockerRunner("", false, "", "", "", false, false)
 			if err := dockerRunner.CleanupOrphanContainers(ctx, activeIDs); err != nil {
 				log.Warn().Err(err).Msg("Failed to cleanup orphan containers on startup")
 			}

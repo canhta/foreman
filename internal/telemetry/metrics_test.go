@@ -121,3 +121,37 @@ func TestMetrics_RecordDAGExecution(t *testing.T) {
 		}
 	}
 }
+
+func TestMetrics_RecordCacheSavings(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	m := NewMetrics(reg)
+
+	// Zero read tokens should not update the counter (no-op).
+	m.RecordCacheSavings(0)
+
+	// Positive read tokens should increment the counter.
+	m.RecordCacheSavings(200)
+	m.RecordCacheSavings(50)
+
+	families, err := reg.Gather()
+	if err != nil {
+		t.Fatalf("gather failed: %v", err)
+	}
+	var found bool
+	for _, f := range families {
+		if f.GetName() == "foreman_anthropic_cache_savings_tokens_total" {
+			found = true
+			mets := f.GetMetric()
+			if len(mets) == 0 {
+				t.Fatal("expected at least one metric sample")
+			}
+			val := mets[0].GetCounter().GetValue()
+			if val != 250 {
+				t.Errorf("expected cache savings counter = 250, got %v", val)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("metric foreman_anthropic_cache_savings_tokens_total not found")
+	}
+}

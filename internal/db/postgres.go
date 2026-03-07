@@ -224,11 +224,13 @@ func (p *PostgresDB) RecordLlmCall(ctx context.Context, call *models.LlmCallReco
 	}
 	_, err := p.db.ExecContext(ctx,
 		`INSERT INTO llm_calls (id, ticket_id, task_id, role, provider, model, attempt,
-		 tokens_input, tokens_output, cost_usd, duration_ms, prompt_hash, response_summary, status, error_message, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+		 tokens_input, tokens_output, cost_usd, duration_ms, prompt_hash, response_summary, status, error_message,
+		 cache_read_input_tokens, cache_creation_input_tokens, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
 		call.ID, call.TicketID, taskID, call.Role, call.Provider, call.Model, call.Attempt,
 		call.TokensInput, call.TokensOutput, call.CostUSD, call.DurationMs,
-		call.PromptHash, call.ResponseSummary, call.Status, call.ErrorMessage, call.CreatedAt,
+		call.PromptHash, call.ResponseSummary, call.Status, call.ErrorMessage,
+		call.CacheReadTokens, call.CacheCreationTokens, call.CreatedAt,
 	)
 	return err
 }
@@ -469,7 +471,8 @@ func (p *PostgresDB) ListTasks(ctx context.Context, ticketID string) ([]models.T
 func (p *PostgresDB) ListLlmCalls(ctx context.Context, ticketID string) ([]models.LlmCallRecord, error) {
 	rows, err := p.db.QueryContext(ctx,
 		`SELECT id, ticket_id, task_id, role, provider, model, attempt,
-		        tokens_input, tokens_output, cost_usd, duration_ms, status, created_at
+		        tokens_input, tokens_output, cost_usd, duration_ms, status,
+		        cache_read_input_tokens, cache_creation_input_tokens, created_at
 		 FROM llm_calls WHERE ticket_id = $1 ORDER BY created_at DESC`,
 		ticketID)
 	if err != nil {
@@ -483,7 +486,8 @@ func (p *PostgresDB) ListLlmCalls(ctx context.Context, ticketID string) ([]model
 		var taskID sql.NullString
 		var status string
 		if err := rows.Scan(&c.ID, &c.TicketID, &taskID, &c.Role, &c.Provider, &c.Model, &c.Attempt,
-			&c.TokensInput, &c.TokensOutput, &c.CostUSD, &c.DurationMs, &status, &c.CreatedAt); err != nil {
+			&c.TokensInput, &c.TokensOutput, &c.CostUSD, &c.DurationMs, &status,
+			&c.CacheReadTokens, &c.CacheCreationTokens, &c.CreatedAt); err != nil {
 			return nil, err
 		}
 		c.TaskID = taskID.String

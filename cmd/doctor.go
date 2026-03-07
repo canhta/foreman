@@ -99,6 +99,15 @@ func newDoctorCmd() *cobra.Command {
 				return nil
 			})
 
+			// Docker network isolation advisory
+			if cfg.Runner.Mode == "docker" {
+				if !cfg.Runner.Docker.AllowNetwork {
+					fmt.Fprintln(w, "  [WARN] Docker runner: network isolation is active (--network none). Set docker.allow_network = true to enable network access.")
+				} else {
+					fmt.Fprintln(w, "  [WARN] Docker runner: network isolation is DISABLED. Containers have network access.")
+				}
+			}
+
 			// Skills
 			fmt.Fprint(w, "  Skills... ")
 			skillDir := filepath.Join(".", "skills")

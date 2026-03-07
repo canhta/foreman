@@ -18,9 +18,10 @@ type DockerRunner struct {
 	currentTicketID  string
 	persistPerTicket bool
 	autoReinstall    bool
+	allowNetwork     bool
 }
 
-func NewDockerRunner(image string, persistPerTicket bool, network, cpuLimit, memoryLimit string, autoReinstall bool) *DockerRunner {
+func NewDockerRunner(image string, persistPerTicket bool, network, cpuLimit, memoryLimit string, autoReinstall bool, allowNetwork bool) *DockerRunner {
 	return &DockerRunner{
 		image:            image,
 		persistPerTicket: persistPerTicket,
@@ -28,6 +29,7 @@ func NewDockerRunner(image string, persistPerTicket bool, network, cpuLimit, mem
 		cpuLimit:         cpuLimit,
 		memoryLimit:      memoryLimit,
 		autoReinstall:    autoReinstall,
+		allowNetwork:     allowNetwork,
 	}
 }
 
@@ -40,8 +42,14 @@ func (r *DockerRunner) SetTicketID(id string) {
 func (r *DockerRunner) formatRunArgs(workDir, ticketID string) []string {
 	args := []string{"run", "--rm"}
 	args = append(args, "--label", "foreman-ticket="+ticketID)
-	if r.network != "" {
-		args = append(args, "--network", r.network)
+	if r.allowNetwork {
+		if r.network != "" {
+			args = append(args, "--network", r.network)
+		}
+		// else: use Docker default network (bridge)
+	} else {
+		// Default: isolate network unless explicitly allowed
+		args = append(args, "--network", "none")
 	}
 	if r.cpuLimit != "" {
 		args = append(args, "--cpus", r.cpuLimit)

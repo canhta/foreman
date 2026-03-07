@@ -72,6 +72,8 @@ CREATE TABLE IF NOT EXISTS llm_calls (
     response_summary TEXT,
     status TEXT NOT NULL,
     error_message TEXT,
+    cache_read_input_tokens INTEGER NOT NULL DEFAULT 0,
+    cache_creation_input_tokens INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
