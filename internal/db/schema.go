@@ -182,6 +182,8 @@ CREATE TABLE IF NOT EXISTS context_feedback (
     created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE INDEX IF NOT EXISTS idx_context_feedback_created ON context_feedback(created_at);
+
 CREATE INDEX IF NOT EXISTS idx_embeddings_repo_sha
     ON embeddings(repo_path, head_sha);
 

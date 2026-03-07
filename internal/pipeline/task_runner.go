@@ -150,6 +150,10 @@ func (r *PipelineTaskRunner) RunTask(ctx context.Context, task *models.Task) err
 			Str("task_id", task.ID).
 			Msg("context_assembly: dynamic budget computed")
 		contextFiles := r.selectContextFiles(task, ctxBudget)
+		contextFilePaths := make([]string, 0, len(contextFiles))
+		for p := range contextFiles {
+			contextFilePaths = append(contextFilePaths, p)
+		}
 		result, err := r.implementer.Execute(ctx, ImplementerInput{
 			Task:         task,
 			ContextFiles: contextFiles,
@@ -247,7 +251,7 @@ func (r *PipelineTaskRunner) RunTask(ctx context.Context, task *models.Task) err
 		}
 
 		// Write context feedback row so future tasks can learn from this one.
-		r.writeContextFeedback(ctx, task, parsed)
+		r.writeContextFeedback(ctx, task, contextFilePaths, parsed)
 
 		if err := r.db.UpdateTaskStatus(ctx, task.ID, models.TaskStatusDone); err != nil {
 			return fmt.Errorf("update task status: %w", err)
@@ -263,7 +267,7 @@ func (r *PipelineTaskRunner) RunTask(ctx context.Context, task *models.Task) err
 		r.metrics.TaskFailuresTotal.WithLabelValues(errType, "builtin").Inc()
 	}
 	// Write context feedback on failure too, so the system can learn from missed files.
-	r.writeContextFeedback(ctx, task, nil)
+	r.writeContextFeedback(ctx, task, nil, nil)
 	return fmt.Errorf("task %q failed after %d attempts", task.Title, r.config.MaxImplementationRetries+1)
 }
 
@@ -567,13 +571,10 @@ func detectEscalation(output string) string {
 }
 
 // writeContextFeedback records which files were selected vs touched for REQ-CTX-003.
+// contextFilePaths contains the actual keys of the contextFiles map passed to the LLM.
 // parsed may be nil (for failure cases where no output was parsed).
-func (r *PipelineTaskRunner) writeContextFeedback(ctx context.Context, task *models.Task, parsed *ParsedOutput) {
-	filesSelected := make([]string, 0, len(task.FilesToRead)+len(task.FilesToModify))
-	filesSelected = append(filesSelected, task.FilesToRead...)
-	for _, f := range task.FilesToModify {
-		filesSelected = append(filesSelected, strings.TrimSuffix(f, " (new)"))
-	}
+func (r *PipelineTaskRunner) writeContextFeedback(ctx context.Context, task *models.Task, contextFilePaths []string, parsed *ParsedOutput) {
+	filesSelected := contextFilePaths
 
 	var filesTouched []string
 	if parsed != nil {

@@ -1073,7 +1073,7 @@ func (p *PostgresDB) WriteContextFeedback(ctx context.Context, row ContextFeedba
 // The Jaccard comparison is computed in Go after loading rows.
 func (p *PostgresDB) QueryContextFeedback(ctx context.Context, candidates []string, minJaccard float64) ([]ContextFeedbackRow, error) {
 	rows, err := p.db.QueryContext(ctx,
-		`SELECT id, ticket_id, task_id, files_selected, files_touched, created_at FROM context_feedback`)
+		`SELECT id, ticket_id, task_id, files_selected, files_touched, created_at FROM context_feedback ORDER BY created_at DESC LIMIT 500`)
 	if err != nil {
 		return nil, fmt.Errorf("query context feedback: %w", err)
 	}

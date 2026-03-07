@@ -102,14 +102,9 @@ func SelectFilesForTask(task *models.Task, workDir string, tokenBudget int, cach
 			baseFeedbackScore := 30.0
 			boostedScore := baseFeedbackScore * feedbackBoost
 			for f := range boostedFiles {
-				if _, exists := candidates[f]; exists {
-					// Already in candidates — just apply boost to existing score
-					candidates[f].Score *= feedbackBoost
-					candidates[f].Reason += "+feedback_boost"
-				} else {
-					// New file from feedback — add with boosted score if it exists on disk
-					addCandidate(candidates, workDir, f, boostedScore, "feedback_boost")
-				}
+				// New file from feedback — add with boosted score if it exists on disk.
+				// (boostedFiles contains only files NOT already in candidates)
+				addCandidate(candidates, workDir, f, boostedScore, "feedback_boost")
 			}
 		}
 	}

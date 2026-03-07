@@ -94,6 +94,10 @@ func runSQLiteMigrations(db *sql.DB) error {
 		}
 	}
 
+	// Add index on context_feedback(created_at) for ORDER BY ... LIMIT queries (REQ-CTX-003).
+	_, _ = db.ExecContext(ctx,
+		`CREATE INDEX IF NOT EXISTS idx_context_feedback_created ON context_feedback(created_at)`)
+
 	return nil
 }
 
@@ -1150,7 +1154,7 @@ func (s *SQLiteDB) WriteContextFeedback(ctx context.Context, row ContextFeedback
 // The Jaccard comparison is computed in Go after loading rows (SQLite has no native set ops).
 func (s *SQLiteDB) QueryContextFeedback(ctx context.Context, candidates []string, minJaccard float64) ([]ContextFeedbackRow, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, ticket_id, task_id, files_selected, files_touched, created_at FROM context_feedback`)
+		`SELECT id, ticket_id, task_id, files_selected, files_touched, created_at FROM context_feedback ORDER BY created_at DESC LIMIT 500`)
 	if err != nil {
 		return nil, fmt.Errorf("query context feedback: %w", err)
 	}
