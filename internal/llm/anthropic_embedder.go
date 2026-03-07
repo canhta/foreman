@@ -92,6 +92,9 @@ func (e *AnthropicEmbedder) embedBatch(ctx context.Context, texts []string) ([][
 		return nil, fmt.Errorf("anthropic embed: parse response: %w", err)
 	}
 
+	if len(embedResp.Data) != len(texts) {
+		return nil, fmt.Errorf("anthropic embed: expected %d embeddings, got %d", len(texts), len(embedResp.Data))
+	}
 	result := make([][]float32, len(embedResp.Data))
 	for i, d := range embedResp.Data {
 		vec := make([]float32, len(d.Embedding))

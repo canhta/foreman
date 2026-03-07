@@ -11,6 +11,9 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
+
+	"github.com/rs/zerolog/log"
 
 	appcontext "github.com/canhta/foreman/internal/context"
 	"github.com/canhta/foreman/internal/db"
@@ -19,7 +22,7 @@ import (
 
 // SearchResult is a single semantic search hit.
 type SearchResult struct {
-	Snippet   string  `json:"snippet"` // first 200 chars of chunk text
+	Snippet   string  `json:"snippet"` // first 200 runes of chunk text
 	File      string  `json:"file"`
 	Score     float32 `json:"score"`
 	StartLine int     `json:"start_line"`
@@ -29,8 +32,17 @@ type SearchResult struct {
 // SemanticSearchTool implements semantic/conceptual code search using embeddings.
 // It is disabled (returns an informative message) if no Embedder is configured.
 type SemanticSearchTool struct {
-	db       db.Database
-	embedder llm.Embedder // nil means disabled
+	db         db.Database
+	embedder   llm.Embedder                                              // nil means disabled
+	getHeadSHA func(ctx context.Context, workDir string) (string, error) // injectable for tests
+	building   sync.Map                                                  // key: "repoPath:sha" → struct{}{}, prevents concurrent index builds
+}
+
+func (t *SemanticSearchTool) headSHAFn() func(ctx context.Context, workDir string) (string, error) {
+	if t.getHeadSHA != nil {
+		return t.getHeadSHA
+	}
+	return defaultGetHeadSHA
 }
 
 func (t *SemanticSearchTool) Name() string { return "semantic_search" }
@@ -83,7 +95,7 @@ func (t *SemanticSearchTool) Execute(ctx context.Context, workDir string, input 
 	}
 
 	// Get HEAD SHA.
-	headSHA, err := getHeadSHA(ctx, workDir)
+	headSHA, err := t.headSHAFn()(ctx, workDir)
 	if err != nil {
 		return "", fmt.Errorf("semantic_search: get HEAD SHA: %w", err)
 	}
@@ -95,10 +107,24 @@ func (t *SemanticSearchTool) Execute(ctx context.Context, workDir string, input 
 	}
 
 	if len(cached) == 0 {
-		// Build index.
-		cached, err = t.buildIndex(ctx, workDir, headSHA)
-		if err != nil {
-			return "", fmt.Errorf("semantic_search: build index: %w", err)
+		// Deduplicate concurrent index builds for the same (workDir, SHA).
+		// UpsertEmbedding uses ON CONFLICT DO UPDATE so concurrent builds are
+		// idempotent, but we avoid the wasted API calls by letting only one
+		// goroutine build at a time.
+		cacheKey := workDir + ":" + headSHA
+		if _, loaded := t.building.LoadOrStore(cacheKey, struct{}{}); loaded {
+			log.Warn().Str("sha", headSHA).Msg("semantic_search: concurrent index build detected; skipping duplicate build")
+			// Re-read from DB — the other goroutine may have written some records.
+			cached, err = t.db.GetEmbeddingsByRepoSHA(ctx, workDir, headSHA)
+			if err != nil {
+				return "", fmt.Errorf("semantic_search: get cached embeddings (retry): %w", err)
+			}
+		} else {
+			defer t.building.Delete(cacheKey)
+			cached, err = t.buildIndex(ctx, workDir, headSHA)
+			if err != nil {
+				return "", fmt.Errorf("semantic_search: build index: %w", err)
+			}
 		}
 	}
 
@@ -135,8 +161,9 @@ func (t *SemanticSearchTool) Execute(ctx context.Context, workDir string, input 
 	results := make([]SearchResult, 0, topK)
 	for _, sc := range scored[:topK] {
 		snippet := sc.rec.ChunkText
-		if len(snippet) > 200 {
-			snippet = snippet[:200]
+		runes := []rune(snippet)
+		if len(runes) > 200 {
+			snippet = string(runes[:200])
 		}
 		relPath, _ := filepath.Rel(workDir, sc.rec.FilePath)
 		if relPath == "" {
@@ -159,6 +186,8 @@ func (t *SemanticSearchTool) Execute(ctx context.Context, workDir string, input 
 }
 
 // buildIndex walks workDir, chunks all eligible files, embeds them, and stores in DB.
+// After successfully indexing, it deletes any stale embeddings for the same repo_path
+// with a different head_sha.
 func (t *SemanticSearchTool) buildIndex(ctx context.Context, workDir, headSHA string) ([]db.EmbeddingRecord, error) {
 	// Collect all chunks.
 	var chunks []appcontext.Chunk
@@ -224,11 +253,18 @@ func (t *SemanticSearchTool) buildIndex(ctx context.Context, workDir, headSHA st
 		}
 		records = append(records, rec)
 	}
+
+	// Evict stale indices for this repo (different SHAs) to reclaim storage.
+	if delErr := t.db.DeleteEmbeddingsByRepoExceptSHA(ctx, workDir, headSHA); delErr != nil {
+		// Non-fatal: log but don't fail the index build.
+		log.Warn().Err(delErr).Str("repo", workDir).Msg("semantic_search: failed to delete stale embeddings")
+	}
+
 	return records, nil
 }
 
-// getHeadSHA runs `git rev-parse HEAD` in workDir and returns the trimmed output.
-func getHeadSHA(ctx context.Context, workDir string) (string, error) {
+// defaultGetHeadSHA runs `git rev-parse HEAD` in workDir and returns the trimmed output.
+func defaultGetHeadSHA(ctx context.Context, workDir string) (string, error) {
 	var out bytes.Buffer
 	cmd := exec.CommandContext(ctx, "git", "rev-parse", "HEAD")
 	cmd.Dir = workDir

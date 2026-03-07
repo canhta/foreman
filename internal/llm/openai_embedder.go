@@ -98,6 +98,9 @@ func (e *OpenAIEmbedder) embedBatch(ctx context.Context, texts []string) ([][]fl
 		return nil, fmt.Errorf("openai embed: parse response: %w", err)
 	}
 
+	if len(embedResp.Data) != len(texts) {
+		return nil, fmt.Errorf("openai embed: expected %d embeddings, got %d", len(texts), len(embedResp.Data))
+	}
 	result := make([][]float32, len(embedResp.Data))
 	for i, d := range embedResp.Data {
 		vec := make([]float32, len(d.Embedding))

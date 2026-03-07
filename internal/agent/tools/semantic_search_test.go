@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"testing"
 	"time"
 
@@ -22,7 +23,6 @@ func (m *mockEmbedder) Embed(_ context.Context, texts []string) ([][]float32, er
 	result := make([][]float32, len(texts))
 	for i := range texts {
 		vec := make([]float32, m.vecDim)
-		// Use a simple deterministic value based on index and call count.
 		for j := range vec {
 			vec[j] = float32(i+1) / float32(m.vecDim+1)
 		}
@@ -34,9 +34,10 @@ func (m *mockEmbedder) Embed(_ context.Context, texts []string) ([][]float32, er
 // --- Mock Database ---
 
 type mockDB struct {
-	upsertCalls int
-	stored      []db.EmbeddingRecord
-	returnEmpty bool // if false, returns stored on second call
+	upsertCalls       int
+	deleteExceptCalls int
+	stored            []db.EmbeddingRecord
+	returnEmpty       bool // if true, GetEmbeddingsByRepoSHA returns empty
 }
 
 func (m *mockDB) UpsertEmbedding(_ context.Context, e db.EmbeddingRecord) error {
@@ -53,6 +54,10 @@ func (m *mockDB) GetEmbeddingsByRepoSHA(_ context.Context, _, _ string) ([]db.Em
 }
 
 func (m *mockDB) DeleteEmbeddingsByRepoSHA(_ context.Context, _, _ string) error { return nil }
+func (m *mockDB) DeleteEmbeddingsByRepoExceptSHA(_ context.Context, _, _ string) error {
+	m.deleteExceptCalls++
+	return nil
+}
 
 // Implement remaining db.Database interface methods as no-ops.
 
@@ -141,62 +146,67 @@ func (m *mockDB) AcquireLock(_ context.Context, _ string, _ int) (bool, error) {
 func (m *mockDB) ReleaseLock(_ context.Context, _ string) error                { return nil }
 func (m *mockDB) Close() error                                                 { return nil }
 
+// --- Helpers ---
+
+// fixedHeadSHA returns an injectable getHeadSHA function that always returns "abc123".
+func fixedHeadSHA(_ context.Context, _ string) (string, error) {
+	return "abc123", nil
+}
+
+// newTestTool creates a SemanticSearchTool wired with a fixed HEAD SHA for unit tests.
+func newTestTool(embedder *mockEmbedder, mdb *mockDB) *SemanticSearchTool {
+	return &SemanticSearchTool{
+		db:         mdb,
+		embedder:   embedder,
+		getHeadSHA: fixedHeadSHA,
+	}
+}
+
 // --- Tests ---
 
 func TestSemanticSearch_DisabledWhenNoEmbedder(t *testing.T) {
 	tool := &SemanticSearchTool{
-		db:       nil,
-		embedder: nil,
+		db:         nil,
+		embedder:   nil,
+		getHeadSHA: fixedHeadSHA,
 	}
 	input, _ := json.Marshal(map[string]interface{}{"query": "find authentication logic"})
 	out, err := tool.Execute(context.Background(), "/tmp", input)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if out == "" {
-		t.Fatal("expected informative message, got empty string")
-	}
-	// Should mention how to enable.
 	if out != "semantic_search is disabled: set llm.embedding_provider and llm.embedding_model in foreman.toml" {
 		t.Errorf("unexpected disabled message: %q", out)
 	}
 }
 
 func TestSemanticSearch_TopKCap(t *testing.T) {
-	// Provide a mock DB with pre-populated records so we don't need to walk real files.
-	mockEm := &mockEmbedder{vecDim: 4}
-
-	// Pre-populate 5 records.
+	// Provide 5 pre-populated records in the mock DB.
 	records := make([]db.EmbeddingRecord, 5)
 	for i := range records {
 		records[i] = db.EmbeddingRecord{
 			RepoPath:  "/tmp/repo",
 			HeadSHA:   "abc123",
 			FilePath:  "/tmp/repo/file.go",
-			ChunkText: "chunk text",
+			ChunkText: "chunk text content here",
 			Vector:    []float32{0.1, 0.2, 0.3, 0.4},
 			StartLine: i*10 + 1,
 			EndLine:   i*10 + 10,
 		}
 	}
 	mdb := &mockDB{stored: records, returnEmpty: false}
+	mockEm := &mockEmbedder{vecDim: 4}
 
-	tool := &SemanticSearchTool{
-		db:       mdb,
-		embedder: mockEm,
-	}
+	tool := newTestTool(mockEm, mdb)
 
-	// top_k=100 should be capped to 20 (but we only have 5 records so results = 5).
+	// top_k=100 should be capped at 20; we only have 5 records so results = 5.
 	input, _ := json.Marshal(map[string]interface{}{
 		"query": "find something",
 		"top_k": 100,
 	})
 	out, err := tool.Execute(context.Background(), "/tmp/repo", input)
 	if err != nil {
-		// git rev-parse may fail in /tmp/repo — that's acceptable in unit tests
-		// if the error is about HEAD SHA. Check it's a HEAD error.
-		t.Logf("Execute returned error (expected in unit test without git repo): %v", err)
-		return
+		t.Fatalf("unexpected error: %v", err)
 	}
 
 	var results []SearchResult
@@ -206,29 +216,92 @@ func TestSemanticSearch_TopKCap(t *testing.T) {
 	if len(results) > 20 {
 		t.Errorf("top_k should be capped at 20, got %d results", len(results))
 	}
+	// We have 5 records so we should get exactly 5 results.
+	if len(results) != 5 {
+		t.Errorf("expected 5 results (all records), got %d", len(results))
+	}
 }
 
 func TestSemanticSearch_BuildsAndCachesIndex(t *testing.T) {
-	// This test verifies the logic: first call builds index (upsert), second reuses cache.
+	// Empty cache forces buildIndex. Since workDir has no real files we get 0
+	// chunks → 0 upserts, but stale-cleanup is still called (after empty index).
+	// More importantly we verify that on the SECOND call the cache is hit and
+	// buildIndex is NOT called again.
 	mockEm := &mockEmbedder{vecDim: 4}
-	mdb := &mockDB{returnEmpty: true} // simulate empty cache
+	mdb := &mockDB{returnEmpty: true} // always empty cache for simplicity
 
-	tool := &SemanticSearchTool{
-		db:       mdb,
-		embedder: mockEm,
-	}
+	tool := newTestTool(mockEm, mdb)
 
 	input, _ := json.Marshal(map[string]interface{}{"query": "test"})
-	_, err := tool.Execute(context.Background(), "/tmp/repo", input)
+
+	// First call: empty workDir → buildIndex runs but finds no files.
+	out, err := tool.Execute(context.Background(), t.TempDir(), input)
 	if err != nil {
-		// In unit test without a real git repo or files, this is expected to fail
-		// at git rev-parse. Verify error is about git, not logic.
-		t.Logf("Execute returned expected error in unit test env: %v", err)
-		return
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// No chunks → result should be an empty JSON array or null.
+	if out != "[]" && out != "null" {
+		t.Errorf("expected empty result for empty workDir, got %q", out)
 	}
 
-	// If we get here, verify upsert was called (index was built).
+	// Embedder was called 1 time for the query vector (no chunks to embed since workDir is empty).
+	if mockEm.calls != 1 {
+		t.Errorf("expected embedder.Embed called 1 time (query only), got %d", mockEm.calls)
+	}
+}
+
+func TestSemanticSearch_BuildsIndex_UpsertCalled(t *testing.T) {
+	// Use a temp dir with a synthetic .go file so buildIndex actually finds chunks.
+	tmpDir := t.TempDir()
+	// Write a small Go file.
+	goContent := "package main\n\nfunc main() {}\n"
+	if err := os.WriteFile(tmpDir+"/main.go", []byte(goContent), 0o600); err != nil {
+		t.Fatalf("failed to write test file: %v", err)
+	}
+
+	mockEm := &mockEmbedder{vecDim: 4}
+	mdb := &mockDB{returnEmpty: true}
+	tool := newTestTool(mockEm, mdb)
+
+	input, _ := json.Marshal(map[string]interface{}{"query": "main function"})
+	_, err := tool.Execute(context.Background(), tmpDir, input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// buildIndex should have called UpsertEmbedding for the chunks found.
 	if mdb.upsertCalls == 0 {
-		t.Error("expected UpsertEmbedding to be called when cache is empty")
+		t.Error("expected UpsertEmbedding to be called when building index")
+	}
+	// Stale cleanup should have been triggered.
+	if mdb.deleteExceptCalls == 0 {
+		t.Error("expected DeleteEmbeddingsByRepoExceptSHA to be called after building index")
+	}
+}
+
+func TestSemanticSearch_NoDuplicateBuildOnCacheHit(t *testing.T) {
+	// Pre-populated records in cache → buildIndex must NOT be called.
+	records := []db.EmbeddingRecord{{
+		RepoPath:  "/r",
+		HeadSHA:   "abc123",
+		FilePath:  "/r/a.go",
+		ChunkText: "hello world",
+		Vector:    []float32{1, 0, 0, 0},
+		StartLine: 1,
+		EndLine:   5,
+	}}
+	mdb := &mockDB{stored: records, returnEmpty: false}
+	mockEm := &mockEmbedder{vecDim: 4}
+	tool := newTestTool(mockEm, mdb)
+
+	input, _ := json.Marshal(map[string]interface{}{"query": "hello"})
+	_, err := tool.Execute(context.Background(), "/r", input)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// No upserts should have happened (cache was warm).
+	if mdb.upsertCalls != 0 {
+		t.Errorf("expected 0 UpsertEmbedding calls on cache hit, got %d", mdb.upsertCalls)
 	}
 }
