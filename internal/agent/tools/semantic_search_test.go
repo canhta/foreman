@@ -82,6 +82,7 @@ func (m *mockDB) GetChildTickets(_ context.Context, _ string) ([]models.Ticket, 
 	return nil, nil
 }
 func (m *mockDB) SetLastCompletedTask(_ context.Context, _ string, _ int) error  { return nil }
+func (m *mockDB) SetTicketPRHeadSHA(_ context.Context, _, _ string) error        { return nil }
 func (m *mockDB) CreateTasks(_ context.Context, _ string, _ []models.Task) error { return nil }
 func (m *mockDB) UpdateTaskStatus(_ context.Context, _ string, _ models.TaskStatus) error {
 	return nil

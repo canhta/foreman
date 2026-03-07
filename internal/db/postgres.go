@@ -68,21 +68,32 @@ func (p *PostgresDB) UpdateTicketStatus(ctx context.Context, id string, status m
 	return nil
 }
 
+func (p *PostgresDB) SetTicketPRHeadSHA(ctx context.Context, ticketID, sha string) error {
+	_, err := p.db.ExecContext(ctx,
+		`UPDATE tickets SET pr_head_sha = $1, updated_at = $2 WHERE id = $3`,
+		sha, time.Now(), ticketID,
+	)
+	if err != nil {
+		return fmt.Errorf("set ticket pr_head_sha: %w", err)
+	}
+	return nil
+}
+
 func (p *PostgresDB) GetTicket(ctx context.Context, id string) (*models.Ticket, error) {
 	return p.scanTicket(p.db.QueryRowContext(ctx,
-		`SELECT id, external_id, title, description, status, parent_ticket_id, channel_sender_id, decompose_depth, created_at, updated_at FROM tickets WHERE id = $1`, id))
+		`SELECT id, external_id, title, description, status, parent_ticket_id, channel_sender_id, decompose_depth, pr_number, pr_head_sha, created_at, updated_at FROM tickets WHERE id = $1`, id))
 }
 
 func (p *PostgresDB) GetTicketByExternalID(ctx context.Context, externalID string) (*models.Ticket, error) {
 	return p.scanTicket(p.db.QueryRowContext(ctx,
-		`SELECT id, external_id, title, description, status, parent_ticket_id, channel_sender_id, decompose_depth, created_at, updated_at FROM tickets WHERE external_id = $1`, externalID))
+		`SELECT id, external_id, title, description, status, parent_ticket_id, channel_sender_id, decompose_depth, pr_number, pr_head_sha, created_at, updated_at FROM tickets WHERE external_id = $1`, externalID))
 }
 
 func (p *PostgresDB) scanTicket(row *sql.Row) (*models.Ticket, error) {
 	var t models.Ticket
 	var status string
 	err := row.Scan(&t.ID, &t.ExternalID, &t.Title, &t.Description, &status,
-		&t.ParentTicketID, &t.ChannelSenderID, &t.DecomposeDepth, &t.CreatedAt, &t.UpdatedAt)
+		&t.ParentTicketID, &t.ChannelSenderID, &t.DecomposeDepth, &t.PRNumber, &t.PRHeadSHA, &t.CreatedAt, &t.UpdatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("scan ticket: %w", err)
 	}
@@ -91,7 +102,7 @@ func (p *PostgresDB) scanTicket(row *sql.Row) (*models.Ticket, error) {
 }
 
 func (p *PostgresDB) ListTickets(ctx context.Context, filter models.TicketFilter) ([]models.Ticket, error) {
-	query := `SELECT id, external_id, title, description, status, parent_ticket_id, channel_sender_id, decompose_depth, created_at, updated_at FROM tickets WHERE 1=1`
+	query := `SELECT id, external_id, title, description, status, parent_ticket_id, channel_sender_id, decompose_depth, pr_number, pr_head_sha, created_at, updated_at FROM tickets WHERE 1=1`
 	var args []interface{}
 	argIdx := 1
 
@@ -124,7 +135,7 @@ func (p *PostgresDB) ListTickets(ctx context.Context, filter models.TicketFilter
 		var t models.Ticket
 		var status string
 		if err := rows.Scan(&t.ID, &t.ExternalID, &t.Title, &t.Description, &status,
-			&t.ParentTicketID, &t.ChannelSenderID, &t.DecomposeDepth, &t.CreatedAt, &t.UpdatedAt); err != nil {
+			&t.ParentTicketID, &t.ChannelSenderID, &t.DecomposeDepth, &t.PRNumber, &t.PRHeadSHA, &t.CreatedAt, &t.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan ticket row: %w", err)
 		}
 		t.Status = models.TicketStatus(status)
@@ -138,7 +149,7 @@ func (p *PostgresDB) ListTickets(ctx context.Context, filter models.TicketFilter
 
 func (p *PostgresDB) GetChildTickets(ctx context.Context, parentExternalID string) ([]models.Ticket, error) {
 	rows, err := p.db.QueryContext(ctx,
-		`SELECT id, external_id, title, description, status, parent_ticket_id, channel_sender_id, decompose_depth, created_at, updated_at
+		`SELECT id, external_id, title, description, status, parent_ticket_id, channel_sender_id, decompose_depth, pr_number, pr_head_sha, created_at, updated_at
 		 FROM tickets WHERE parent_ticket_id = $1`, parentExternalID)
 	if err != nil {
 		return nil, fmt.Errorf("get child tickets: %w", err)
@@ -150,7 +161,7 @@ func (p *PostgresDB) GetChildTickets(ctx context.Context, parentExternalID strin
 		var t models.Ticket
 		var status string
 		if err := rows.Scan(&t.ID, &t.ExternalID, &t.Title, &t.Description, &status,
-			&t.ParentTicketID, &t.ChannelSenderID, &t.DecomposeDepth, &t.CreatedAt, &t.UpdatedAt); err != nil {
+			&t.ParentTicketID, &t.ChannelSenderID, &t.DecomposeDepth, &t.PRNumber, &t.PRHeadSHA, &t.CreatedAt, &t.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan child ticket row: %w", err)
 		}
 		t.Status = models.TicketStatus(status)

@@ -75,6 +75,7 @@ type realMockGitProvider struct {
 	cleanCalled *int
 	diffOutput  string
 	commitSHA   string
+	logEntries  []git.CommitEntry
 }
 
 func (m *realMockGitProvider) EnsureRepo(_ context.Context, _ string) error      { return nil }
@@ -96,7 +97,7 @@ func (m *realMockGitProvider) FileTree(_ context.Context, _ string) ([]git.FileE
 	return nil, nil
 }
 func (m *realMockGitProvider) Log(_ context.Context, _ string, _ int) ([]git.CommitEntry, error) {
-	return nil, nil
+	return m.logEntries, nil
 }
 func (m *realMockGitProvider) StageAll(_ context.Context, _ string) error { return nil }
 func (m *realMockGitProvider) CleanWorkingTree(_ context.Context, _ string) error {

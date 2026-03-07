@@ -56,6 +56,9 @@ type TaskRunnerFactoryInput struct {
 	// files_touched of prior similar tasks. Default 1.5 (REQ-CTX-003).
 	ContextFeedbackBoost  float64
 	EnableTDDVerification bool
+	// IntermediateReviewInterval controls how often the cross-task consistency
+	// check runs (REQ-PIPE-006). 0 disables it.
+	IntermediateReviewInterval int
 }
 
 // PlanResult mirrors pipeline.PlannerResult without creating an import cycle.
@@ -112,6 +115,10 @@ type OrchestratorConfig struct {
 	EnablePartialPR       bool
 	EnableTDDVerification bool
 	EnableClarification   bool
+	// IntermediateReviewInterval controls how often the cross-task consistency
+	// check runs. After every N completed tasks a lightweight LLM check fires.
+	// 0 disables the check (REQ-PIPE-006).
+	IntermediateReviewInterval int
 }
 
 // Orchestrator coordinates the full ticket-to-PR lifecycle.
@@ -363,19 +370,20 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 	// Build task runner via factory.
 	codebasePatterns := formatCodebasePatterns(planResult.CodebasePatterns)
 	dagRunner := o.runnerFactory.Create(TaskRunnerFactoryInput{
-		TicketID:                 ticket.ID,
-		Models:                   o.config.Models,
-		WorkDir:                  o.config.WorkDir,
-		CodebasePatterns:         codebasePatterns,
-		TestCommand:              o.config.TestCommand,
-		MaxImplementationRetries: o.config.MaxImplementRetries,
-		MaxSpecReviewCycles:      o.config.MaxSpecReviewCycles,
-		MaxQualityReviewCycles:   o.config.MaxQualityReviewCycles,
-		MaxLlmCallsPerTask:       o.config.MaxLlmCallsPerTask,
-		ContextTokenBudget:       o.config.ContextTokenBudget,
-		ContextFeedbackBoost:     o.config.ContextFeedbackBoost,
-		EnableTDDVerification:    o.config.EnableTDDVerification,
-		ContextCache:             ticketCache,
+		TicketID:                   ticket.ID,
+		Models:                     o.config.Models,
+		WorkDir:                    o.config.WorkDir,
+		CodebasePatterns:           codebasePatterns,
+		TestCommand:                o.config.TestCommand,
+		MaxImplementationRetries:   o.config.MaxImplementRetries,
+		MaxSpecReviewCycles:        o.config.MaxSpecReviewCycles,
+		MaxQualityReviewCycles:     o.config.MaxQualityReviewCycles,
+		MaxLlmCallsPerTask:         o.config.MaxLlmCallsPerTask,
+		ContextTokenBudget:         o.config.ContextTokenBudget,
+		ContextFeedbackBoost:       o.config.ContextFeedbackBoost,
+		EnableTDDVerification:      o.config.EnableTDDVerification,
+		IntermediateReviewInterval: o.config.IntermediateReviewInterval,
+		ContextCache:               ticketCache,
 	})
 
 	// Build DAG tasks (resolve title->ID dependencies).

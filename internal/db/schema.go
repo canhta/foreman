@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS tickets (
     branch_name TEXT,
     pr_url TEXT,
     pr_number INTEGER,
+    pr_head_sha TEXT NOT NULL DEFAULT '',
     parent_ticket_id TEXT DEFAULT '',
     decompose_depth INTEGER DEFAULT 0,
     is_partial BOOLEAN DEFAULT FALSE,

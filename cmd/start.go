@@ -76,30 +76,36 @@ func (a *clarityAdapter) CheckTicketClarity(ticket *models.Ticket) (bool, error)
 // taskRunnerFactory satisfies daemon.DAGTaskRunnerFactory.
 type taskRunnerFactory struct {
 	llm       pipeline.LLMProvider
-	db        pipeline.TaskRunnerDB
+	db        fullTaskRunnerDB
 	gitProv   git.GitProvider
 	cmdRunner runner.CommandRunner
 }
 
+// fullTaskRunnerDB is the combined interface required by taskRunnerFactory.
+// It satisfies both pipeline.TaskRunnerDB and pipeline.ConsistencyReviewDB.
+type fullTaskRunnerDB interface {
+	pipeline.TaskRunnerDB
+	pipeline.ConsistencyReviewDB
+}
+
 func (f *taskRunnerFactory) Create(input daemon.TaskRunnerFactoryInput) daemon.TaskRunner {
-	tr := pipeline.NewPipelineTaskRunner(
-		f.llm, f.db, f.gitProv, f.cmdRunner,
-		pipeline.TaskRunnerConfig{
-			Models:                   input.Models,
-			WorkDir:                  input.WorkDir,
-			CodebasePatterns:         input.CodebasePatterns,
-			TestCommand:              input.TestCommand,
-			MaxImplementationRetries: input.MaxImplementationRetries,
-			MaxSpecReviewCycles:      input.MaxSpecReviewCycles,
-			MaxQualityReviewCycles:   input.MaxQualityReviewCycles,
-			MaxLlmCallsPerTask:       input.MaxLlmCallsPerTask,
-			ContextTokenBudget:       input.ContextTokenBudget,
-			ContextFeedbackBoost:     input.ContextFeedbackBoost,
-			EnableTDDVerification:    input.EnableTDDVerification,
-			Cache:                    input.ContextCache,
-		},
-	)
-	return pipeline.NewDAGTaskAdapter(tr, f.db, input.TicketID)
+	cfg := pipeline.TaskRunnerConfig{
+		Models:                     input.Models,
+		WorkDir:                    input.WorkDir,
+		CodebasePatterns:           input.CodebasePatterns,
+		TestCommand:                input.TestCommand,
+		MaxImplementationRetries:   input.MaxImplementationRetries,
+		MaxSpecReviewCycles:        input.MaxSpecReviewCycles,
+		MaxQualityReviewCycles:     input.MaxQualityReviewCycles,
+		MaxLlmCallsPerTask:         input.MaxLlmCallsPerTask,
+		ContextTokenBudget:         input.ContextTokenBudget,
+		ContextFeedbackBoost:       input.ContextFeedbackBoost,
+		EnableTDDVerification:      input.EnableTDDVerification,
+		IntermediateReviewInterval: input.IntermediateReviewInterval,
+		Cache:                      input.ContextCache,
+	}
+	tr := pipeline.NewPipelineTaskRunner(f.llm, f.db, f.gitProv, f.cmdRunner, cfg)
+	return pipeline.NewDAGTaskAdapterWithConsistency(tr, f.db, input.TicketID, f.llm, f.db, f.gitProv, cfg)
 }
 
 func newStartCmd() *cobra.Command {
@@ -185,27 +191,28 @@ func newStartCmd() *cobra.Command {
 				},
 				log.Logger,
 				daemon.OrchestratorConfig{
-					Models:                 cfg.Models,
-					WorkDir:                cfg.Daemon.WorkDir,
-					DefaultBranch:          cfg.Git.DefaultBranch,
-					BranchPrefix:           cfg.Git.BranchPrefix,
-					TestCommand:            "",
-					ClarificationLabel:     cfg.Tracker.ClarificationLabel,
-					PRReviewers:            cfg.Git.PRReviewers,
-					MaxParallelTasks:       cfg.Daemon.MaxParallelTasks,
-					TaskTimeoutMinutes:     cfg.Daemon.TaskTimeoutMinutes,
-					MaxLlmCallsPerTask:     cfg.Cost.MaxLlmCallsPerTask,
-					MaxImplementRetries:    cfg.Limits.MaxImplementationRetries,
-					MaxSpecReviewCycles:    cfg.Limits.MaxSpecReviewCycles,
-					MaxQualityReviewCycles: cfg.Limits.MaxQualityReviewCycles,
-					ContextTokenBudget:     cfg.Limits.ContextTokenBudget,
-					ContextFeedbackBoost:   cfg.Context.ContextFeedbackBoost,
-					PRDraft:                cfg.Git.PRDraft,
-					RebaseBeforePR:         cfg.Git.RebaseBeforePR,
-					AutoPush:               cfg.Git.AutoPush,
-					EnablePartialPR:        cfg.Limits.EnablePartialPR,
-					EnableTDDVerification:  cfg.Limits.EnableTDDVerification,
-					EnableClarification:    cfg.Limits.EnableClarification,
+					Models:                     cfg.Models,
+					WorkDir:                    cfg.Daemon.WorkDir,
+					DefaultBranch:              cfg.Git.DefaultBranch,
+					BranchPrefix:               cfg.Git.BranchPrefix,
+					TestCommand:                "",
+					ClarificationLabel:         cfg.Tracker.ClarificationLabel,
+					PRReviewers:                cfg.Git.PRReviewers,
+					MaxParallelTasks:           cfg.Daemon.MaxParallelTasks,
+					TaskTimeoutMinutes:         cfg.Daemon.TaskTimeoutMinutes,
+					MaxLlmCallsPerTask:         cfg.Cost.MaxLlmCallsPerTask,
+					MaxImplementRetries:        cfg.Limits.MaxImplementationRetries,
+					MaxSpecReviewCycles:        cfg.Limits.MaxSpecReviewCycles,
+					MaxQualityReviewCycles:     cfg.Limits.MaxQualityReviewCycles,
+					ContextTokenBudget:         cfg.Limits.ContextTokenBudget,
+					ContextFeedbackBoost:       cfg.Context.ContextFeedbackBoost,
+					PRDraft:                    cfg.Git.PRDraft,
+					RebaseBeforePR:             cfg.Git.RebaseBeforePR,
+					AutoPush:                   cfg.Git.AutoPush,
+					EnablePartialPR:            cfg.Limits.EnablePartialPR,
+					EnableTDDVerification:      cfg.Limits.EnableTDDVerification,
+					EnableClarification:        cfg.Limits.EnableClarification,
+					IntermediateReviewInterval: cfg.Limits.IntermediateReviewInterval,
 				},
 			)
 

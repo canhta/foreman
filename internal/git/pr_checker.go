@@ -21,6 +21,7 @@ type PRMergeStatus struct {
 	MergedAt *time.Time
 	ClosedAt *time.Time
 	State    string
+	HeadSHA  string
 }
 
 // PRChecker checks the merge status of pull requests.
@@ -49,10 +50,15 @@ func NewGitHubPRChecker(baseURL, token, owner, repo string) *GitHubPRChecker {
 }
 
 type ghPRStatusResponse struct {
+	Head     ghPRHead   `json:"head"`
 	MergedAt *time.Time `json:"merged_at"`
 	ClosedAt *time.Time `json:"closed_at"`
 	State    string     `json:"state"`
 	Merged   bool       `json:"merged"`
+}
+
+type ghPRHead struct {
+	SHA string `json:"sha"`
 }
 
 // GetPRStatus returns the current merge status of a pull request.
@@ -84,6 +90,7 @@ func (g *GitHubPRChecker) GetPRStatus(ctx context.Context, prNumber int) (PRMerg
 	status := PRMergeStatus{
 		MergedAt: pr.MergedAt,
 		ClosedAt: pr.ClosedAt,
+		HeadSHA:  pr.Head.SHA,
 	}
 	if pr.Merged {
 		status.State = PRStateMerged

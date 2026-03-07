@@ -21,6 +21,7 @@ const (
 	TicketStatusAwaitingMerge       TicketStatus = "awaiting_merge"
 	TicketStatusMerged              TicketStatus = "merged"
 	TicketStatusPRClosed            TicketStatus = "pr_closed"
+	TicketStatusPRUpdated           TicketStatus = "pr_updated"
 )
 
 type TaskStatus string

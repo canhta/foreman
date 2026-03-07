@@ -98,6 +98,10 @@ func runSQLiteMigrations(db *sql.DB) error {
 	_, _ = db.ExecContext(ctx,
 		`CREATE INDEX IF NOT EXISTS idx_context_feedback_created ON context_feedback(created_at)`)
 
+	// Add pr_head_sha column to tickets for PR update detection (REQ-PIPE-005).
+	_, _ = db.ExecContext(ctx,
+		`ALTER TABLE tickets ADD COLUMN pr_head_sha TEXT NOT NULL DEFAULT ''`)
+
 	return nil
 }
 
@@ -128,30 +132,45 @@ func (s *SQLiteDB) UpdateTicketStatus(ctx context.Context, id string, status mod
 	return nil
 }
 
+func (s *SQLiteDB) SetTicketPRHeadSHA(ctx context.Context, ticketID, sha string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE tickets SET pr_head_sha = ?, updated_at = ? WHERE id = ?`,
+		sha, time.Now(), ticketID,
+	)
+	if err != nil {
+		return fmt.Errorf("set ticket pr_head_sha: %w", err)
+	}
+	return nil
+}
+
 func (s *SQLiteDB) GetTicket(ctx context.Context, id string) (*models.Ticket, error) {
 	return s.scanTicket(s.db.QueryRowContext(ctx,
-		`SELECT id, external_id, title, description, status, parent_ticket_id, channel_sender_id, decompose_depth, created_at, updated_at FROM tickets WHERE id = ?`, id))
+		`SELECT id, external_id, title, description, status, parent_ticket_id, channel_sender_id, decompose_depth, pr_number, pr_head_sha, created_at, updated_at FROM tickets WHERE id = ?`, id))
 }
 
 func (s *SQLiteDB) GetTicketByExternalID(ctx context.Context, externalID string) (*models.Ticket, error) {
 	return s.scanTicket(s.db.QueryRowContext(ctx,
-		`SELECT id, external_id, title, description, status, parent_ticket_id, channel_sender_id, decompose_depth, created_at, updated_at FROM tickets WHERE external_id = ?`, externalID))
+		`SELECT id, external_id, title, description, status, parent_ticket_id, channel_sender_id, decompose_depth, pr_number, pr_head_sha, created_at, updated_at FROM tickets WHERE external_id = ?`, externalID))
 }
 
 func (s *SQLiteDB) scanTicket(row *sql.Row) (*models.Ticket, error) {
 	var t models.Ticket
 	var status string
+	var prNumber sql.NullInt64
 	err := row.Scan(&t.ID, &t.ExternalID, &t.Title, &t.Description, &status,
-		&t.ParentTicketID, &t.ChannelSenderID, &t.DecomposeDepth, &t.CreatedAt, &t.UpdatedAt)
+		&t.ParentTicketID, &t.ChannelSenderID, &t.DecomposeDepth, &prNumber, &t.PRHeadSHA, &t.CreatedAt, &t.UpdatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("scan ticket: %w", err)
 	}
 	t.Status = models.TicketStatus(status)
+	if prNumber.Valid {
+		t.PRNumber = int(prNumber.Int64)
+	}
 	return &t, nil
 }
 
 func (s *SQLiteDB) ListTickets(ctx context.Context, filter models.TicketFilter) ([]models.Ticket, error) {
-	query := `SELECT id, external_id, title, description, status, parent_ticket_id, channel_sender_id, decompose_depth, created_at, updated_at FROM tickets WHERE 1=1`
+	query := `SELECT id, external_id, title, description, status, parent_ticket_id, channel_sender_id, decompose_depth, pr_number, pr_head_sha, created_at, updated_at FROM tickets WHERE 1=1`
 	var args []interface{}
 
 	if filter.Status != "" {
@@ -180,11 +199,15 @@ func (s *SQLiteDB) ListTickets(ctx context.Context, filter models.TicketFilter) 
 	for rows.Next() {
 		var t models.Ticket
 		var status string
+		var prNumber sql.NullInt64
 		if err := rows.Scan(&t.ID, &t.ExternalID, &t.Title, &t.Description, &status,
-			&t.ParentTicketID, &t.ChannelSenderID, &t.DecomposeDepth, &t.CreatedAt, &t.UpdatedAt); err != nil {
+			&t.ParentTicketID, &t.ChannelSenderID, &t.DecomposeDepth, &prNumber, &t.PRHeadSHA, &t.CreatedAt, &t.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan ticket row: %w", err)
 		}
 		t.Status = models.TicketStatus(status)
+		if prNumber.Valid {
+			t.PRNumber = int(prNumber.Int64)
+		}
 		tickets = append(tickets, t)
 	}
 	if err := rows.Err(); err != nil {
@@ -195,7 +218,7 @@ func (s *SQLiteDB) ListTickets(ctx context.Context, filter models.TicketFilter) 
 
 func (s *SQLiteDB) GetChildTickets(ctx context.Context, parentExternalID string) ([]models.Ticket, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, external_id, title, description, status, parent_ticket_id, channel_sender_id, decompose_depth, created_at, updated_at
+		`SELECT id, external_id, title, description, status, parent_ticket_id, channel_sender_id, decompose_depth, pr_number, pr_head_sha, created_at, updated_at
 		 FROM tickets WHERE parent_ticket_id = ?`, parentExternalID)
 	if err != nil {
 		return nil, fmt.Errorf("get child tickets: %w", err)
@@ -206,11 +229,13 @@ func (s *SQLiteDB) GetChildTickets(ctx context.Context, parentExternalID string)
 	for rows.Next() {
 		var t models.Ticket
 		var status string
+		var prNumber sql.NullInt64
 		if err := rows.Scan(&t.ID, &t.ExternalID, &t.Title, &t.Description, &status,
-			&t.ParentTicketID, &t.ChannelSenderID, &t.DecomposeDepth, &t.CreatedAt, &t.UpdatedAt); err != nil {
+			&t.ParentTicketID, &t.ChannelSenderID, &t.DecomposeDepth, &prNumber, &t.PRHeadSHA, &t.CreatedAt, &t.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan child ticket row: %w", err)
 		}
 		t.Status = models.TicketStatus(status)
+		t.PRNumber = int(prNumber.Int64)
 		tickets = append(tickets, t)
 	}
 	if err := rows.Err(); err != nil {

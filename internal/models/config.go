@@ -152,6 +152,9 @@ type LimitsConfig struct {
 	EnableTDDVerification    bool    `mapstructure:"enable_tdd_verification"`
 	SearchReplaceSimilarity  float64 `mapstructure:"search_replace_similarity"`
 	SearchReplaceMinContext  int     `mapstructure:"search_replace_min_context_lines"`
+	// IntermediateReviewInterval controls cross-task consistency checks (REQ-PIPE-006).
+	// After every N completed tasks a lightweight LLM check fires. 0 disables it.
+	IntermediateReviewInterval int `mapstructure:"intermediate_review_interval"`
 }
 
 // ContextConfig holds configuration for the context assembly subsystem.

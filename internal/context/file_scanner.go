@@ -60,13 +60,17 @@ const (
 // Tier 3 (up to 20): One representative non-test source file per top-level directory.
 // Lower tiers are dropped first when the token budget is exceeded.
 func ScanFiles(workDir string, maxTokens int) []ScannedFile {
+	return scanFilesWithEstimator(workDir, maxTokens, EstimateTokens)
+}
+
+func scanFilesWithEstimator(workDir string, maxTokens int, estimateTokens func(string) int) []ScannedFile {
 	var tier1, tier2, tier3 []ScannedFile
 
 	// Collect tier-1 files
 	for name := range tier1Files {
 		path := filepath.Join(workDir, name)
 		if content, err := os.ReadFile(path); err == nil {
-			tokens := EstimateTokens(string(content))
+			tokens := estimateTokens(string(content))
 			tier1 = append(tier1, ScannedFile{
 				Path:    name,
 				Content: string(content),
@@ -85,7 +89,7 @@ func ScanFiles(workDir string, maxTokens int) []ScannedFile {
 			}
 			relPath := filepath.Join(".github", "workflows", e.Name())
 			if content, err := os.ReadFile(filepath.Join(workDir, relPath)); err == nil {
-				tokens := EstimateTokens(string(content))
+				tokens := estimateTokens(string(content))
 				tier2 = append(tier2, ScannedFile{
 					Path:    relPath,
 					Content: string(content),
@@ -100,7 +104,7 @@ func ScanFiles(workDir string, maxTokens int) []ScannedFile {
 	for name := range tier2ExactFiles {
 		path := filepath.Join(workDir, name)
 		if content, err := os.ReadFile(path); err == nil {
-			tokens := EstimateTokens(string(content))
+			tokens := estimateTokens(string(content))
 			tier2 = append(tier2, ScannedFile{
 				Path:    name,
 				Content: string(content),
@@ -114,7 +118,7 @@ func ScanFiles(workDir string, maxTokens int) []ScannedFile {
 	for name := range tier2MainEntries {
 		path := filepath.Join(workDir, name)
 		if content, err := os.ReadFile(path); err == nil {
-			tokens := EstimateTokens(string(content))
+			tokens := estimateTokens(string(content))
 			tier2 = append(tier2, ScannedFile{
 				Path:    name,
 				Content: string(content),
@@ -147,7 +151,7 @@ func ScanFiles(workDir string, maxTokens int) []ScannedFile {
 			break
 		}
 		// Find one representative source file (non-test)
-		representative := findRepresentativeFile(filepath.Join(workDir, d.Name()), d.Name(), sourceExts)
+		representative := findRepresentativeFile(filepath.Join(workDir, d.Name()), d.Name(), sourceExts, estimateTokens)
 		if representative != nil {
 			tier3 = append(tier3, *representative)
 			seenDirs++
@@ -186,7 +190,7 @@ func ScanFiles(workDir string, maxTokens int) []ScannedFile {
 }
 
 // findRepresentativeFile finds the first non-test source file in dir.
-func findRepresentativeFile(dir, relPrefix string, exts map[string]bool) *ScannedFile {
+func findRepresentativeFile(dir, relPrefix string, exts map[string]bool, estimateTokens func(string) int) *ScannedFile {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil
@@ -210,7 +214,7 @@ func findRepresentativeFile(dir, relPrefix string, exts map[string]bool) *Scanne
 		if err != nil {
 			continue
 		}
-		tokens := EstimateTokens(string(content))
+		tokens := estimateTokens(string(content))
 		return &ScannedFile{
 			Path:    relPath,
 			Content: string(content),

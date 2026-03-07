@@ -48,7 +48,9 @@ func TestScanFiles_RespectsTokenBudget(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "pkg", "big.go"), []byte(bigContent), 0o644))
 
 	// Very tight budget: only enough for go.mod (~4 tokens)
-	files := ScanFiles(dir, 50)
+	files := scanFilesWithEstimator(dir, 50, func(content string) int {
+		return (len(content) + 3) / 4
+	})
 
 	paths := make(map[string]bool)
 	for _, f := range files {

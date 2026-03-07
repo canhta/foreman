@@ -38,6 +38,7 @@ type Database interface {
 	// Tickets
 	CreateTicket(ctx context.Context, t *models.Ticket) error
 	UpdateTicketStatus(ctx context.Context, id string, status models.TicketStatus) error
+	SetTicketPRHeadSHA(ctx context.Context, ticketID, sha string) error
 	GetTicket(ctx context.Context, id string) (*models.Ticket, error)
 	GetTicketByExternalID(ctx context.Context, externalID string) (*models.Ticket, error)
 	ListTickets(ctx context.Context, filter models.TicketFilter) ([]models.Ticket, error)

@@ -96,6 +96,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("limits.enable_tdd_verification", true)
 	v.SetDefault("limits.search_replace_similarity", 0.92)
 	v.SetDefault("limits.search_replace_min_context_lines", 3)
+	v.SetDefault("limits.intermediate_review_interval", 3)
 
 	v.SetDefault("secrets.enabled", true)
 	v.SetDefault("secrets.always_exclude", []string{".env", ".env.*", "*.pem", "*.key", "*.p12"})

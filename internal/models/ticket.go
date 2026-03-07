@@ -9,6 +9,7 @@ type Ticket struct {
 	CompletedAt              *time.Time
 	StartedAt                *time.Time
 	PRURL                    string
+	PRHeadSHA                string
 	ErrorMessage             string
 	ID                       string
 	Reporter                 string

@@ -47,6 +47,16 @@ type TaskRunnerConfig struct {
 	// ContextFeedbackBoost is the score multiplier for files that appeared in
 	// files_touched of prior similar tasks. Default 1.5 (REQ-CTX-003).
 	ContextFeedbackBoost float64
+	// IntermediateReviewInterval controls how often the cross-task consistency
+	// check runs. After every N completed tasks (where N = IntermediateReviewInterval),
+	// a lightweight LLM consistency check is triggered. 0 disables the check.
+	IntermediateReviewInterval int
+}
+
+// ConsistencyReviewDB is the subset of db.Database needed by the intermediate
+// cross-task consistency review (REQ-PIPE-006).
+type ConsistencyReviewDB interface {
+	SaveProgressPattern(ctx context.Context, p *models.ProgressPattern) error
 }
 
 // TaskRunnerDB is the subset of db.Database needed by the task runner.
