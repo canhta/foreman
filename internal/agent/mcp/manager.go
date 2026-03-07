@@ -42,11 +42,14 @@ func (m *Manager) RegisterFromConfig(ctx context.Context, cfg MCPServerConfig) e
 			return fmt.Errorf("mcp/http: initialize %q: %w", cfg.Name, err)
 		}
 		client = c
-	default:
-		// "stdio" or unset — caller must create and initialize the StdioClient separately.
-		// This path is a convenience for stdlib configs; for stdio the caller typically
-		// uses NewStdioClientWithTransport + RegisterClient directly.
+	case "", "stdio":
+		// stdio transport requires launching a subprocess — callers must create the
+		// StdioClient themselves (via NewStdioClientWithTransport) and register it
+		// with RegisterClient. RegisterFromConfig cannot launch processes on behalf
+		// of the caller because it has no command/args to run.
 		return fmt.Errorf("mcp: RegisterFromConfig does not support transport %q; use RegisterClient for stdio", cfg.Transport)
+	default:
+		return fmt.Errorf("mcp: unsupported transport %q for server %q; supported: http, stdio", cfg.Transport, cfg.Name)
 	}
 
 	m.clients[cfg.Name] = client

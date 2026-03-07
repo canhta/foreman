@@ -25,18 +25,17 @@ import (
 //   - Authorization: Bearer <token> header on all requests
 type HTTPClient struct {
 	sseCtx        context.Context
-	endpointErr   error
-	httpClient    *http.Client
-	endpointReady chan struct{}
-	sseDone       chan struct{}
 	sseCancel     context.CancelFunc
+	httpClient    *http.Client
+	sseDone       chan struct{}
+	endpointReady chan struct{} // closed when endpoint is set; re-created on reconnect
 	pending       sync.Map
-	endpointURL   string
+	endpoint      string // guarded by mu; reset to "" on each SSE reconnect
 	serverName    string
 	authToken     string
 	baseURL       string
 	nextID        atomic.Int64
-	endpointOnce  sync.Once
+	mu            sync.RWMutex // guards endpoint and endpointReady
 }
 
 // NewHTTPClient creates a new HTTPClient for the given server.
@@ -64,11 +63,39 @@ func (c *HTTPClient) sseLoop() {
 	defer close(c.sseDone)
 
 	url := c.baseURL + "/sse"
+	first := true
 	for {
 		if c.sseCtx.Err() != nil {
 			return
 		}
+
+		// On reconnect (not the first attempt) reset endpoint and create a fresh
+		// endpointReady channel so waitForEndpoint callers block until the new
+		// "endpoint" event arrives. On the first attempt the channel was already
+		// created by NewHTTPClient.
+		if !first {
+			c.mu.Lock()
+			c.endpoint = ""
+			c.endpointReady = make(chan struct{})
+			c.mu.Unlock()
+		}
+		first = false
+
 		err := c.connectSSE(url)
+
+		// Drain all in-flight requests — they are bound to the now-dead SSE stream.
+		// Callers receive a retriable error rather than hanging until context expiry.
+		c.pending.Range(func(key, val interface{}) bool {
+			if pr, ok := val.(*pendingRequest); ok {
+				select {
+				case pr.resp <- jsonRPCResponse{Error: &jsonRPCError{Code: -32000, Message: "SSE connection lost, retry"}}:
+				default:
+				}
+			}
+			c.pending.Delete(key)
+			return true
+		})
+
 		if c.sseCtx.Err() != nil {
 			return
 		}
@@ -112,6 +139,8 @@ func (c *HTTPClient) connectSSE(url string) error {
 // SSE format: lines of "field: value", events separated by blank lines.
 func (c *HTTPClient) readSSEStream(body io.Reader) error {
 	scanner := bufio.NewScanner(body)
+	// Increase buffer to 1 MB to handle large tool results delivered via SSE.
+	scanner.Buffer(make([]byte, 1<<20), 1<<20)
 	var eventType string
 	var dataLines []string
 
@@ -150,11 +179,21 @@ func (c *HTTPClient) readSSEStream(body io.Reader) error {
 func (c *HTTPClient) handleSSEEvent(eventType, data string) {
 	switch eventType {
 	case "endpoint":
-		// First event: data is the POST URL to use
-		c.endpointOnce.Do(func() {
-			c.endpointURL = strings.TrimSpace(data)
-			close(c.endpointReady)
-		})
+		// First event on each (re)connection: data is the POST URL to use.
+		// We use a mutex-protected field (not sync.Once) so that the URL is
+		// updated on every reconnect — servers may rotate the POST URL.
+		url := strings.TrimSpace(data)
+		c.mu.Lock()
+		c.endpoint = url
+		ready := c.endpointReady
+		c.mu.Unlock()
+		// Signal waiters only once per ready channel.
+		select {
+		case <-ready:
+			// already closed — no-op (shouldn't happen in normal flow)
+		default:
+			close(ready)
+		}
 	default:
 		// Assume it's a JSON-RPC response (eventType may be "" or "message")
 		if data == "" {
@@ -174,18 +213,26 @@ func (c *HTTPClient) handleSSEEvent(eventType, data string) {
 }
 
 // waitForEndpoint waits until the SSE endpoint URL is known.
-func (c *HTTPClient) waitForEndpoint(ctx context.Context) error {
+func (c *HTTPClient) waitForEndpoint(ctx context.Context) (string, error) {
+	c.mu.RLock()
+	ready := c.endpointReady
+	c.mu.RUnlock()
+
 	select {
 	case <-ctx.Done():
-		return ctx.Err()
-	case <-c.endpointReady:
-		return c.endpointErr
+		return "", ctx.Err()
+	case <-ready:
+		c.mu.RLock()
+		ep := c.endpoint
+		c.mu.RUnlock()
+		return ep, nil
 	}
 }
 
 // sendRequest sends a JSON-RPC request over HTTP POST and waits for the response on SSE.
 func (c *HTTPClient) sendRequest(ctx context.Context, method string, params interface{}) (json.RawMessage, error) {
-	if err := c.waitForEndpoint(ctx); err != nil {
+	endpointURL, err := c.waitForEndpoint(ctx)
+	if err != nil {
 		return nil, fmt.Errorf("wait for SSE endpoint: %w", err)
 	}
 
@@ -206,7 +253,7 @@ func (c *HTTPClient) sendRequest(ctx context.Context, method string, params inte
 	c.pending.Store(id, pr)
 	defer c.pending.Delete(id)
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpointURL, bytes.NewReader(data))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpointURL, bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("create POST request: %w", err)
 	}
@@ -239,7 +286,8 @@ func (c *HTTPClient) sendRequest(ctx context.Context, method string, params inte
 
 // sendNotification sends a JSON-RPC notification (no response expected).
 func (c *HTTPClient) sendNotification(ctx context.Context, method string, params interface{}) error {
-	if err := c.waitForEndpoint(ctx); err != nil {
+	endpointURL, err := c.waitForEndpoint(ctx)
+	if err != nil {
 		return fmt.Errorf("wait for SSE endpoint: %w", err)
 	}
 
@@ -258,7 +306,7 @@ func (c *HTTPClient) sendNotification(ctx context.Context, method string, params
 		return fmt.Errorf("marshal notification: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.endpointURL, bytes.NewReader(data))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpointURL, bytes.NewReader(data))
 	if err != nil {
 		return fmt.Errorf("create notification POST: %w", err)
 	}

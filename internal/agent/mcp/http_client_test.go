@@ -258,6 +258,138 @@ func TestHTTPClient_AuthHeader(t *testing.T) {
 	require.NoError(t, client.Close())
 }
 
+// TestHTTPClient_SSEReconnect verifies that the client reconnects after the SSE stream drops
+// and can still call tools successfully on the new connection.
+func TestHTTPClient_SSEReconnect(t *testing.T) {
+	// sseState holds per-connection SSE state protected by a mutex.
+	var (
+		rsMu        sync.Mutex
+		rsConns     int                   // total SSE connections seen
+		rsCurrentCh chan string           // current active SSE client channel
+		rsInitDone  = make(chan struct{}) // closed when Initialize has completed
+	)
+
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/sse", func(w http.ResponseWriter, r *http.Request) {
+		rsMu.Lock()
+		rsConns++
+		connNum := rsConns
+		rsMu.Unlock()
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.WriteHeader(http.StatusOK)
+
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			http.Error(w, "streaming not supported", http.StatusInternalServerError)
+			return
+		}
+
+		// Send endpoint event so the client knows where to POST.
+		postURL := "http://" + r.Host + "/messages"
+		fmt.Fprintf(w, "event: endpoint\ndata: %s\n\n", postURL)
+		flusher.Flush()
+
+		ch := make(chan string, 20)
+		rsMu.Lock()
+		rsCurrentCh = ch
+		rsMu.Unlock()
+
+		if connNum == 1 {
+			// First connection: serve until Initialize completes, then drop it.
+			// Stream any queued responses first, then wait for the "init done" signal.
+			for {
+				select {
+				case msg := <-ch:
+					fmt.Fprintf(w, "data: %s\n\n", msg)
+					flusher.Flush()
+				case <-rsInitDone:
+					// Initialize is complete; drop the connection to trigger reconnect.
+					return
+				case <-r.Context().Done():
+					return
+				}
+			}
+		}
+
+		// Second+ connection: stay alive until client disconnects.
+		for {
+			select {
+			case msg := <-ch:
+				fmt.Fprintf(w, "data: %s\n\n", msg)
+				flusher.Flush()
+			case <-r.Context().Done():
+				return
+			}
+		}
+	})
+
+	mux.HandleFunc("/messages", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Method string          `json:"method"`
+			ID     json.RawMessage `json:"id"`
+			Params json.RawMessage `json:"params"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+
+		result, rpcErr := defaultRequestHandler(req.Method, req.Params)
+		var resp interface{}
+		if rpcErr != nil {
+			resp = map[string]interface{}{"jsonrpc": "2.0", "id": req.ID, "error": rpcErr}
+		} else {
+			resp = map[string]interface{}{"jsonrpc": "2.0", "id": req.ID, "result": result}
+		}
+		data, _ := json.Marshal(resp)
+
+		rsMu.Lock()
+		ch := rsCurrentCh
+		rsMu.Unlock()
+		if ch != nil {
+			select {
+			case ch <- string(data):
+			default:
+			}
+		}
+	})
+
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	client := mcp.NewHTTPClient(srv.URL, "", "reconnect-test")
+	t.Cleanup(func() { _ = client.Close() })
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Initialize on first connection — this exercises the normal path.
+	require.NoError(t, client.Initialize(ctx))
+
+	// Signal the server to drop the first SSE connection.
+	close(rsInitDone)
+
+	// Wait for the second SSE connection to be established.
+	require.Eventually(t, func() bool {
+		rsMu.Lock()
+		n := rsConns
+		rsMu.Unlock()
+		return n >= 2
+	}, 5*time.Second, 50*time.Millisecond, "client did not reconnect within 5s")
+
+	// After reconnect, tool calls must still succeed.
+	tools, err := client.ListTools(ctx)
+	require.NoError(t, err, "ListTools should succeed after reconnect")
+	require.NotEmpty(t, tools)
+	assert.Equal(t, "mcp_reconnect_test_query_db", tools[0].Name)
+}
+
+// TestHTTPClient_ManagerIntegration verifies the Manager creates an HTTPClient for transport="http".
+
 // TestHTTPClient_ManagerIntegration verifies the Manager creates an HTTPClient for transport="http".
 func TestHTTPClient_ManagerIntegration(t *testing.T) {
 	srv := newTestSSEServer(t)
