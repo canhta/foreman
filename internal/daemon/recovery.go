@@ -26,11 +26,12 @@ func ClassifyRecovery(ticket *models.Ticket) RecoveryPlan {
 		return RecoveryPlan{Action: RecoveryReplan}
 	}
 	switch ticket.Status {
-	case models.TicketStatusDone, models.TicketStatusFailed, models.TicketStatusPartial, models.TicketStatusBlocked, models.TicketStatusPRCreated:
+	case models.TicketStatusDone, models.TicketStatusFailed, models.TicketStatusPartial, models.TicketStatusBlocked,
+		models.TicketStatusPRCreated, models.TicketStatusAwaitingMerge, models.TicketStatusMerged, models.TicketStatusPRClosed:
 		return RecoveryPlan{Action: RecoverySkip}
 
 	case models.TicketStatusPlanning, models.TicketStatusPlanValidating:
-		if ticket.LastCompletedTaskSeq == 0 {
+		if ticket.LastCompletedTaskSeq <= 0 {
 			return RecoveryPlan{Action: RecoveryReplan}
 		}
 		return RecoveryPlan{Action: RecoveryResume, ResumeFromSeq: ticket.LastCompletedTaskSeq}

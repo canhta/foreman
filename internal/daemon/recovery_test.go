@@ -116,3 +116,36 @@ func TestClassifyRecovery_NegativeLastCompletedTaskSeq(t *testing.T) {
 	assert.Equal(t, RecoveryReplan, action.Action,
 		"negative LastCompletedTaskSeq must trigger RecoveryReplan, not RecoveryResume")
 }
+
+// TestClassifyRecovery_PlanningWithNegativeSeq verifies that the Planning/PlanValidating
+// branch also guards against negative LastCompletedTaskSeq, consistent with the M04 fix
+// applied to the Implementing/Reviewing branch.
+func TestClassifyRecovery_PlanningWithNegativeSeq(t *testing.T) {
+	for _, status := range []models.TicketStatus{
+		models.TicketStatusPlanning,
+		models.TicketStatusPlanValidating,
+	} {
+		ticket := &models.Ticket{
+			Status:               status,
+			LastCompletedTaskSeq: -1,
+		}
+		action := ClassifyRecovery(ticket)
+		assert.Equal(t, RecoveryReplan, action.Action,
+			"negative LastCompletedTaskSeq in %s must trigger RecoveryReplan, not RecoveryResume", status)
+	}
+}
+
+// TestClassifyRecovery_AwaitingMerge verifies that awaiting_merge tickets are skipped
+// on daemon restart rather than being replanned (which would create duplicate PRs).
+func TestClassifyRecovery_AwaitingMerge(t *testing.T) {
+	for _, status := range []models.TicketStatus{
+		models.TicketStatusAwaitingMerge,
+		models.TicketStatusMerged,
+		models.TicketStatusPRClosed,
+	} {
+		ticket := &models.Ticket{Status: status}
+		action := ClassifyRecovery(ticket)
+		assert.Equal(t, RecoverySkip, action.Action,
+			"status %s should be RecoverySkip to avoid duplicate PRs", status)
+	}
+}
