@@ -13,6 +13,38 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const (
+	testHealthInterval = 20 * time.Millisecond
+	testPingTimeout    = 20 * time.Millisecond
+	testRestartTimeout = 500 * time.Millisecond
+)
+
+func newFastHealthClient(mt *mockTransport, restartPolicy string) *mcp.StdioClient {
+	return mcp.NewStdioClientWithTransportAndOptions(mt, "test-server", mcp.StdioClientOptions{
+		HealthCheckInterval: testHealthInterval,
+		PingTimeout:         testPingTimeout,
+		RestartTimeout:      testRestartTimeout,
+		RestartPolicy:       restartPolicy,
+	})
+}
+
+func waitUntil(t *testing.T, timeout time.Duration, condition func() bool, message string) {
+	t.Helper()
+	deadline := time.After(timeout)
+	ticker := time.NewTicker(5 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			if condition() {
+				return
+			}
+		case <-deadline:
+			t.Fatal(message)
+		}
+	}
+}
+
 // TestStdioClient_IsHealthy_InitiallyHealthy verifies that a newly-created
 // StdioClient reports healthy before any health checks run.
 func TestStdioClient_IsHealthy_InitiallyHealthy(t *testing.T) {
@@ -27,61 +59,20 @@ func TestStdioClient_IsHealthy_InitiallyHealthy(t *testing.T) {
 // after 3 consecutive ping timeouts the client is marked unhealthy.
 func TestStdioClient_HealthCheck_MarksUnhealthyAfter3FailedPings(t *testing.T) {
 	mt := newMockTransport()
-	// Use a short health check interval so the test runs fast.
-	client := mcp.NewStdioClientWithTransportAndOptions(mt, "test-server", mcp.StdioClientOptions{
-		HealthCheckIntervalSecs: 1, // 1 second per tick
-		PingTimeoutSecs:         1, // 1 second ping timeout
-	})
+	client := newFastHealthClient(mt, "")
+	defer client.Close()
 
-	// Do NOT respond to any pings — they will all time out.
-
-	// Wait long enough for 3 failed pings (3 × (interval + timeout) + buffer).
-	// Each tick: wait 1s, send ping, wait up to 1s timeout → ~2s per cycle.
-	// 3 cycles = ~6s. We use 10s to be safe.
-	deadline := time.After(10 * time.Second)
-	ticker := time.NewTicker(200 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			if !client.IsHealthy() {
-				// Marked unhealthy — test passes
-				require.NoError(t, client.Close())
-				return
-			}
-		case <-deadline:
-			require.NoError(t, client.Close())
-			t.Fatal("client was not marked unhealthy after 3 failed pings within 10s")
-		}
-	}
+	waitUntil(t, 1*time.Second, func() bool { return !client.IsHealthy() }, "client was not marked unhealthy after failed pings")
 }
 
 // TestStdioClient_HealthCheck_RecoverOnSuccess verifies that after being marked
 // unhealthy, a successful ping resets the failure counter and marks the client healthy.
 func TestStdioClient_HealthCheck_RecoverOnSuccess(t *testing.T) {
 	mt := newMockTransport()
-	client := mcp.NewStdioClientWithTransportAndOptions(mt, "test-server", mcp.StdioClientOptions{
-		HealthCheckIntervalSecs: 1,
-		PingTimeoutSecs:         1,
-	})
+	client := newFastHealthClient(mt, "")
+	defer client.Close()
 
-	// Let the first 3 pings time out to get the client into unhealthy state.
-	unhealthyDeadline := time.After(10 * time.Second)
-	pollTicker := time.NewTicker(200 * time.Millisecond)
-	defer pollTicker.Stop()
-
-WaitUnhealthy:
-	for {
-		select {
-		case <-pollTicker.C:
-			if !client.IsHealthy() {
-				break WaitUnhealthy
-			}
-		case <-unhealthyDeadline:
-			client.Close()
-			t.Fatal("client not unhealthy within 10s")
-		}
-	}
+	waitUntil(t, 1*time.Second, func() bool { return !client.IsHealthy() }, "client not unhealthy in time")
 
 	// Now start responding to pings so the next successful ping resets the counter.
 	done := make(chan struct{})
@@ -101,27 +92,13 @@ WaitUnhealthy:
 					resp := fmt.Sprintf(`{"jsonrpc":"2.0","id":%s,"result":{}}`, string(parsed.ID))
 					mt.responses <- json.RawMessage(resp)
 				}
-			case <-mt.responses:
-				// drain stray messages
 			case <-done:
 				return
 			}
 		}
 	}()
 
-	recoveryDeadline := time.After(5 * time.Second)
-	for {
-		select {
-		case <-pollTicker.C:
-			if client.IsHealthy() {
-				require.NoError(t, client.Close())
-				return
-			}
-		case <-recoveryDeadline:
-			client.Close()
-			t.Fatal("client did not recover to healthy after successful ping within 5s")
-		}
-	}
+	waitUntil(t, 1*time.Second, func() bool { return client.IsHealthy() }, "client did not recover to healthy after successful ping")
 }
 
 // TestStdioClient_MCPServerConfig_HealthCheckIntervalDefault verifies the default value.
@@ -168,39 +145,22 @@ func TestStdioClient_RestartPolicy_RestartTriggeredAfter3Failures(t *testing.T) 
 	}
 
 	client := mcp.NewStdioClientWithTransportAndOptions(mt, "test-server", mcp.StdioClientOptions{
-		HealthCheckIntervalSecs: 1,
-		PingTimeoutSecs:         1,
-		RestartPolicy:           "restart",
+		HealthCheckInterval: testHealthInterval,
+		PingTimeout:         testPingTimeout,
+		RestartTimeout:      testRestartTimeout,
+		RestartPolicy:       "restart",
 	})
 
-	// Wait for the transport to be closed (signals that Restart() was invoked).
-	// Timeline: 3 × (1s interval + 1s ping timeout) ≈ 6s; 15s deadline is generous.
 	select {
 	case <-closedCh:
 		// Restart was triggered — success.
-	case <-time.After(15 * time.Second):
+	case <-time.After(2 * time.Second):
 		client.Close()
-		t.Fatal("Restart() was not triggered within 15s (transport.Close never called)")
+		t.Fatal("Restart() was not triggered in time (transport.Close never called)")
 	}
 
-	// After Restart(), the client should be healthy again (Start resets state).
-	// Give it a moment to complete the Start() call.
-	healthyDeadline := time.After(3 * time.Second)
-	ticker := time.NewTicker(50 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			if client.IsHealthy() {
-				// Restart fully completed and health was reset.
-				client.Close()
-				return
-			}
-		case <-healthyDeadline:
-			client.Close()
-			t.Fatal("client did not recover to healthy after Restart() within 3s")
-		}
-	}
+	waitUntil(t, 1*time.Second, func() bool { return client.IsHealthy() }, "client did not recover to healthy after Restart()")
+	client.Close()
 }
 
 // TestManager_HealthStatus_ExposesAllServers verifies that Manager.HealthStatus
@@ -247,29 +207,16 @@ func TestManager_HealthStatus_ReflectsUnhealthyServer(t *testing.T) {
 	// Use a StdioClient with a short ping timeout that will fail immediately.
 	mt := newMockTransport()
 	client := mcp.NewStdioClientWithTransportAndOptions(mt, "bad-server", mcp.StdioClientOptions{
-		HealthCheckIntervalSecs: 1,
-		PingTimeoutSecs:         1,
+		HealthCheckInterval: testHealthInterval,
+		PingTimeout:         testPingTimeout,
 	})
 
 	mgr := mcp.NewManager()
 	mgr.RegisterClient("bad-server", client)
 
-	// Wait for client to become unhealthy
-	deadline := time.After(12 * time.Second)
-	ticker := time.NewTicker(300 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			status := mgr.HealthStatus()
-			if !status["bad-server"] {
-				// Correctly reports unhealthy
-				require.NoError(t, mgr.Close())
-				return
-			}
-		case <-deadline:
-			mgr.Close()
-			t.Fatal("manager HealthStatus never reflected unhealthy server within 12s")
-		}
-	}
+	waitUntil(t, 1*time.Second, func() bool {
+		status := mgr.HealthStatus()
+		return !status["bad-server"]
+	}, "manager HealthStatus never reflected unhealthy server")
+	require.NoError(t, mgr.Close())
 }

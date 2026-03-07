@@ -59,9 +59,16 @@ type StdioClientOptions struct {
 	RestartPolicy string
 	// HealthCheckIntervalSecs is how often to send a ping. 0 = disabled.
 	HealthCheckIntervalSecs int
+	// HealthCheckInterval overrides HealthCheckIntervalSecs when > 0.
+	HealthCheckInterval time.Duration
 	// PingTimeoutSecs is how long to wait for a ping response before counting it
 	// as a failure. 0 means use the default (5 seconds).
 	PingTimeoutSecs int
+	// PingTimeout overrides PingTimeoutSecs when > 0.
+	PingTimeout time.Duration
+	// RestartTimeout controls the timeout used when restart_policy="restart"
+	// triggers a restart. 0 means use the default (30 seconds).
+	RestartTimeout time.Duration
 }
 
 // healthState tracks the health of a StdioClient.
@@ -112,7 +119,7 @@ func NewStdioClientWithTransportAndOptions(t Transport, serverName string, opts 
 	}
 	c.health.healthy = true // start healthy until proven otherwise
 	go c.readLoop()
-	if opts.HealthCheckIntervalSecs > 0 {
+	if c.healthInterval() > 0 {
 		go c.healthLoop()
 	}
 	return c
@@ -126,17 +133,39 @@ func (c *StdioClient) IsHealthy() bool {
 	return c.health.healthy
 }
 
-// pingTimeoutSecs returns the effective ping timeout in seconds (default 5).
-func (c *StdioClient) pingTimeoutSecs() int {
-	if c.opts.PingTimeoutSecs > 0 {
-		return c.opts.PingTimeoutSecs
+// healthInterval returns the effective health check interval.
+func (c *StdioClient) healthInterval() time.Duration {
+	if c.opts.HealthCheckInterval > 0 {
+		return c.opts.HealthCheckInterval
 	}
-	return 5
+	if c.opts.HealthCheckIntervalSecs > 0 {
+		return time.Duration(c.opts.HealthCheckIntervalSecs) * time.Second
+	}
+	return 0
+}
+
+// pingTimeout returns the effective ping timeout.
+func (c *StdioClient) pingTimeout() time.Duration {
+	if c.opts.PingTimeout > 0 {
+		return c.opts.PingTimeout
+	}
+	if c.opts.PingTimeoutSecs > 0 {
+		return time.Duration(c.opts.PingTimeoutSecs) * time.Second
+	}
+	return 5 * time.Second
+}
+
+// restartTimeout returns the effective timeout used when Restart is triggered.
+func (c *StdioClient) restartTimeout() time.Duration {
+	if c.opts.RestartTimeout > 0 {
+		return c.opts.RestartTimeout
+	}
+	return 30 * time.Second
 }
 
 // healthLoop runs the periodic ping loop. It exits when stopHealth is closed.
 func (c *StdioClient) healthLoop() {
-	interval := time.Duration(c.opts.HealthCheckIntervalSecs) * time.Second
+	interval := c.healthInterval()
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
@@ -177,14 +206,14 @@ func (c *StdioClient) updateHealthOnPingResult(err error) (shouldRestart bool) {
 // After 3 consecutive failures, if restart_policy is "restart", Restart() is called
 // and the failure counter is reset. Otherwise the client is simply marked unhealthy.
 func (c *StdioClient) runPing() {
-	timeout := time.Duration(c.pingTimeoutSecs()) * time.Second
+	timeout := c.pingTimeout()
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	_, err := c.sendRequest(ctx, "ping", nil)
 
 	if c.updateHealthOnPingResult(err) {
-		restartCtx, restartCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		restartCtx, restartCancel := context.WithTimeout(context.Background(), c.restartTimeout())
 		_ = c.Restart(restartCtx)
 		restartCancel()
 	}
@@ -456,7 +485,7 @@ func (c *StdioClient) Start(ctx context.Context) error {
 	c.health.mu.Unlock()
 
 	go c.readLoop()
-	if c.opts.HealthCheckIntervalSecs > 0 {
+	if c.healthInterval() > 0 {
 		go c.healthLoop()
 	}
 	return nil
