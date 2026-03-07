@@ -83,6 +83,36 @@ func runDBContractSuite(t *testing.T, database db.Database) {
 		require.NoError(t, err)
 		assert.InDelta(t, 5.0, cost, 0.01)
 	})
+
+	t.Run("ticket_cost_sum", func(t *testing.T) {
+		require.NoError(t, database.CreateTicket(ctx, &models.Ticket{
+			ID: "contract-t4", ExternalID: "CONTRACT-4",
+			Title: "cost test", Description: "d", Status: models.TicketStatusQueued,
+			CreatedAt: time.Now(), UpdatedAt: time.Now(),
+		}))
+
+		// No llm_calls yet — cost must be exactly 0.
+		cost, err := database.GetTicketCost(ctx, "contract-t4")
+		require.NoError(t, err)
+		assert.Equal(t, 0.0, cost, "GetTicketCost with no llm_calls should return 0")
+
+		// Insert two llm_calls with known costs.
+		require.NoError(t, database.RecordLlmCall(ctx, &models.LlmCallRecord{
+			ID: "contract-lc-1", TicketID: "contract-t4",
+			Role: "planner", Provider: "test", Model: "m1",
+			Attempt: 1, CostUSD: 0.07, Status: "success", CreatedAt: time.Now(),
+		}))
+		require.NoError(t, database.RecordLlmCall(ctx, &models.LlmCallRecord{
+			ID: "contract-lc-2", TicketID: "contract-t4",
+			Role: "implementer", Provider: "test", Model: "m1",
+			Attempt: 1, CostUSD: 0.13, Status: "success", CreatedAt: time.Now(),
+		}))
+
+		cost, err = database.GetTicketCost(ctx, "contract-t4")
+		require.NoError(t, err)
+		assert.InDelta(t, 0.20, cost, 0.001,
+			"GetTicketCost must equal SUM(cost_usd) FROM llm_calls for the ticket")
+	})
 }
 
 func TestDBContract_SQLite(t *testing.T) {
