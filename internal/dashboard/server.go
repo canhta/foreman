@@ -34,6 +34,22 @@ func (r *dbTicketRetrier) RetryTicket(ctx context.Context, id string) error {
 	return r.db.UpdateTicketStatus(ctx, id, models.TicketStatusQueued)
 }
 
+// maxRequestBodyBytes is the maximum allowed request body size (1 MiB).
+// Applied to every POST/PUT request to prevent memory exhaustion attacks.
+const maxRequestBodyBytes = 1 << 20 // 1 MiB
+
+// limitRequestBody wraps a handler and enforces the 1 MiB request body limit
+// on POST and PUT requests. The limit is advisory — callers that read r.Body
+// will get an error if the client sends more than maxRequestBodyBytes.
+func limitRequestBody(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost || r.Method == http.MethodPut {
+			r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // NewServer creates a new dashboard Server and registers all HTTP routes.
 func NewServer(db DashboardDB, emitter EventSubscriber, statusProvider DaemonStatusProvider, reg *prometheus.Registry, costCfg models.CostConfig, version, host string, port int) *Server {
 	api := NewAPI(db, emitter, statusProvider, costCfg, version)
@@ -109,7 +125,7 @@ func NewServer(db DashboardDB, emitter EventSubscriber, statusProvider DaemonSta
 		reg: reg,
 		server: &http.Server{
 			Addr:         addr,
-			Handler:      mux,
+			Handler:      limitRequestBody(mux),
 			ReadTimeout:  10 * time.Second,
 			WriteTimeout: 60 * time.Second,
 			IdleTimeout:  120 * time.Second,

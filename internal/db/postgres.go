@@ -50,7 +50,10 @@ func (p *PostgresDB) CreateTicket(ctx context.Context, t *models.Ticket) error {
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
 		t.ID, t.ExternalID, t.Title, t.Description, string(t.Status), t.ParentTicketID, t.ChannelSenderID, t.DecomposeDepth, t.CreatedAt, t.UpdatedAt,
 	)
-	return err
+	if err != nil {
+		return fmt.Errorf("create ticket: %w", err)
+	}
+	return nil
 }
 
 func (p *PostgresDB) UpdateTicketStatus(ctx context.Context, id string, status models.TicketStatus) error {
@@ -58,7 +61,10 @@ func (p *PostgresDB) UpdateTicketStatus(ctx context.Context, id string, status m
 		`UPDATE tickets SET status = $1, updated_at = $2 WHERE id = $3`,
 		string(status), time.Now(), id,
 	)
-	return err
+	if err != nil {
+		return fmt.Errorf("update ticket status: %w", err)
+	}
+	return nil
 }
 
 func (p *PostgresDB) GetTicket(ctx context.Context, id string) (*models.Ticket, error) {
@@ -77,7 +83,7 @@ func (p *PostgresDB) scanTicket(row *sql.Row) (*models.Ticket, error) {
 	err := row.Scan(&t.ID, &t.ExternalID, &t.Title, &t.Description, &status,
 		&t.ParentTicketID, &t.ChannelSenderID, &t.DecomposeDepth, &t.CreatedAt, &t.UpdatedAt)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("scan ticket: %w", err)
 	}
 	t.Status = models.TicketStatus(status)
 	return &t, nil
@@ -108,7 +114,7 @@ func (p *PostgresDB) ListTickets(ctx context.Context, filter models.TicketFilter
 
 	rows, err := p.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list tickets: %w", err)
 	}
 	defer rows.Close()
 
@@ -118,12 +124,15 @@ func (p *PostgresDB) ListTickets(ctx context.Context, filter models.TicketFilter
 		var status string
 		if err := rows.Scan(&t.ID, &t.ExternalID, &t.Title, &t.Description, &status,
 			&t.ParentTicketID, &t.ChannelSenderID, &t.DecomposeDepth, &t.CreatedAt, &t.UpdatedAt); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("scan ticket row: %w", err)
 		}
 		t.Status = models.TicketStatus(status)
 		tickets = append(tickets, t)
 	}
-	return tickets, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate ticket rows: %w", err)
+	}
+	return tickets, nil
 }
 
 func (p *PostgresDB) GetChildTickets(ctx context.Context, parentExternalID string) ([]models.Ticket, error) {
@@ -131,7 +140,7 @@ func (p *PostgresDB) GetChildTickets(ctx context.Context, parentExternalID strin
 		`SELECT id, external_id, title, description, status, parent_ticket_id, channel_sender_id, decompose_depth, created_at, updated_at
 		 FROM tickets WHERE parent_ticket_id = $1`, parentExternalID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get child tickets: %w", err)
 	}
 	defer rows.Close()
 
@@ -141,12 +150,15 @@ func (p *PostgresDB) GetChildTickets(ctx context.Context, parentExternalID strin
 		var status string
 		if err := rows.Scan(&t.ID, &t.ExternalID, &t.Title, &t.Description, &status,
 			&t.ParentTicketID, &t.ChannelSenderID, &t.DecomposeDepth, &t.CreatedAt, &t.UpdatedAt); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("scan child ticket row: %w", err)
 		}
 		t.Status = models.TicketStatus(status)
 		tickets = append(tickets, t)
 	}
-	return tickets, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate child ticket rows: %w", err)
+	}
+	return tickets, nil
 }
 
 func (p *PostgresDB) SetLastCompletedTask(ctx context.Context, ticketID string, taskSeq int) error {
@@ -154,7 +166,10 @@ func (p *PostgresDB) SetLastCompletedTask(ctx context.Context, ticketID string, 
 		`UPDATE tickets SET last_completed_task_seq = $1, updated_at = $2 WHERE id = $3`,
 		taskSeq, time.Now(), ticketID,
 	)
-	return err
+	if err != nil {
+		return fmt.Errorf("set last completed task: %w", err)
+	}
+	return nil
 }
 
 // --- Tasks ---
@@ -205,19 +220,28 @@ func (p *PostgresDB) CreateTasks(ctx context.Context, ticketID string, tasks []m
 
 func (p *PostgresDB) UpdateTaskStatus(ctx context.Context, id string, status models.TaskStatus) error {
 	_, err := p.db.ExecContext(ctx, `UPDATE tasks SET status = $1 WHERE id = $2`, string(status), id)
-	return err
+	if err != nil {
+		return fmt.Errorf("update task status: %w", err)
+	}
+	return nil
 }
 
 func (p *PostgresDB) SetTaskErrorType(ctx context.Context, id, errorType string) error {
 	_, err := p.db.ExecContext(ctx, `UPDATE tasks SET last_error_type = $1 WHERE id = $2`, errorType, id)
-	return err
+	if err != nil {
+		return fmt.Errorf("set task error type: %w", err)
+	}
+	return nil
 }
 
 func (p *PostgresDB) IncrementTaskLlmCalls(ctx context.Context, id string) (int, error) {
 	var count int
 	err := p.db.QueryRowContext(ctx,
 		`UPDATE tasks SET total_llm_calls = total_llm_calls + 1 WHERE id = $1 RETURNING total_llm_calls`, id).Scan(&count)
-	return count, err
+	if err != nil {
+		return 0, fmt.Errorf("increment llm calls for task %q: %w", id, err)
+	}
+	return count, nil
 }
 
 // --- LLM Calls ---
@@ -237,7 +261,10 @@ func (p *PostgresDB) RecordLlmCall(ctx context.Context, call *models.LlmCallReco
 		call.PromptHash, call.ResponseSummary, call.Status, call.ErrorMessage,
 		call.CacheReadTokens, call.CacheCreationTokens, call.CreatedAt,
 	)
-	return err
+	if err != nil {
+		return fmt.Errorf("record llm call: %w", err)
+	}
+	return nil
 }
 
 func (p *PostgresDB) StoreCallDetails(ctx context.Context, callID, fullPrompt, fullResponse string) error {
@@ -247,7 +274,10 @@ func (p *PostgresDB) StoreCallDetails(ctx context.Context, callID, fullPrompt, f
 		 ON CONFLICT(llm_call_id) DO UPDATE SET full_prompt=EXCLUDED.full_prompt, full_response=EXCLUDED.full_response`,
 		callID, fullPrompt, fullResponse,
 	)
-	return err
+	if err != nil {
+		return fmt.Errorf("store call details: %w", err)
+	}
+	return nil
 }
 
 func (p *PostgresDB) GetCallDetails(ctx context.Context, callID string) (string, string, error) {
@@ -258,7 +288,10 @@ func (p *PostgresDB) GetCallDetails(ctx context.Context, callID string) (string,
 	if err == sql.ErrNoRows {
 		return "", "", nil
 	}
-	return prompt, response, err
+	if err != nil {
+		return "", "", fmt.Errorf("get call details: %w", err)
+	}
+	return prompt, response, nil
 }
 
 // --- Handoffs ---
@@ -269,7 +302,10 @@ func (p *PostgresDB) SetHandoff(ctx context.Context, h *models.HandoffRecord) er
 		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
 		h.ID, h.TicketID, h.FromRole, h.ToRole, h.Key, h.Value, h.CreatedAt,
 	)
-	return err
+	if err != nil {
+		return fmt.Errorf("set handoff: %w", err)
+	}
+	return nil
 }
 
 func (p *PostgresDB) GetHandoffs(ctx context.Context, ticketID, forRole string) ([]models.HandoffRecord, error) {
@@ -278,7 +314,7 @@ func (p *PostgresDB) GetHandoffs(ctx context.Context, ticketID, forRole string) 
 		 WHERE ticket_id = $1 AND (to_role = $2 OR to_role IS NULL OR to_role = '')
 		 ORDER BY created_at`, ticketID, forRole)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get handoffs: %w", err)
 	}
 	defer rows.Close()
 
@@ -286,11 +322,14 @@ func (p *PostgresDB) GetHandoffs(ctx context.Context, ticketID, forRole string) 
 	for rows.Next() {
 		var h models.HandoffRecord
 		if err := rows.Scan(&h.ID, &h.TicketID, &h.FromRole, &h.ToRole, &h.Key, &h.Value, &h.CreatedAt); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("scan handoff row: %w", err)
 		}
 		handoffs = append(handoffs, h)
 	}
-	return handoffs, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate handoff rows: %w", err)
+	}
+	return handoffs, nil
 }
 
 // --- Progress Patterns ---
@@ -301,7 +340,10 @@ func (p *PostgresDB) SaveProgressPattern(ctx context.Context, pp *models.Progres
 		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
 		pp.ID, pp.TicketID, pp.PatternKey, pp.PatternValue, "[]", pp.DiscoveredByTask, pp.CreatedAt,
 	)
-	return err
+	if err != nil {
+		return fmt.Errorf("save progress pattern: %w", err)
+	}
+	return nil
 }
 
 func (p *PostgresDB) GetProgressPatterns(ctx context.Context, ticketID string, directories []string) ([]models.ProgressPattern, error) {
@@ -309,7 +351,7 @@ func (p *PostgresDB) GetProgressPatterns(ctx context.Context, ticketID string, d
 		`SELECT id, ticket_id, pattern_key, pattern_value, directories, discovered_by_task, created_at
 		 FROM progress_patterns WHERE ticket_id = $1`, ticketID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get progress patterns: %w", err)
 	}
 	defer rows.Close()
 
@@ -318,11 +360,14 @@ func (p *PostgresDB) GetProgressPatterns(ctx context.Context, ticketID string, d
 		var pp models.ProgressPattern
 		var dirs string
 		if err := rows.Scan(&pp.ID, &pp.TicketID, &pp.PatternKey, &pp.PatternValue, &dirs, &pp.DiscoveredByTask, &pp.CreatedAt); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("scan progress pattern row: %w", err)
 		}
 		patterns = append(patterns, pp)
 	}
-	return patterns, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate progress pattern rows: %w", err)
+	}
+	return patterns, nil
 }
 
 // --- File Reservations ---
@@ -330,7 +375,7 @@ func (p *PostgresDB) GetProgressPatterns(ctx context.Context, ticketID string, d
 func (p *PostgresDB) ReserveFiles(ctx context.Context, ticketID string, paths []string) error {
 	tx, err := p.db.BeginTxx(ctx, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("begin transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
@@ -343,7 +388,10 @@ func (p *PostgresDB) ReserveFiles(ctx context.Context, ticketID string, paths []
 			return fmt.Errorf("reserve file %d (%s): %w", i, path, err)
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit file reservations: %w", err)
+	}
+	return nil
 }
 
 func (p *PostgresDB) TryReserveFiles(ctx context.Context, ticketID string, paths []string) ([]string, error) {
@@ -403,14 +451,17 @@ func (p *PostgresDB) ReleaseFiles(ctx context.Context, ticketID string) error {
 	_, err := p.db.ExecContext(ctx,
 		`UPDATE file_reservations SET released_at = $1 WHERE ticket_id = $2 AND released_at IS NULL`,
 		time.Now(), ticketID)
-	return err
+	if err != nil {
+		return fmt.Errorf("release files: %w", err)
+	}
+	return nil
 }
 
 func (p *PostgresDB) GetReservedFiles(ctx context.Context) (map[string]string, error) {
 	rows, err := p.db.QueryContext(ctx,
 		`SELECT file_path, ticket_id FROM file_reservations WHERE released_at IS NULL`)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get reserved files: %w", err)
 	}
 	defer rows.Close()
 
@@ -418,11 +469,14 @@ func (p *PostgresDB) GetReservedFiles(ctx context.Context) (map[string]string, e
 	for rows.Next() {
 		var path, ticketID string
 		if err := rows.Scan(&path, &ticketID); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("scan reserved file row: %w", err)
 		}
 		result[path] = ticketID
 	}
-	return result, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate reserved file rows: %w", err)
+	}
+	return result, nil
 }
 
 // --- Cost ---
@@ -431,7 +485,10 @@ func (p *PostgresDB) GetTicketCost(ctx context.Context, ticketID string) (float6
 	var cost float64
 	err := p.db.QueryRowContext(ctx,
 		`SELECT COALESCE(SUM(cost_usd), 0) FROM llm_calls WHERE ticket_id = $1`, ticketID).Scan(&cost)
-	return cost, err
+	if err != nil {
+		return 0, fmt.Errorf("get ticket cost: %w", err)
+	}
+	return cost, nil
 }
 
 func (p *PostgresDB) GetDailyCost(ctx context.Context, date string) (float64, error) {
@@ -440,7 +497,10 @@ func (p *PostgresDB) GetDailyCost(ctx context.Context, date string) (float64, er
 	if err == sql.ErrNoRows {
 		return 0, nil
 	}
-	return cost, err
+	if err != nil {
+		return 0, fmt.Errorf("get daily cost: %w", err)
+	}
+	return cost, nil
 }
 
 func (p *PostgresDB) RecordDailyCost(ctx context.Context, date string, amount float64) error {
@@ -448,7 +508,10 @@ func (p *PostgresDB) RecordDailyCost(ctx context.Context, date string, amount fl
 		`INSERT INTO cost_daily (date, total_usd) VALUES ($1, $2)
 		 ON CONFLICT (date) DO UPDATE SET total_usd = cost_daily.total_usd + EXCLUDED.total_usd`,
 		date, amount)
-	return err
+	if err != nil {
+		return fmt.Errorf("record daily cost: %w", err)
+	}
+	return nil
 }
 
 func (p *PostgresDB) GetMonthlyCost(ctx context.Context, yearMonth string) (float64, error) {
@@ -460,7 +523,10 @@ func (p *PostgresDB) GetMonthlyCost(ctx context.Context, yearMonth string) (floa
 	if err == sql.ErrNoRows {
 		return 0, nil
 	}
-	return cost, err
+	if err != nil {
+		return 0, fmt.Errorf("get monthly cost: %w", err)
+	}
+	return cost, nil
 }
 
 func (p *PostgresDB) ListTasks(ctx context.Context, ticketID string) ([]models.Task, error) {
@@ -470,7 +536,7 @@ func (p *PostgresDB) ListTasks(ctx context.Context, ticketID string) ([]models.T
 		 FROM tasks WHERE ticket_id = $1 ORDER BY sequence`,
 		ticketID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list tasks: %w", err)
 	}
 	defer rows.Close()
 
@@ -481,7 +547,7 @@ func (p *PostgresDB) ListTasks(ctx context.Context, ticketID string) ([]models.T
 		var acceptanceCriteria, filesToRead, filesToModify, testAssertions, dependsOn string
 		if err := rows.Scan(&t.ID, &t.TicketID, &t.Sequence, &t.Title, &t.Description, &status, &t.CreatedAt,
 			&acceptanceCriteria, &filesToRead, &filesToModify, &testAssertions, &dependsOn); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("scan task row: %w", err)
 		}
 		t.Status = models.TaskStatus(status)
 		t.AcceptanceCriteria = unmarshalStringSlice(acceptanceCriteria)
@@ -491,7 +557,10 @@ func (p *PostgresDB) ListTasks(ctx context.Context, ticketID string) ([]models.T
 		t.DependsOn = unmarshalStringSlice(dependsOn)
 		tasks = append(tasks, t)
 	}
-	return tasks, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate task rows: %w", err)
+	}
+	return tasks, nil
 }
 
 func (p *PostgresDB) ListLlmCalls(ctx context.Context, ticketID string) ([]models.LlmCallRecord, error) {
@@ -502,7 +571,7 @@ func (p *PostgresDB) ListLlmCalls(ctx context.Context, ticketID string) ([]model
 		 FROM llm_calls WHERE ticket_id = $1 ORDER BY created_at DESC`,
 		ticketID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list llm calls: %w", err)
 	}
 	defer rows.Close()
 
@@ -514,13 +583,16 @@ func (p *PostgresDB) ListLlmCalls(ctx context.Context, ticketID string) ([]model
 		if err := rows.Scan(&c.ID, &c.TicketID, &taskID, &c.Role, &c.Provider, &c.Model, &c.Attempt,
 			&c.TokensInput, &c.TokensOutput, &c.CostUSD, &c.DurationMs, &status,
 			&c.CacheReadTokens, &c.CacheCreationTokens, &c.CreatedAt); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("scan llm call row: %w", err)
 		}
 		c.TaskID = taskID.String
 		c.Status = status
 		calls = append(calls, c)
 	}
-	return calls, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate llm call rows: %w", err)
+	}
+	return calls, nil
 }
 
 // --- Events ---
@@ -535,7 +607,10 @@ func (p *PostgresDB) RecordEvent(ctx context.Context, e *models.EventRecord) err
 		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
 		e.ID, e.TicketID, taskID, e.EventType, e.Severity, e.Message, e.Details, e.CreatedAt,
 	)
-	return err
+	if err != nil {
+		return fmt.Errorf("record event: %w", err)
+	}
+	return nil
 }
 
 func (p *PostgresDB) GetEvents(ctx context.Context, ticketID string, limit int) ([]models.EventRecord, error) {
@@ -545,7 +620,7 @@ func (p *PostgresDB) GetEvents(ctx context.Context, ticketID string, limit int) 
 		 FROM events WHERE ($1 = '' OR ticket_id = $1) ORDER BY created_at DESC LIMIT $2`,
 		ticketID, limit)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get events: %w", err)
 	}
 	defer rows.Close()
 
@@ -554,13 +629,16 @@ func (p *PostgresDB) GetEvents(ctx context.Context, ticketID string, limit int) 
 		var e models.EventRecord
 		var taskID, details sql.NullString
 		if err := rows.Scan(&e.ID, &e.TicketID, &taskID, &e.EventType, &e.Severity, &e.Message, &details, &e.CreatedAt); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("scan event row: %w", err)
 		}
 		e.TaskID = taskID.String
 		e.Details = details.String
 		events = append(events, e)
 	}
-	return events, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate event rows: %w", err)
+	}
+	return events, nil
 }
 
 // --- Auth ---
@@ -569,7 +647,10 @@ func (p *PostgresDB) CreateAuthToken(ctx context.Context, tokenHash, name string
 	_, err := p.db.ExecContext(ctx,
 		`INSERT INTO auth_tokens (token_hash, name, created_at) VALUES ($1, $2, $3)`,
 		tokenHash, name, time.Now())
-	return err
+	if err != nil {
+		return fmt.Errorf("create auth token: %w", err)
+	}
+	return nil
 }
 
 func (p *PostgresDB) ValidateAuthToken(ctx context.Context, tokenHash string) (bool, error) {
@@ -580,7 +661,7 @@ func (p *PostgresDB) ValidateAuthToken(ctx context.Context, tokenHash string) (b
 		return false, nil
 	}
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("validate auth token: %w", err)
 	}
 	if !revoked {
 		_, _ = p.db.ExecContext(ctx, `UPDATE auth_tokens SET last_used_at = $1 WHERE token_hash = $2`, time.Now(), tokenHash)
@@ -669,7 +750,7 @@ func (p *PostgresDB) FindActiveClarification(ctx context.Context, senderID strin
 func (p *PostgresDB) DeleteTicket(ctx context.Context, id string) error {
 	tx, err := p.db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("begin transaction: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 	for _, q := range []string{
@@ -682,10 +763,13 @@ func (p *PostgresDB) DeleteTicket(ctx context.Context, id string) error {
 		`DELETE FROM tickets WHERE id = $1`,
 	} {
 		if _, err := tx.ExecContext(ctx, q, id); err != nil {
-			return err
+			return fmt.Errorf("delete ticket %q: %w", id, err)
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit delete ticket: %w", err)
+	}
+	return nil
 }
 
 func (p *PostgresDB) GetTeamStats(ctx context.Context, since time.Time) ([]models.TeamStat, error) {
@@ -699,7 +783,7 @@ func (p *PostgresDB) GetTeamStats(ctx context.Context, since time.Time) ([]model
 		 GROUP BY channel_sender_id
 		 ORDER BY ticket_count DESC`, since)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get team stats: %w", err)
 	}
 	defer rows.Close()
 
@@ -707,11 +791,14 @@ func (p *PostgresDB) GetTeamStats(ctx context.Context, since time.Time) ([]model
 	for rows.Next() {
 		var st models.TeamStat
 		if err := rows.Scan(&st.ChannelSenderID, &st.TicketCount, &st.CostUSD, &st.FailedCount); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("scan team stat row: %w", err)
 		}
 		stats = append(stats, st)
 	}
-	return stats, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate team stat rows: %w", err)
+	}
+	return stats, nil
 }
 
 func (p *PostgresDB) GetRecentPRs(ctx context.Context, limit int) ([]models.Ticket, error) {
@@ -722,7 +809,7 @@ func (p *PostgresDB) GetRecentPRs(ctx context.Context, limit int) ([]models.Tick
 		 ORDER BY updated_at DESC
 		 LIMIT $1`, limit)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get recent prs: %w", err)
 	}
 	defer rows.Close()
 
@@ -732,12 +819,15 @@ func (p *PostgresDB) GetRecentPRs(ctx context.Context, limit int) ([]models.Tick
 		var status string
 		if err := rows.Scan(&t.ID, &t.ExternalID, &t.Title, &t.Description, &status,
 			&t.ParentTicketID, &t.ChannelSenderID, &t.DecomposeDepth, &t.CreatedAt, &t.UpdatedAt); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("scan recent pr row: %w", err)
 		}
 		t.Status = models.TicketStatus(status)
 		tickets = append(tickets, t)
 	}
-	return tickets, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate recent pr rows: %w", err)
+	}
+	return tickets, nil
 }
 
 func (p *PostgresDB) GetTicketSummaries(ctx context.Context, filter models.TicketFilter) ([]models.TicketSummary, error) {
@@ -773,7 +863,7 @@ func (p *PostgresDB) GetTicketSummaries(ctx context.Context, filter models.Ticke
 
 	rows, err := p.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get ticket summaries: %w", err)
 	}
 	defer rows.Close()
 
@@ -785,12 +875,15 @@ func (p *PostgresDB) GetTicketSummaries(ctx context.Context, filter models.Ticke
 			&ts.ParentTicketID, &ts.ChannelSenderID, &ts.DecomposeDepth,
 			&ts.CostUSD, &ts.CreatedAt, &ts.UpdatedAt,
 			&ts.TasksTotal, &ts.TasksDone); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("scan ticket summary row: %w", err)
 		}
 		ts.Status = models.TicketStatus(status)
 		summaries = append(summaries, ts)
 	}
-	return summaries, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate ticket summary rows: %w", err)
+	}
+	return summaries, nil
 }
 
 func (p *PostgresDB) GetGlobalEvents(ctx context.Context, limit, offset int) ([]models.EventRecord, error) {
@@ -798,7 +891,7 @@ func (p *PostgresDB) GetGlobalEvents(ctx context.Context, limit, offset int) ([]
 		`SELECT id, ticket_id, task_id, event_type, severity, message, details, created_at
 		 FROM events ORDER BY created_at DESC LIMIT $1 OFFSET $2`, limit, offset)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get global events: %w", err)
 	}
 	defer rows.Close()
 
@@ -807,11 +900,14 @@ func (p *PostgresDB) GetGlobalEvents(ctx context.Context, limit, offset int) ([]
 		var e models.EventRecord
 		var taskID, details sql.NullString
 		if err := rows.Scan(&e.ID, &e.TicketID, &taskID, &e.EventType, &e.Severity, &e.Message, &details, &e.CreatedAt); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("scan global event row: %w", err)
 		}
 		e.TaskID = taskID.String
 		e.Details = details.String
 		events = append(events, e)
 	}
-	return events, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate global event rows: %w", err)
+	}
+	return events, nil
 }

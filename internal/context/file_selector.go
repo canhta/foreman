@@ -149,7 +149,8 @@ func listSourceFiles(workDir string) []string {
 	var files []string
 	_ = filepath.Walk(workDir, func(path string, fi os.FileInfo, err error) error {
 		if err != nil {
-			return nil
+			// Return the error to propagate it back to the Walk caller.
+			return err
 		}
 		if fi.IsDir() {
 			base := filepath.Base(path)

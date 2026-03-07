@@ -100,6 +100,13 @@ func (e *DAGExecutor) Execute(ctx context.Context, tasks []DAGTask) map[string]T
 		}()
 	}
 
+	// Close resultChan once all workers have exited so the coordinator loop
+	// can drain it without blocking forever.
+	go func() {
+		workerWg.Wait()
+		close(resultChan)
+	}()
+
 	// Coordinator: collect results, propagate failures, push ready tasks.
 	remaining := len(tasks)
 	for remaining > 0 {

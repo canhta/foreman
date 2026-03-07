@@ -22,8 +22,43 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
+// extractWebSocketToken extracts the auth token from a WebSocket upgrade request.
+// It checks, in order:
+//  1. The Sec-WebSocket-Protocol header (preferred — not logged by servers).
+//  2. The Authorization: Bearer header.
+//  3. The ?token= query parameter (deprecated — logged in access logs).
+func extractWebSocketToken(r *http.Request) string {
+	// 1. Sec-WebSocket-Protocol header: clients send "bearer.<token>" as the
+	//    subprotocol. This is the standard workaround for passing credentials
+	//    during the WebSocket handshake without exposing them in URLs.
+	if proto := r.Header.Get("Sec-WebSocket-Protocol"); proto != "" {
+		// Accept "bearer.<token>" or "bearer,<token>" or just the raw token
+		// when the client only sends one protocol value.
+		lower := strings.ToLower(proto)
+		if strings.HasPrefix(lower, "bearer.") {
+			return proto[len("bearer."):]
+		}
+		if strings.HasPrefix(lower, "bearer,") {
+			return strings.TrimSpace(proto[len("bearer,"):])
+		}
+	}
+
+	// 2. Standard Authorization header (works for same-origin WS upgrades).
+	if token := extractBearerToken(r); token != "" {
+		return token
+	}
+
+	// 3. Fallback: query parameter (deprecated — visible in server logs).
+	if token := r.URL.Query().Get("token"); token != "" {
+		log.Warn().Msg("WebSocket auth via ?token= query param is deprecated; use Sec-WebSocket-Protocol: bearer.<token> instead")
+		return token
+	}
+
+	return ""
+}
+
 func (a *API) handleWebSocket(w http.ResponseWriter, r *http.Request) {
-	token := r.URL.Query().Get("token")
+	token := extractWebSocketToken(r)
 	if token == "" {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
