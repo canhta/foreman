@@ -17,6 +17,25 @@ type AssembledContext struct {
 	UserPrompt   string
 }
 
+// DynamicContextBudget scales a base token budget by task complexity.
+// Complexity values: "low" -> 50%, "medium" -> 100%, "high" -> 150% (capped at maxBudget).
+// maxBudget should be modelContextWindow - maxOutputTokens. Use 0 for no cap.
+func DynamicContextBudget(base int, complexity string, maxBudget int) int {
+	var budget int
+	switch strings.ToLower(strings.TrimSpace(complexity)) {
+	case "low", "simple":
+		budget = base / 2
+	case "high", "complex":
+		budget = base * 3 / 2
+	default: // medium or unknown
+		budget = base
+	}
+	if maxBudget > 0 && budget > maxBudget {
+		budget = maxBudget
+	}
+	return budget
+}
+
 // FeedbackContext holds retry information for implementer retries.
 type FeedbackContext struct {
 	PreviousError   string

@@ -92,6 +92,7 @@ func (f *taskRunnerFactory) Create(input daemon.TaskRunnerFactoryInput) daemon.T
 			MaxSpecReviewCycles:      input.MaxSpecReviewCycles,
 			MaxQualityReviewCycles:   input.MaxQualityReviewCycles,
 			MaxLlmCallsPerTask:       input.MaxLlmCallsPerTask,
+			ContextTokenBudget:       input.ContextTokenBudget,
 			EnableTDDVerification:    input.EnableTDDVerification,
 			Cache:                    input.ContextCache,
 		},

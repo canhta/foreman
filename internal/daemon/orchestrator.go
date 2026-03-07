@@ -51,6 +51,7 @@ type TaskRunnerFactoryInput struct {
 	MaxSpecReviewCycles      int
 	MaxQualityReviewCycles   int
 	MaxLlmCallsPerTask       int
+	ContextTokenBudget       int
 	EnableTDDVerification    bool
 }
 
@@ -361,6 +362,7 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 		MaxSpecReviewCycles:      o.config.MaxSpecReviewCycles,
 		MaxQualityReviewCycles:   o.config.MaxQualityReviewCycles,
 		MaxLlmCallsPerTask:       o.config.MaxLlmCallsPerTask,
+		ContextTokenBudget:       o.config.ContextTokenBudget,
 		EnableTDDVerification:    o.config.EnableTDDVerification,
 		ContextCache:             ticketCache,
 	})

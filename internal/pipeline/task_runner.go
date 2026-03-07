@@ -36,8 +36,12 @@ type TaskRunnerConfig struct {
 	MaxSpecReviewCycles      int
 	MaxQualityReviewCycles   int
 	MaxLlmCallsPerTask       int
-	SearchReplaceSimilarity  float64
-	EnableTDDVerification    bool
+	// ContextTokenBudget is the baseline token budget for context file loading.
+	// Dynamic budget scales this by task complexity (low=50%, medium=100%, high=150%).
+	// 0 means unlimited.
+	ContextTokenBudget      int
+	SearchReplaceSimilarity float64
+	EnableTDDVerification   bool
 }
 
 // TaskRunnerDB is the subset of db.Database needed by the task runner.
@@ -119,7 +123,15 @@ func (r *PipelineTaskRunner) RunTask(ctx context.Context, task *models.Task) err
 		}
 
 		// Run implementer.
-		contextFiles := r.loadContextFiles(task.FilesToRead)
+		// Compute dynamic context budget scaled by task complexity (REQ-CTX-002).
+		ctxBudget := appcontext.DynamicContextBudget(r.config.ContextTokenBudget, task.EstimatedComplexity, 0)
+		log.Debug().
+			Str("complexity", task.EstimatedComplexity).
+			Int("base_budget", r.config.ContextTokenBudget).
+			Int("dynamic_budget", ctxBudget).
+			Str("task_id", task.ID).
+			Msg("context_assembly: dynamic budget computed")
+		contextFiles := r.loadContextFiles(task.FilesToRead, ctxBudget)
 		result, err := r.implementer.Execute(ctx, ImplementerInput{
 			Task:         task,
 			ContextFiles: contextFiles,
@@ -322,8 +334,12 @@ func (r *PipelineTaskRunner) resetWorkingTree(ctx context.Context, filesToModify
 	return nil
 }
 
-func (r *PipelineTaskRunner) loadContextFiles(paths []string) map[string]string {
+// loadContextFiles reads all paths. If budget > 0, stops adding files once the
+// accumulated estimated token count would exceed budget (always adds at least one file).
+// Missing files produce a [FILE NOT FOUND: ...] placeholder (BUG-M14 fix).
+func (r *PipelineTaskRunner) loadContextFiles(paths []string, budget int) map[string]string {
 	files := make(map[string]string, len(paths))
+	tokensUsed := 0
 	for _, p := range paths {
 		fullPath := filepath.Join(r.config.WorkDir, p)
 		data, err := os.ReadFile(fullPath)
@@ -334,7 +350,15 @@ func (r *PipelineTaskRunner) loadContextFiles(paths []string) map[string]string 
 			files[p] = fmt.Sprintf("[FILE NOT FOUND: %q was referenced but could not be read: %s]", p, err)
 			continue
 		}
-		files[p] = string(data)
+		content := string(data)
+		if budget > 0 && len(files) > 0 {
+			est := appcontext.EstimateTokens(content)
+			if tokensUsed+est > budget {
+				break
+			}
+			tokensUsed += est
+		}
+		files[p] = content
 	}
 	return files
 }

@@ -559,7 +559,7 @@ func TestLoadContextFiles_ReadsExistingFiles(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(workDir, "util.go"), []byte("package main\n\nfunc helper() {}\n"), 0o644))
 
 	r := &PipelineTaskRunner{config: TaskRunnerConfig{WorkDir: workDir}}
-	files := r.loadContextFiles([]string{"main.go", "util.go"})
+	files := r.loadContextFiles([]string{"main.go", "util.go"}, 0)
 
 	assert.Len(t, files, 2)
 	assert.Equal(t, "package main\n", files["main.go"])
@@ -571,7 +571,7 @@ func TestLoadContextFiles_SkipsMissingFiles(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(workDir, "exists.go"), []byte("package x\n"), 0o644))
 
 	r := &PipelineTaskRunner{config: TaskRunnerConfig{WorkDir: workDir}}
-	files := r.loadContextFiles([]string{"exists.go", "does_not_exist.go"})
+	files := r.loadContextFiles([]string{"exists.go", "does_not_exist.go"}, 0)
 
 	// Missing files now produce a [FILE NOT FOUND: ...] placeholder entry (BUG-M14 fix).
 	assert.Len(t, files, 2)
@@ -581,7 +581,7 @@ func TestLoadContextFiles_SkipsMissingFiles(t *testing.T) {
 
 func TestLoadContextFiles_EmptyPaths(t *testing.T) {
 	r := &PipelineTaskRunner{config: TaskRunnerConfig{WorkDir: t.TempDir()}}
-	files := r.loadContextFiles(nil)
+	files := r.loadContextFiles(nil, 0)
 	assert.Empty(t, files)
 }
 

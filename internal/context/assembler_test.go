@@ -116,3 +116,29 @@ func TestAssembleContext_SecretsFiltered(t *testing.T) {
 	// .env should not appear in the context
 	assert.NotContains(t, ctx.UserPrompt, "sk-ant-secret")
 }
+
+func TestDynamicContextBudget(t *testing.T) {
+	base := 10000
+	tests := []struct {
+		complexity string
+		wantMin    int
+		wantMax    int
+	}{
+		{"low", base/2 - 1, base/2 + 1},
+		{"simple", base/2 - 1, base/2 + 1},
+		{"medium", base - 1, base + 1},
+		{"", base - 1, base + 1}, // default = medium
+		{"high", base*3/2 - 1, base*3/2 + 1},
+		{"complex", base*3/2 - 1, base*3/2 + 1},
+		{"unknown", base - 1, base + 1}, // falls through to medium
+	}
+	for _, tt := range tests {
+		got := DynamicContextBudget(base, tt.complexity, 0)
+		assert.Greater(t, got, tt.wantMin, "complexity=%q", tt.complexity)
+		assert.Less(t, got, tt.wantMax, "complexity=%q", tt.complexity)
+	}
+
+	// Cap enforcement.
+	got := DynamicContextBudget(base, "high", 12000)
+	assert.Equal(t, 12000, got)
+}

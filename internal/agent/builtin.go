@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"golang.org/x/sync/errgroup"
 
@@ -27,11 +28,20 @@ const (
 	compactionThreshold = 0.70
 )
 
+// defaultReflectionInterval is the number of turns between self-reflection injections.
+const defaultReflectionInterval = 5
+
+// reflectionPrompt is the structured message injected every N turns.
+const reflectionPrompt = "Before continuing, briefly summarize: (1) what you have accomplished, (2) which files you have changed, and (3) what remains. If the task is already complete, reply with exactly: TASK_COMPLETE"
+
 // BuiltinConfig holds configuration for the builtin runner.
 type BuiltinConfig struct {
 	DefaultAllowedTools []string
 	MaxTurnsDefault     int
 	ContextWindowBudget int // optional override; defaults to contextWindowBudget
+	// ReflectionInterval is the number of turns after which a self-reflection
+	// message is injected (REQ-LOOP-001). 0 uses the default (5). -1 disables.
+	ReflectionInterval int
 }
 
 // BuiltinRunner runs a multi-turn tool-use loop against the LlmProvider.
@@ -136,9 +146,22 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 		r.registry.SetParentBudgetAndDepth(req.RemainingBudget, req.AgentDepth)
 	}
 
+	// Determine reflection interval (REQ-LOOP-001).
+	reflectionInterval := r.config.ReflectionInterval
+	if reflectionInterval == 0 {
+		reflectionInterval = defaultReflectionInterval
+	}
+
 	for turn := 0; turn < maxTurns; turn++ {
 		if req.OnProgress != nil {
 			req.OnProgress(AgentEvent{Type: AgentEventTurnStart, Turn: turn + 1})
+		}
+
+		// Self-reflection injection: every N turns (after the first), inject a
+		// structured prompt asking the agent to assess progress (REQ-LOOP-001).
+		if reflectionInterval > 0 && turn > 0 && turn%reflectionInterval == 0 {
+			messages = append(messages, models.Message{Role: "user", Content: reflectionPrompt})
+			log.Info().Int("turn", turn+1).Msg("builtin: self-reflection turn injected")
 		}
 
 		// Update remaining budget for the subagent tool before each LLM call.
@@ -195,6 +218,13 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 			return AgentResult{Output: resp.Content, Usage: usage}, nil
 		}
 
+		// Implicit stop from self-reflection: if the agent replied TASK_COMPLETE
+		// to a reflection prompt, treat it as a graceful end-of-turn (REQ-LOOP-001).
+		if strings.Contains(resp.Content, "TASK_COMPLETE") {
+			log.Info().Int("turn", turn+1).Msg("builtin: implicit stop via self-reflection TASK_COMPLETE")
+			return AgentResult{Output: resp.Content, Usage: usage}, nil
+		}
+
 		if resp.StopReason == models.StopReasonToolUse && len(resp.ToolCalls) > 0 {
 			messages = append(messages, models.Message{
 				Role:      "assistant",
@@ -202,43 +232,12 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 				ToolCalls: resp.ToolCalls,
 			})
 
-			// Execute all tool calls in parallel (mirrors SDK betatoolrunner.go)
+			// File-aware parallel tool execution (REQ-LOOP-003):
+			// Tool calls sharing a file path are serialized; disjoint ones run in parallel.
 			results := make([]models.ToolResult, len(resp.ToolCalls))
-			g, gctx := errgroup.WithContext(ctx)
-			for i, tc := range resp.ToolCalls {
-				i, tc := i, tc
-				if req.OnProgress != nil {
-					req.OnProgress(AgentEvent{Type: AgentEventToolStart, Turn: turn + 1, ToolName: tc.Name})
-				}
-				g.Go(func() error {
-					var out string
-					var err error
-					if r.registry != nil {
-						out, err = r.registry.Execute(gctx, req.WorkDir, tc.Name, tc.Input)
-					} else {
-						err = fmt.Errorf("unknown tool: %s", tc.Name)
-					}
-					if err != nil {
-						results[i] = models.ToolResult{ToolCallID: tc.ID, Content: err.Error(), IsError: true}
-					} else {
-						results[i] = models.ToolResult{ToolCallID: tc.ID, Content: out}
-					}
-					if req.OnProgress != nil {
-						req.OnProgress(AgentEvent{Type: AgentEventToolEnd, Turn: turn + 1, ToolName: tc.Name})
-					}
-					return nil // tool errors become result content, not Go errors
-				})
-			}
-			if waitErr := g.Wait(); waitErr != nil {
-				return AgentResult{}, fmt.Errorf("builtin: tool execution: %w", waitErr)
-			}
-
-			// Collect all touched paths (after parallel completion — no data race)
 			var touchedPaths []string
-			for _, tc := range resp.ToolCalls {
-				if path := extractPath(tc.Input); path != "" {
-					touchedPaths = append(touchedPaths, path)
-				}
+			if execErr := r.executeToolsFileAware(ctx, req, turn, resp.ToolCalls, results, &touchedPaths); execErr != nil {
+				return AgentResult{}, execErr
 			}
 
 			messages = append(messages, models.Message{Role: "user", ToolResults: results})
@@ -302,6 +301,111 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 	}
 
 	return AgentResult{}, fmt.Errorf("builtin: exceeded max turns %d without completion", maxTurns)
+}
+
+// executeToolsFileAware executes tool calls with file-path conflict awareness.
+// Tool calls that share any file path in their arguments run sequentially (in LLM order).
+// Tool calls operating on disjoint file sets run in parallel.
+// Non-filesystem tool calls (no file path in args) are treated as non-conflicting.
+//
+// Algorithm: build a conflict graph, then run independent groups in parallel batches.
+func (r *BuiltinRunner) executeToolsFileAware(
+	ctx context.Context,
+	req AgentRequest,
+	turn int,
+	toolCalls []models.ToolCall,
+	results []models.ToolResult,
+	touchedPaths *[]string,
+) error {
+	// Build per-call file-path sets.
+	type callMeta struct {
+		files map[string]bool
+		tc    models.ToolCall
+		index int
+	}
+	metas := make([]callMeta, len(toolCalls))
+	for i, tc := range toolCalls {
+		files := make(map[string]bool)
+		if p := extractPath(tc.Input); p != "" {
+			files[p] = true
+		}
+		metas[i] = callMeta{index: i, tc: tc, files: files}
+	}
+
+	// Topological batching: greedily assign each call to the earliest batch
+	// that has no conflicting file with any call already in that batch.
+	type batch struct {
+		claimed map[string]bool
+		calls   []callMeta
+	}
+	var batches []batch
+	for _, m := range metas {
+		placed := false
+		for bi := range batches {
+			conflict := false
+			for f := range m.files {
+				if batches[bi].claimed[f] {
+					conflict = true
+					break
+				}
+			}
+			if !conflict {
+				batches[bi].calls = append(batches[bi].calls, m)
+				for f := range m.files {
+					batches[bi].claimed[f] = true
+				}
+				placed = true
+				break
+			}
+		}
+		if !placed {
+			newClaimed := make(map[string]bool, len(m.files))
+			for f := range m.files {
+				newClaimed[f] = true
+			}
+			batches = append(batches, batch{calls: []callMeta{m}, claimed: newClaimed})
+		}
+	}
+
+	// Execute each batch in parallel, batches sequentially.
+	for _, b := range batches {
+		g, gctx := errgroup.WithContext(ctx)
+		for _, m := range b.calls {
+			m := m
+			if req.OnProgress != nil {
+				req.OnProgress(AgentEvent{Type: AgentEventToolStart, Turn: turn + 1, ToolName: m.tc.Name})
+			}
+			g.Go(func() error {
+				var out string
+				var err error
+				if r.registry != nil {
+					out, err = r.registry.Execute(gctx, req.WorkDir, m.tc.Name, m.tc.Input)
+				} else {
+					err = fmt.Errorf("unknown tool: %s", m.tc.Name)
+				}
+				if err != nil {
+					results[m.index] = models.ToolResult{ToolCallID: m.tc.ID, Content: err.Error(), IsError: true}
+				} else {
+					results[m.index] = models.ToolResult{ToolCallID: m.tc.ID, Content: out}
+				}
+				if req.OnProgress != nil {
+					req.OnProgress(AgentEvent{Type: AgentEventToolEnd, Turn: turn + 1, ToolName: m.tc.Name})
+				}
+				return nil // tool errors become result content, not Go errors
+			})
+		}
+		if waitErr := g.Wait(); waitErr != nil {
+			return fmt.Errorf("builtin: tool execution: %w", waitErr)
+		}
+	}
+
+	// Collect touched paths after all batches complete (no data race).
+	for _, tc := range toolCalls {
+		if p := extractPath(tc.Input); p != "" {
+			*touchedPaths = append(*touchedPaths, p)
+		}
+	}
+	return nil
 }
 
 func (r *BuiltinRunner) HealthCheck(ctx context.Context) error {
