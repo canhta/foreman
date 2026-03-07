@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"github.com/canhta/foreman/internal/models"
 )
 
 // FileReserver is the database subset needed by the scheduler.
@@ -17,6 +19,21 @@ type FileReserver interface {
 	// an empty slice and nil error on success. A non-nil error indicates a DB
 	// failure.
 	TryReserveFiles(ctx context.Context, ticketID string, paths []string) (conflicts []string, err error)
+}
+
+// TicketStateChecker is the minimal DB interface needed for orphan cleanup.
+type TicketStateChecker interface {
+	GetTicket(ctx context.Context, id string) (*models.Ticket, error)
+}
+
+// terminalTicketStatuses are statuses at which file reservations should be released.
+var terminalTicketStatuses = map[models.TicketStatus]bool{
+	models.TicketStatusDone:          true,
+	models.TicketStatusFailed:        true,
+	models.TicketStatusMerged:        true,
+	models.TicketStatusPRClosed:      true,
+	models.TicketStatusAwaitingMerge: true,
+	models.TicketStatusPartial:       true,
 }
 
 // FileConflictError indicates file reservation conflicts.
@@ -58,4 +75,38 @@ func (s *Scheduler) Release(ctx context.Context, ticketID string) error {
 		return fmt.Errorf("releasing files for ticket %s: %w", ticketID, err)
 	}
 	return nil
+}
+
+// CleanupOrphanReservations releases file reservations held by tickets that are
+// in terminal states (merged, failed, done, pr_closed, etc.) (ARCH-F04).
+// It is safe to call periodically; releasing an already-released reservation is a no-op.
+func (s *Scheduler) CleanupOrphanReservations(ctx context.Context, tc TicketStateChecker) (int, error) {
+	reserved, err := s.db.GetReservedFiles(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("getting reserved files: %w", err)
+	}
+
+	// Collect unique ticket IDs from the reserved map (value = ticketID).
+	ticketIDs := make(map[string]bool, len(reserved))
+	for _, tid := range reserved {
+		ticketIDs[tid] = true
+	}
+
+	released := 0
+	for tid := range ticketIDs {
+		ticket, err := tc.GetTicket(ctx, tid)
+		if err != nil || ticket == nil {
+			// Unknown ticket — release to avoid indefinite blocking.
+			if releaseErr := s.db.ReleaseFiles(ctx, tid); releaseErr == nil {
+				released++
+			}
+			continue
+		}
+		if terminalTicketStatuses[ticket.Status] {
+			if releaseErr := s.db.ReleaseFiles(ctx, tid); releaseErr == nil {
+				released++
+			}
+		}
+	}
+	return released, nil
 }

@@ -127,10 +127,11 @@ func newStartCmd() *cobra.Command {
 			}
 
 			// 2. Initialize LLM provider.
-			llmProv, err := llm.NewProviderFromConfig(cfg.LLM.DefaultProvider, cfg.LLM)
+			baseProv, err := llm.NewProviderFromConfig(cfg.LLM.DefaultProvider, cfg.LLM)
 			if err != nil {
 				return fmt.Errorf("LLM provider: %w", err)
 			}
+			llmProv := llm.NewCircuitBreakerProvider(baseProv, llm.DefaultCircuitBreakerConfig())
 
 			// 3. Initialize tracker.
 			tr, err := buildTracker(cfg)
@@ -213,6 +214,7 @@ func newStartCmd() *cobra.Command {
 			d.SetDB(database)
 			d.SetTracker(tr)
 			d.SetOrchestrator(orch)
+			d.SetScheduler(scheduler)
 			if prChecker != nil {
 				d.SetPRChecker(prChecker)
 			}

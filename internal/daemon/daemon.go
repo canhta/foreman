@@ -60,6 +60,7 @@ type Daemon struct {
 	channel       channel.Channel
 	channelRouter channel.InboundHandler
 	hookRunner    *skills.HookRunner
+	scheduler     *Scheduler
 	tickets       chan struct{}
 	startedAt     time.Time
 	config        DaemonConfig
@@ -93,6 +94,13 @@ func (d *Daemon) SetPRChecker(checker git.PRChecker) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.prChecker = checker
+}
+
+// SetScheduler attaches a scheduler for file reservation orphan cleanup.
+func (d *Daemon) SetScheduler(s *Scheduler) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.scheduler = s
 }
 
 // SetHookRunner attaches a hook runner for post_merge hooks.
@@ -260,6 +268,15 @@ func (d *Daemon) Start(ctx context.Context) {
 			if database != nil {
 				if err := database.DeleteExpiredPairings(ctx); err != nil {
 					log.Error().Err(err).Msg("failed to delete expired pairings")
+				}
+			}
+
+			// Clean up orphan file reservations for tickets in terminal states (ARCH-F04).
+			if database != nil && d.scheduler != nil {
+				if released, cleanErr := d.scheduler.CleanupOrphanReservations(ctx, database); cleanErr != nil {
+					log.Warn().Err(cleanErr).Msg("orphan reservation cleanup failed")
+				} else if released > 0 {
+					log.Info().Int("released", released).Msg("orphan file reservations released")
 				}
 			}
 

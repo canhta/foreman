@@ -212,6 +212,10 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 		}
 	}()
 
+	// Inject request-level trace for end-to-end observability (ARCH-O01).
+	ctx, traceCtx := telemetry.StartTrace(ctx, ticket.ID)
+	log = log.With().Str("trace_id", traceCtx.TraceID).Logger()
+
 	// Create a per-ticket context cache. It is injected into ctx so the planner
 	// can reuse the file tree across repeated AssemblePlannerContext calls, and
 	// is passed to the task runner factory so each task also benefits from the
