@@ -237,7 +237,7 @@ func TestDAGTaskAdapter_Run_Success(t *testing.T) {
 }
 
 // TestDAGTaskAdapter_Run_EscalationReturnsFailed verifies that an escalation
-// error maps to TaskStatusFailed and preserves the *EscalationError.
+// error maps to TaskStatusEscalated (BUG-M01 fix) and preserves the *EscalationError.
 func TestDAGTaskAdapter_Run_EscalationReturnsFailed(t *testing.T) {
 	tasks := []models.Task{{ID: "task-esc", Title: "Ambiguous task"}}
 	db := newMockAdapterDB(tasks)
@@ -262,7 +262,7 @@ func TestDAGTaskAdapter_Run_EscalationReturnsFailed(t *testing.T) {
 
 	result := adapter.Run(context.Background(), "task-esc")
 	assert.Equal(t, "task-esc", result.TaskID)
-	assert.Equal(t, models.TaskStatusFailed, result.Status)
+	assert.Equal(t, models.TaskStatusEscalated, result.Status)
 	require.Error(t, result.Error)
 
 	var escalation *EscalationError

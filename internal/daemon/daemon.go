@@ -145,6 +145,20 @@ func (d *Daemon) WaitForDrain(ctx context.Context) {
 	}
 }
 
+// Validate returns an error if required daemon dependencies are not set.
+// Call before Start to surface misconfigurations at startup (BUG-M13).
+func (d *Daemon) Validate() error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if d.db == nil {
+		return fmt.Errorf("daemon: db is required")
+	}
+	if d.orchestrator == nil {
+		return fmt.Errorf("daemon: orchestrator is required")
+	}
+	return nil
+}
+
 // Start begins the daemon's poll loop. Blocks until ctx is cancelled.
 func (d *Daemon) Start(ctx context.Context) {
 	d.mu.Lock()

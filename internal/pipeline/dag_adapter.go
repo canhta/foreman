@@ -41,12 +41,13 @@ func (a *DAGTaskAdapter) Run(ctx context.Context, taskID string) daemon.TaskResu
 	if err != nil {
 		var escalation *EscalationError
 		if errors.As(err, &escalation) {
-			// Escalation is not a task failure — it's a signal to pause the ticket.
-			// Return failed status so the DAG executor stops dependents,
-			// but preserve the escalation error for the caller to handle.
+			// BUG-M01: Escalation is not a task failure — it's a signal to pause the ticket.
+			// Return TaskStatusEscalated so the DB status set in RunTask is consistent
+			// with the result reported to the orchestrator. Dependents are still skipped
+			// because the DAG executor treats any non-Done status as a failure for propagation.
 			return daemon.TaskResult{
 				TaskID: taskID,
-				Status: models.TaskStatusFailed,
+				Status: models.TaskStatusEscalated,
 				Error:  err,
 			}
 		}

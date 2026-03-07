@@ -27,6 +27,9 @@ type Planner struct {
 	llm    LLMProvider
 	limits *models.LimitsConfig
 	model  string
+	// planConfidenceThreshold triggers clarification when confidence < threshold.
+	// 0 disables confidence scoring (no second LLM call).
+	planConfidenceThreshold float64
 }
 
 // NewPlanner creates a planner with the given LLM provider and limits.
@@ -37,6 +40,14 @@ func NewPlanner(llm LLMProvider, limits *models.LimitsConfig) *Planner {
 // NewPlannerWithModel creates a planner that uses a specific model for every call.
 func NewPlannerWithModel(llm LLMProvider, limits *models.LimitsConfig, model string) *Planner {
 	return &Planner{llm: llm, limits: limits, model: model}
+}
+
+// WithConfidenceScoring enables LLM-based plan confidence scoring (REQ-PIPE-002).
+// Plans with score < threshold trigger CLARIFICATION_NEEDED.
+// threshold=0 disables scoring (default).
+func (p *Planner) WithConfidenceScoring(threshold float64) *Planner {
+	p.planConfidenceThreshold = threshold
+	return p
 }
 
 // Plan generates a task plan for the given ticket.
@@ -85,6 +96,24 @@ func (p *Planner) Plan(ctx context.Context, workDir string, ticket *models.Ticke
 		return nil, fmt.Errorf("topological sort: %w", err)
 	}
 	result.Tasks = sorted
+
+	// Plan confidence scoring (REQ-PIPE-002): optional second LLM call.
+	if p.planConfidenceThreshold > 0 {
+		confidence, confErr := ScorePlanConfidence(ctx, p.llm, result.Tasks, p.model)
+		if confErr != nil {
+			// Non-fatal: log and continue without blocking.
+			_ = confErr
+		} else {
+			result.ConfidenceScore = confidence.Score
+			result.ConfidenceConcerns = confidence.Concerns
+			if confidence.Score < p.planConfidenceThreshold {
+				result.Status = "CLARIFICATION_NEEDED"
+				concerns := strings.Join(confidence.Concerns, "; ")
+				result.Message = fmt.Sprintf("plan confidence %.2f below threshold %.2f: %s",
+					confidence.Score, p.planConfidenceThreshold, concerns)
+			}
+		}
+	}
 
 	return result, nil
 }

@@ -10,10 +10,12 @@ import (
 
 // PlannerResult is the parsed output from the planner LLM call.
 type PlannerResult struct {
-	Status           string           `yaml:"status"`
-	Message          string           `yaml:"message"`
-	CodebasePatterns CodebasePatterns `yaml:"codebase_patterns"`
-	Tasks            []PlannedTask    `yaml:"tasks"`
+	CodebasePatterns   CodebasePatterns `yaml:"codebase_patterns"`
+	Status             string           `yaml:"status"`
+	Message            string           `yaml:"message"`
+	Tasks              []PlannedTask    `yaml:"tasks"`
+	ConfidenceConcerns []string
+	ConfidenceScore    float64
 }
 
 // CodebasePatterns holds detected patterns from the codebase.

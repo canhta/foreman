@@ -623,7 +623,8 @@ func analyzeResults(results map[string]TaskResult) (done, failed, skipped int) {
 		switch r.Status {
 		case models.TaskStatusDone:
 			done++
-		case models.TaskStatusFailed:
+		case models.TaskStatusFailed, models.TaskStatusEscalated:
+			// BUG-M01: count escalated tasks as failed for PR/partial-PR logic.
 			failed++
 		case models.TaskStatusSkipped:
 			skipped++

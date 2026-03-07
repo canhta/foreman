@@ -37,7 +37,7 @@ func Add(a, b int) int {
 }
 >>>>>>> feature`
 
-	result, err := AttemptConflictResolution(context.Background(), llmProvider, conflictDiff, "test-model")
+	result, err := AttemptConflictResolution(context.Background(), llmProvider, conflictDiff, "", "", "test-model", 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -54,7 +54,7 @@ func TestResolveConflict_Failure(t *testing.T) {
 		response: "I cannot resolve this conflict automatically.",
 	}
 
-	result, err := AttemptConflictResolution(context.Background(), llmProvider, "some conflict", "test-model")
+	result, err := AttemptConflictResolution(context.Background(), llmProvider, "some conflict", "", "", "test-model", 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
