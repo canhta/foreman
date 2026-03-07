@@ -194,7 +194,9 @@ func newStartCmd() *cobra.Command {
 			scheduler := daemon.NewScheduler(database)
 
 			// 8. Build orchestrator adapters.
-			planner := pipeline.NewPlannerWithModel(llmProv, &cfg.Limits, cfg.Models.Planner)
+			planner := pipeline.NewPlannerWithModel(llmProv, &cfg.Limits, cfg.Models.Planner).
+				WithConfidenceScoring(cfg.Limits.PlanConfidenceThreshold).
+				WithHandoffStore(database)
 			pipelineObj := pipeline.NewPipeline(pipeline.PipelineConfig{
 				EnableClarification: cfg.Limits.EnableClarification,
 			})

@@ -159,6 +159,10 @@ type LimitsConfig struct {
 	// IntermediateReviewInterval controls cross-task consistency checks (REQ-PIPE-006).
 	// After every N completed tasks a lightweight LLM check fires. 0 disables it.
 	IntermediateReviewInterval int `mapstructure:"intermediate_review_interval"`
+	// PlanConfidenceThreshold is the minimum confidence score (0.0–1.0) required for a
+	// plan to proceed without triggering a clarification request (REQ-PIPE-002).
+	// A value of 0 disables confidence scoring entirely.
+	PlanConfidenceThreshold float64 `mapstructure:"plan_confidence_threshold"`
 }
 
 // ContextConfig holds configuration for the context assembly subsystem.
