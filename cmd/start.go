@@ -79,7 +79,6 @@ type taskRunnerFactory struct {
 	db        pipeline.TaskRunnerDB
 	gitProv   git.GitProvider
 	cmdRunner runner.CommandRunner
-	mcpMgr    *mcp.Manager
 }
 
 func (f *taskRunnerFactory) Create(input daemon.TaskRunnerFactoryInput) daemon.TaskRunner {
@@ -97,7 +96,6 @@ func (f *taskRunnerFactory) Create(input daemon.TaskRunnerFactoryInput) daemon.T
 			ContextTokenBudget:       input.ContextTokenBudget,
 			EnableTDDVerification:    input.EnableTDDVerification,
 			Cache:                    input.ContextCache,
-			MCPManager:               f.mcpMgr,
 		},
 	)
 	return pipeline.NewDAGTaskAdapter(tr, f.db, input.TicketID)
@@ -183,7 +181,6 @@ func newStartCmd() *cobra.Command {
 					db:        database,
 					gitProv:   gitProv,
 					cmdRunner: cmdRunner,
-					mcpMgr:    mcpMgr,
 				},
 				log.Logger,
 				daemon.OrchestratorConfig{

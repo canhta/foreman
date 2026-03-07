@@ -9,7 +9,6 @@ import (
 
 	"github.com/rs/zerolog/log"
 
-	"github.com/canhta/foreman/internal/agent/mcp"
 	appcontext "github.com/canhta/foreman/internal/context"
 	"github.com/canhta/foreman/internal/git"
 	"github.com/canhta/foreman/internal/models"
@@ -29,10 +28,7 @@ func (e *EscalationError) Error() string {
 
 // TaskRunnerConfig holds configuration for the pipeline task runner.
 type TaskRunnerConfig struct {
-	Cache *appcontext.ContextCache
-	// MCPManager is optional. When non-nil it is threaded through to the agent
-	// runner (and its tool registry) so that ListMCPTools returns a populated cache.
-	MCPManager               *mcp.Manager
+	Cache                    *appcontext.ContextCache
 	Models                   models.ModelsConfig
 	WorkDir                  string
 	CodebasePatterns         string

@@ -23,6 +23,12 @@ type MCPToolSummary struct {
 }
 
 // Manager coordinates multiple MCP server clients.
+//
+// Thread-safety contract:
+//   - clients is populated once during buildMCPManager (before any concurrent
+//     use) and is never modified after that point. No mutex is needed for reads.
+//   - toolCache is populated after init (CacheToolSummaries / SetToolCache) and
+//     may be read concurrently; all accesses are protected by mu.
 type Manager struct {
 	clients   map[string]Client
 	metrics   *telemetry.Metrics
