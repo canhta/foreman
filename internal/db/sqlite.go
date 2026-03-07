@@ -363,6 +363,8 @@ func (s *SQLiteDB) TryReserveFiles(ctx context.Context, ticketID string, paths [
 	if err != nil {
 		return nil, fmt.Errorf("acquire connection: %w", err)
 	}
+	// NOTE: conn.Close() is deferred first so LIFO ordering ensures the ROLLBACK
+	// defer (registered after BEGIN IMMEDIATE) fires before the connection closes.
 	defer conn.Close()
 
 	if _, beginErr := conn.ExecContext(ctx, `BEGIN IMMEDIATE`); beginErr != nil {

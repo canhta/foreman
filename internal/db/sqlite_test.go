@@ -629,7 +629,7 @@ func TestSQLiteDB_IncrementTaskLlmCalls_Concurrent(t *testing.T) {
 	counts := make(chan int, workers)
 	errs := make(chan error, workers)
 	start := make(chan struct{})
-	for i := 0; i < workers; i++ {
+	for range workers {
 		go func() {
 			<-start
 			count, err := db.IncrementTaskLlmCalls(ctx, "task-c")
@@ -638,7 +638,7 @@ func TestSQLiteDB_IncrementTaskLlmCalls_Concurrent(t *testing.T) {
 		}()
 	}
 	close(start)
-	for i := 0; i < workers; i++ {
+	for range workers {
 		require.NoError(t, <-errs)
 	}
 	close(counts)
