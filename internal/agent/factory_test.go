@@ -8,7 +8,7 @@ import (
 
 func TestNewAgentRunner_Builtin(t *testing.T) {
 	cfg := models.AgentRunnerConfig{Provider: "builtin"}
-	runner, err := NewAgentRunner(cfg, nil, &mockSingleShotLLM{response: "ok"}, "test-model", nil, models.LLMConfig{})
+	runner, err := NewAgentRunner(cfg, nil, &mockSingleShotLLM{response: "ok"}, "test-model", nil, models.LLMConfig{}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -19,7 +19,7 @@ func TestNewAgentRunner_Builtin(t *testing.T) {
 
 func TestNewAgentRunner_EmptyDefaultsToBuiltin(t *testing.T) {
 	cfg := models.AgentRunnerConfig{Provider: ""}
-	runner, err := NewAgentRunner(cfg, nil, &mockSingleShotLLM{response: "ok"}, "test-model", nil, models.LLMConfig{})
+	runner, err := NewAgentRunner(cfg, nil, &mockSingleShotLLM{response: "ok"}, "test-model", nil, models.LLMConfig{}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -38,7 +38,7 @@ func TestNewAgentRunner_ClaudeCode(t *testing.T) {
 		},
 	}
 
-	runner, err := NewAgentRunner(cfg, &mockCmdRunner{exitCode: 0}, nil, "", nil, models.LLMConfig{})
+	runner, err := NewAgentRunner(cfg, &mockCmdRunner{exitCode: 0}, nil, "", nil, models.LLMConfig{}, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -49,7 +49,7 @@ func TestNewAgentRunner_ClaudeCode(t *testing.T) {
 
 func TestNewAgentRunner_Unknown(t *testing.T) {
 	cfg := models.AgentRunnerConfig{Provider: "unknown"}
-	_, err := NewAgentRunner(cfg, nil, nil, "", nil, models.LLMConfig{})
+	_, err := NewAgentRunner(cfg, nil, nil, "", nil, models.LLMConfig{}, nil)
 	if err == nil {
 		t.Fatal("expected error for unknown provider")
 	}

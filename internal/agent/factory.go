@@ -3,6 +3,7 @@ package agent
 import (
 	"fmt"
 
+	"github.com/canhta/foreman/internal/agent/mcp"
 	"github.com/canhta/foreman/internal/agent/tools"
 	"github.com/canhta/foreman/internal/db"
 	"github.com/canhta/foreman/internal/llm"
@@ -15,6 +16,8 @@ import (
 // database and llmCfg are optional (may be nil/zero); when provided and
 // llmCfg.EmbeddingProvider is set, SemanticSearch is registered on the
 // builtin runner's tool registry.
+// mcpMgr is optional; when non-nil it is wired into the builtin runner's
+// tool registry so that ListMCPTools returns the populated cache.
 func NewAgentRunner(
 	cfg models.AgentRunnerConfig,
 	cmdRunner runner.CommandRunner,
@@ -22,10 +25,11 @@ func NewAgentRunner(
 	agentModel string,
 	database db.Database,
 	llmCfg models.LLMConfig,
+	mcpMgr *mcp.Manager,
 ) (AgentRunner, error) {
 	switch cfg.Provider {
 	case "builtin", "":
-		reg := tools.NewRegistry(nil, cmdRunner, tools.ToolHooks{})
+		reg := tools.NewRegistryWithMCP(nil, cmdRunner, tools.ToolHooks{}, mcpMgr)
 		embedder := llm.NewEmbedder(llmCfg)
 		reg.WithSemanticSearch(embedder, database)
 		builtinRunner := NewBuiltinRunner(llmProvider, agentModel, BuiltinConfig{

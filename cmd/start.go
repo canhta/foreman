@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/canhta/foreman/internal/agent/mcp"
 	"github.com/canhta/foreman/internal/channel"
 	"github.com/canhta/foreman/internal/channel/whatsapp"
 	"github.com/canhta/foreman/internal/daemon"
@@ -149,6 +150,12 @@ func newStartCmd() *cobra.Command {
 
 			// 6. Initialize command runner.
 			cmdRunner := buildCommandRunner(cfg)
+
+			// 6b. Initialize MCP manager (optional — only when [mcp] servers are configured).
+			mcpMgr := buildMCPManager(cmd.Context(), cfg)
+			if mcpMgr != nil {
+				defer mcpMgr.Close()
+			}
 
 			// 7. Initialize cost controller and scheduler.
 			costCtrl := telemetry.NewCostController(cfg.Cost)
@@ -350,6 +357,55 @@ func buildCommandRunner(cfg *models.Config) runner.CommandRunner {
 	default:
 		return runner.NewLocalRunner(&cfg.Runner.Local)
 	}
+}
+
+// buildMCPManager initialises an MCP Manager from the [mcp] config section.
+// Each entry with a non-empty Command is registered as a stdio client.
+// The manager's tool cache is populated via CacheToolSummaries before returning.
+// Returns nil (not an error) when no servers are configured.
+func buildMCPManager(ctx context.Context, cfg *models.Config) *mcp.Manager {
+	if len(cfg.MCP.Servers) == 0 {
+		return nil
+	}
+	mgr := mcp.NewManager()
+	for _, entry := range cfg.MCP.Servers {
+		if entry.Command == "" {
+			log.Warn().Str("server", entry.Name).Msg("mcp: skipping server with no command")
+			continue
+		}
+		serverCfg := mcp.MCPServerConfig{
+			Name:          entry.Name,
+			Command:       entry.Command,
+			Args:          entry.Args,
+			Env:           entry.Env,
+			RestartPolicy: entry.RestartPolicy,
+			Transport:     "stdio",
+			AllowedTools:  entry.AllowedTools,
+		}
+		if entry.MaxRestarts != 0 {
+			v := entry.MaxRestarts
+			serverCfg.MaxRestarts = &v
+		}
+		if entry.RestartDelaySecs != 0 {
+			v := entry.RestartDelaySecs
+			serverCfg.RestartDelaySecs = &v
+		}
+		transport, err := mcp.NewProcessTransport(serverCfg)
+		if err != nil {
+			log.Warn().Err(err).Str("server", entry.Name).Msg("mcp: failed to start stdio transport")
+			continue
+		}
+		client := mcp.NewStdioClientWithTransport(transport, entry.Name)
+		if err := client.Initialize(ctx); err != nil {
+			log.Warn().Err(err).Str("server", entry.Name).Msg("mcp: failed to initialize stdio client")
+			_ = client.Close()
+			continue
+		}
+		mgr.RegisterClient(entry.Name, client)
+		log.Info().Str("server", entry.Name).Msg("mcp: registered stdio server")
+	}
+	mgr.CacheToolSummaries(ctx)
+	return mgr
 }
 
 func init() {

@@ -8,6 +8,7 @@ import (
 
 	"github.com/canhta/foreman/internal/models"
 	"github.com/canhta/foreman/internal/telemetry"
+	"github.com/rs/zerolog/log"
 )
 
 // MCPToolSummary holds the essential metadata for a single MCP tool.
@@ -135,6 +136,8 @@ func (m *Manager) Close() error {
 
 // SetToolCache replaces the in-memory tool cache with the provided summaries.
 // This is used during initialisation (after MCP servers are ready) and in tests.
+// Not concurrency-safe: callers must ensure no concurrent reads via
+// ListToolSummaries are in-flight when this is called.
 func (m *Manager) SetToolCache(summaries []MCPToolSummary) {
 	m.toolCache = summaries
 }
@@ -156,6 +159,7 @@ func (m *Manager) CacheToolSummaries(ctx context.Context) {
 	for serverName, c := range m.clients {
 		toolDefs, err := c.ListTools(ctx)
 		if err != nil {
+			log.Warn().Err(err).Str("server", serverName).Msg("mcp: CacheToolSummaries: ListTools failed")
 			continue
 		}
 		for _, td := range toolDefs {
