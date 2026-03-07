@@ -45,6 +45,8 @@ type Metrics struct {
 	PlanConfidenceScore  prometheus.Histogram
 	ContextCacheHitRatio prometheus.Gauge
 	MCPToolCallsTotal    *prometheus.CounterVec // labels: server, tool, status
+
+	EventsDroppedTotal prometheus.Counter // total event deliveries dropped to slow subscribers (ARCH-O03)
 }
 
 // NewMetrics creates and registers all Prometheus metrics with the given registerer.
@@ -186,6 +188,10 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 			Name: "foreman_mcp_tool_calls_total",
 			Help: "Total number of MCP tool calls by server, tool name, and status.",
 		}, []string{"server", "tool", "status"}),
+		EventsDroppedTotal: prometheus.NewCounter(prometheus.CounterOpts{
+			Name: "foreman_events_dropped_total",
+			Help: "Total event deliveries dropped due to slow WebSocket subscribers (ARCH-O03).",
+		}),
 	}
 
 	reg.MustRegister(
@@ -202,6 +208,7 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 		m.AnthropicCacheSavingsTotal,
 		m.TaskFailuresTotal, m.RetryTriggeredTotal, m.PlanConfidenceScore,
 		m.ContextCacheHitRatio, m.MCPToolCallsTotal,
+		m.EventsDroppedTotal,
 	)
 
 	return m

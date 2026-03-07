@@ -1,5 +1,7 @@
 package models
 
+import "strings"
+
 // PlanOutput is the structured output from the planning stage.
 // It represents the typed contract between the planner LLM call and the
 // plan validator / pipeline orchestrator.
@@ -73,4 +75,17 @@ type ReviewOutput struct {
 	Severity    string        `json:"severity"`
 	Issues      []ReviewIssue `json:"issues"`
 	Approved    bool          `json:"approved"`
+}
+
+// IssuesText returns all issue descriptions joined by newlines, suitable for
+// feeding back into the implementer as structured feedback.
+func (r *ReviewOutput) IssuesText() string {
+	if len(r.Issues) == 0 {
+		return ""
+	}
+	parts := make([]string, len(r.Issues))
+	for i, issue := range r.Issues {
+		parts[i] = issue.Description
+	}
+	return strings.Join(parts, "\n")
 }

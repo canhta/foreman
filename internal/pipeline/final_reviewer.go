@@ -26,7 +26,7 @@ type FinalReviewInput struct {
 
 // FinalReviewRunner is the interface for final changeset gating.
 type FinalReviewRunner interface {
-	Review(ctx context.Context, input FinalReviewInput) (*ReviewResult, error)
+	Review(ctx context.Context, input FinalReviewInput) (*models.ReviewOutput, error)
 }
 
 // FinalReviewer performs a final review of the complete changeset before PR creation.
@@ -43,7 +43,7 @@ func NewFinalReviewer(provider llm.LlmProvider) *FinalReviewer {
 var _ FinalReviewRunner = (*FinalReviewer)(nil)
 
 // Review runs the final review and returns the parsed result.
-func (r *FinalReviewer) Review(ctx context.Context, input FinalReviewInput) (*ReviewResult, error) {
+func (r *FinalReviewer) Review(ctx context.Context, input FinalReviewInput) (*models.ReviewOutput, error) {
 	completedTasks := make([]CompletedTask, len(input.TaskSummaries))
 	for i, t := range input.TaskSummaries {
 		completedTasks[i] = CompletedTask(t)
@@ -70,5 +70,5 @@ func (r *FinalReviewer) Review(ctx context.Context, input FinalReviewInput) (*Re
 		return nil, fmt.Errorf("final review LLM call: %w", err)
 	}
 
-	return ParseReviewOutput(resp.Content), nil
+	return ParseReviewOutputTyped(resp.Content), nil
 }

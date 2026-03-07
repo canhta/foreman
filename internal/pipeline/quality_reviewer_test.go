@@ -27,7 +27,7 @@ STRENGTHS:
 	require.NoError(t, err)
 	assert.True(t, result.Approved)
 	assert.Len(t, result.Issues, 1)
-	assert.False(t, result.HasCritical)
+	assert.NotEqual(t, "critical", result.Severity)
 }
 
 func TestQualityReviewer_ChangesRequested(t *testing.T) {
@@ -48,6 +48,6 @@ STRENGTHS:
 
 	require.NoError(t, err)
 	assert.False(t, result.Approved)
-	assert.True(t, result.HasCritical)
+	assert.Equal(t, "critical", result.Severity)
 	assert.Len(t, result.Issues, 2)
 }

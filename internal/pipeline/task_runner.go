@@ -199,7 +199,7 @@ func (r *PipelineTaskRunner) RunTask(ctx context.Context, task *models.Task) err
 			Int("dynamic_budget", ctxBudget).
 			Str("task_id", task.ID).
 			Msg("context_assembly: dynamic budget computed")
-		contextFiles := r.selectContextFiles(task, ctxBudget)
+		contextFiles := r.selectContextFiles(ctx, task, ctxBudget)
 		contextFilePaths := make([]string, 0, len(contextFiles))
 		for p := range contextFiles {
 			contextFilePaths = append(contextFilePaths, p)
@@ -426,14 +426,14 @@ func (r *PipelineTaskRunner) resetWorkingTree(ctx context.Context, filesToModify
 // with feedback boosting (REQ-CTX-003) and progress pattern bonus (ARCH-M03).
 // Falls back to loadContextFiles if SelectFilesForTask fails.
 // The result is a map of relative path → file content.
-func (r *PipelineTaskRunner) selectContextFiles(task *models.Task, budget int) map[string]string {
+func (r *PipelineTaskRunner) selectContextFiles(ctx context.Context, task *models.Task, budget int) map[string]string {
 	boost := r.config.ContextFeedbackBoost
 	if boost <= 0 {
 		boost = 1.5
 	}
 
 	// Load progress patterns for this ticket to apply bonus weight (ARCH-M03).
-	patterns, err := r.db.GetProgressPatterns(context.Background(), task.TicketID, nil)
+	patterns, err := r.db.GetProgressPatterns(ctx, task.TicketID, nil)
 	if err != nil {
 		log.Warn().Err(err).Str("task_id", task.ID).Msg("context_assembly: failed to load progress patterns, skipping bonus")
 		patterns = nil

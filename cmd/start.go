@@ -287,7 +287,12 @@ func newStartCmd() *cobra.Command {
 			}
 
 			// 9c. Wire event emitter to orchestrator (always, even without dashboard).
+			// Create the Prometheus registry and metrics unconditionally so the
+			// EventsDroppedTotal counter is always wired into the emitter (ARCH-O03).
+			promReg := prometheus.NewRegistry()
+			appMetrics := telemetry.NewMetrics(promReg)
 			emitter := telemetry.NewEventEmitter(database)
+			emitter.SetDroppedCounter(appMetrics.EventsDroppedTotal)
 			orch.SetEventEmitter(emitter)
 
 			// 9d. Build skill hook runner (best-effort — non-fatal if skills dir missing).
@@ -314,8 +319,6 @@ func newStartCmd() *cobra.Command {
 
 			// 11. Dashboard in background.
 			if cfg.Dashboard.Enabled {
-				reg := prometheus.NewRegistry()
-				_ = telemetry.NewMetrics(reg)
 				port := cfg.Dashboard.Port
 				if port == 0 {
 					port = 3333
@@ -324,7 +327,7 @@ func newStartCmd() *cobra.Command {
 				if host == "" {
 					host = "127.0.0.1"
 				}
-				srv := dashboard.NewServer(database, emitter, d, reg, cfg.Cost, "0.1.0", host, port)
+				srv := dashboard.NewServer(database, emitter, d, promReg, cfg.Cost, "0.1.0", host, port)
 				srv.SetDaemonController(d)
 				srv.SetPromptSnapshotQuerier(database)
 				go func() {

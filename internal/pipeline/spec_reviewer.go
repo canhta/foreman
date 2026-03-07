@@ -21,7 +21,7 @@ type SpecReviewInput struct {
 
 // SpecReviewRunner is the interface for spec compliance checking.
 type SpecReviewRunner interface {
-	Review(ctx context.Context, input SpecReviewInput) (*ReviewResult, error)
+	Review(ctx context.Context, input SpecReviewInput) (*models.ReviewOutput, error)
 }
 
 // Compile-time check.
@@ -38,7 +38,7 @@ func NewSpecReviewer(provider llm.LlmProvider) *SpecReviewer {
 }
 
 // Review runs a spec review and returns the parsed result.
-func (r *SpecReviewer) Review(ctx context.Context, input SpecReviewInput) (*ReviewResult, error) {
+func (r *SpecReviewer) Review(ctx context.Context, input SpecReviewInput) (*models.ReviewOutput, error) {
 	if len(input.AcceptanceCriteria) == 0 {
 		return nil, fmt.Errorf("spec review requires at least one acceptance criterion")
 	}
@@ -64,5 +64,5 @@ func (r *SpecReviewer) Review(ctx context.Context, input SpecReviewInput) (*Revi
 		return nil, fmt.Errorf("spec review LLM call: %w", err)
 	}
 
-	return ParseReviewOutput(resp.Content), nil
+	return ParseReviewOutputTyped(resp.Content), nil
 }

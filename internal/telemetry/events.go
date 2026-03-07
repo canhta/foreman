@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/canhta/foreman/internal/models"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/rs/zerolog/log"
 )
 
@@ -19,11 +20,14 @@ type EventStore interface {
 }
 
 // EventEmitter writes events to the database and fans them out to WebSocket subscribers.
+//
+//nolint:govet // fieldalignment: struct field order prioritises readability over padding
 type EventEmitter struct {
-	store        EventStore
-	subscribers  map[chan *models.EventRecord]struct{}
-	mu           sync.RWMutex
-	droppedCount int64 // accessed atomically (ARCH-O03)
+	store          EventStore
+	subscribers    map[chan *models.EventRecord]struct{}
+	mu             sync.RWMutex
+	droppedCount   int64              // accessed atomically (ARCH-O03)
+	droppedCounter prometheus.Counter // optional Prometheus counter (ARCH-O03)
 }
 
 // NewEventEmitter creates a new EventEmitter backed by the given store.
@@ -32,6 +36,13 @@ func NewEventEmitter(store EventStore) *EventEmitter {
 		store:       store,
 		subscribers: make(map[chan *models.EventRecord]struct{}),
 	}
+}
+
+// SetDroppedCounter wires a Prometheus counter that is incremented every time
+// an event delivery is dropped due to a slow subscriber (ARCH-O03).
+// This must be called before the emitter starts receiving events.
+func (e *EventEmitter) SetDroppedCounter(c prometheus.Counter) {
+	e.droppedCounter = c
 }
 
 // newID generates a random UUID-like identifier using crypto/rand.
@@ -82,6 +93,9 @@ func (e *EventEmitter) Emit(ctx context.Context, ticketID, taskID, eventType, se
 		default:
 			// Drop if subscriber is slow — backpressure is caller's responsibility.
 			atomic.AddInt64(&e.droppedCount, 1)
+			if e.droppedCounter != nil {
+				e.droppedCounter.Inc()
+			}
 			localDrops++
 		}
 	}

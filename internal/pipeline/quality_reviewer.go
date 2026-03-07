@@ -17,7 +17,7 @@ type QualityReviewInput struct {
 
 // QualityReviewRunner is the interface for code quality checking.
 type QualityReviewRunner interface {
-	Review(ctx context.Context, input QualityReviewInput) (*ReviewResult, error)
+	Review(ctx context.Context, input QualityReviewInput) (*models.ReviewOutput, error)
 }
 
 // QualityReviewer checks code quality, not spec compliance.
@@ -34,7 +34,7 @@ func NewQualityReviewer(provider llm.LlmProvider) *QualityReviewer {
 var _ QualityReviewRunner = (*QualityReviewer)(nil)
 
 // Review runs a quality review and returns the parsed result.
-func (r *QualityReviewer) Review(ctx context.Context, input QualityReviewInput) (*ReviewResult, error) {
+func (r *QualityReviewer) Review(ctx context.Context, input QualityReviewInput) (*models.ReviewOutput, error) {
 	system, err := RenderPrompt("quality_reviewer", PromptContext{
 		Diff:             input.Diff,
 		CodebasePatterns: input.CodebasePatterns,
@@ -55,5 +55,5 @@ func (r *QualityReviewer) Review(ctx context.Context, input QualityReviewInput) 
 		return nil, fmt.Errorf("quality review LLM call: %w", err)
 	}
 
-	return ParseReviewOutput(resp.Content), nil
+	return ParseReviewOutputTyped(resp.Content), nil
 }

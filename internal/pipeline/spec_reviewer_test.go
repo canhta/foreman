@@ -87,5 +87,5 @@ EXTRAS:
 	require.NoError(t, err)
 	assert.False(t, result.Approved)
 	assert.NotEmpty(t, result.Issues)
-	assert.Contains(t, result.Issues[0], "plain text")
+	assert.Contains(t, result.Issues[0].Description, "plain text")
 }
