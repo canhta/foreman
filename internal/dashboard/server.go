@@ -39,7 +39,7 @@ func (r *dbTicketRetrier) RetryTicket(ctx context.Context, id string) error {
 const maxRequestBodyBytes = 1 << 20 // 1 MiB
 
 // limitRequestBody wraps a handler and enforces the 1 MiB request body limit
-// on POST and PUT requests. The limit is advisory — callers that read r.Body
+// on POST and PUT requests. The limit is enforced — callers that read r.Body
 // will get an error if the client sends more than maxRequestBodyBytes.
 func limitRequestBody(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

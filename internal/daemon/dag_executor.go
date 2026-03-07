@@ -153,7 +153,6 @@ func (e *DAGExecutor) Execute(ctx context.Context, tasks []DAGTask) map[string]T
 	}
 
 	close(readyChan)
-	workerWg.Wait()
 
 	return results
 }

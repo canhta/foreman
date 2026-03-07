@@ -70,7 +70,11 @@ func (a *API) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn, err := upgrader.Upgrade(w, r, nil)
+	var respHeader http.Header
+	if proto := r.Header.Get("Sec-WebSocket-Protocol"); strings.HasPrefix(strings.ToLower(proto), "bearer.") {
+		respHeader = http.Header{"Sec-WebSocket-Protocol": []string{"bearer"}}
+	}
+	conn, err := upgrader.Upgrade(w, r, respHeader)
 	if err != nil {
 		log.Error().Err(err).Msg("WebSocket upgrade failed")
 		return

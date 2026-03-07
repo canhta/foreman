@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/canhta/foreman/internal/models"
+	"github.com/rs/zerolog/log"
 )
 
 // ScoredFile is a file ranked by relevance to a task.
@@ -147,7 +148,7 @@ func inAnyDirectory(file string, dirs []string) bool {
 
 func listSourceFiles(workDir string) []string {
 	var files []string
-	_ = filepath.Walk(workDir, func(path string, fi os.FileInfo, err error) error {
+	if walkErr := filepath.Walk(workDir, func(path string, fi os.FileInfo, err error) error {
 		if err != nil {
 			// Return the error to propagate it back to the Walk caller.
 			return err
@@ -162,7 +163,9 @@ func listSourceFiles(workDir string) []string {
 		rel, _ := filepath.Rel(workDir, path)
 		files = append(files, rel)
 		return nil
-	})
+	}); walkErr != nil {
+		log.Warn().Err(walkErr).Str("workDir", workDir).Msg("listSourceFiles: walk incomplete")
+	}
 	return files
 }
 
