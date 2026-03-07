@@ -36,6 +36,15 @@ func (m *mockTransport) Send(msg json.RawMessage) error {
 		return fmt.Errorf("transport closed")
 	}
 	m.requests <- msg
+	// Auto-respond to shutdown requests so Close() doesn't block for the full 2s timeout.
+	var req struct {
+		Method string          `json:"method"`
+		ID     json.RawMessage `json:"id"`
+	}
+	if json.Unmarshal(msg, &req) == nil && req.Method == "shutdown" && req.ID != nil {
+		resp := fmt.Sprintf(`{"jsonrpc":"2.0","id":%s,"result":{}}`, string(req.ID))
+		m.responses <- json.RawMessage(resp)
+	}
 	return nil
 }
 
