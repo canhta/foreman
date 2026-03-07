@@ -159,7 +159,7 @@ IMPORTANT:
 - ALWAYS output test files BEFORE implementation files.`
 
 	// Select files for context
-	files, err := SelectFilesForTask(task, workDir, tokenBudget/2, cache)
+	files, err := SelectFilesForTask(task, workDir, tokenBudget/2, cache, nil, 1.5)
 	if err != nil {
 		return nil, fmt.Errorf("selecting files: %w", err)
 	}

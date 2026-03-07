@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/canhta/foreman/internal/models"
@@ -1048,4 +1049,53 @@ func (p *PostgresDB) DeleteEmbeddingsByRepoExceptSHA(ctx context.Context, repoPa
 		return fmt.Errorf("delete stale embeddings: %w", err)
 	}
 	return nil
+}
+
+// WriteContextFeedback inserts a context feedback row recording which files were
+// selected vs touched for a completed or failed task.
+func (p *PostgresDB) WriteContextFeedback(ctx context.Context, row ContextFeedbackRow) error {
+	id := uuid.New().String()
+	selected := strings.Join(row.FilesSelected, ",")
+	touched := strings.Join(row.FilesTouched, ",")
+	_, err := p.db.ExecContext(ctx,
+		`INSERT INTO context_feedback (id, ticket_id, task_id, files_selected, files_touched, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6)`,
+		id, row.TicketID, row.TaskID, selected, touched, time.Now(),
+	)
+	if err != nil {
+		return fmt.Errorf("write context feedback: %w", err)
+	}
+	return nil
+}
+
+// QueryContextFeedback returns prior feedback rows whose files_selected set has
+// Jaccard similarity >= minJaccard with the provided candidates set.
+// The Jaccard comparison is computed in Go after loading rows.
+func (p *PostgresDB) QueryContextFeedback(ctx context.Context, candidates []string, minJaccard float64) ([]ContextFeedbackRow, error) {
+	rows, err := p.db.QueryContext(ctx,
+		`SELECT id, ticket_id, task_id, files_selected, files_touched, created_at FROM context_feedback`)
+	if err != nil {
+		return nil, fmt.Errorf("query context feedback: %w", err)
+	}
+	defer rows.Close()
+
+	candidateSet := toStringSet(candidates)
+	var results []ContextFeedbackRow
+	for rows.Next() {
+		var r ContextFeedbackRow
+		var sel, touched string
+		if err := rows.Scan(&r.ID, &r.TicketID, &r.TaskID, &sel, &touched, &r.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan context feedback row: %w", err)
+		}
+		r.FilesSelected = splitFiles(sel)
+		r.FilesTouched = splitFiles(touched)
+
+		if jaccardSimilarity(candidateSet, toStringSet(r.FilesSelected)) >= minJaccard {
+			results = append(results, r)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate context feedback rows: %w", err)
+	}
+	return results, nil
 }

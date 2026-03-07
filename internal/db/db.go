@@ -12,6 +12,19 @@ import (
 // ErrNotFound is returned by database methods when a requested record does not exist.
 var ErrNotFound = errors.New("not found")
 
+// ContextFeedbackRow represents a recorded observation of files selected vs files touched
+// for a completed or failed task. It is used to boost context file scores for similar tasks.
+//
+//nolint:govet // fieldalignment: all orderings of (3×string + 2×[]string + time.Time) produce 120 bytes
+type ContextFeedbackRow struct {
+	CreatedAt     time.Time
+	FilesSelected []string
+	FilesTouched  []string
+	ID            string
+	TicketID      string
+	TaskID        string
+}
+
 // TaskContextStats holds token budget utilization data for a task.
 type TaskContextStats struct {
 	Budget        int
@@ -104,6 +117,13 @@ type Database interface {
 	// DeleteEmbeddingsByRepoExceptSHA deletes all embedding records for a repo_path
 	// whose head_sha does NOT match the given headSHA. Used to evict stale indices.
 	DeleteEmbeddingsByRepoExceptSHA(ctx context.Context, repoPath, headSHA string) error
+
+	// Context feedback
+	// WriteContextFeedback records files selected vs files touched for a task.
+	WriteContextFeedback(ctx context.Context, row ContextFeedbackRow) error
+	// QueryContextFeedback returns prior feedback rows whose files_selected set has
+	// Jaccard similarity >= minJaccard with the provided candidates set.
+	QueryContextFeedback(ctx context.Context, candidates []string, minJaccard float64) ([]ContextFeedbackRow, error)
 
 	io.Closer
 }

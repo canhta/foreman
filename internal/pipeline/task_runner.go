@@ -10,6 +10,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	appcontext "github.com/canhta/foreman/internal/context"
+	dbpkg "github.com/canhta/foreman/internal/db"
 	"github.com/canhta/foreman/internal/git"
 	"github.com/canhta/foreman/internal/models"
 	"github.com/canhta/foreman/internal/runner"
@@ -43,6 +44,9 @@ type TaskRunnerConfig struct {
 	ContextTokenBudget      int
 	SearchReplaceSimilarity float64
 	EnableTDDVerification   bool
+	// ContextFeedbackBoost is the score multiplier for files that appeared in
+	// files_touched of prior similar tasks. Default 1.5 (REQ-CTX-003).
+	ContextFeedbackBoost float64
 }
 
 // TaskRunnerDB is the subset of db.Database needed by the task runner.
@@ -52,6 +56,7 @@ type TaskRunnerDB interface {
 	UpdateTaskStatus(ctx context.Context, id string, status models.TaskStatus) error
 	SetTaskErrorType(ctx context.Context, id, errorType string) error
 	IncrementTaskLlmCalls(ctx context.Context, id string) (int, error)
+	WriteContextFeedback(ctx context.Context, row dbpkg.ContextFeedbackRow) error
 }
 
 // PipelineTaskRunner implements daemon.TaskRunner by orchestrating the full
@@ -240,6 +245,9 @@ func (r *PipelineTaskRunner) RunTask(ctx context.Context, task *models.Task) err
 			r.config.Cache.Invalidate()
 		}
 
+		// Write context feedback row so future tasks can learn from this one.
+		r.writeContextFeedback(ctx, task, parsed)
+
 		if err := r.db.UpdateTaskStatus(ctx, task.ID, models.TaskStatusDone); err != nil {
 			return fmt.Errorf("update task status: %w", err)
 		}
@@ -253,6 +261,8 @@ func (r *PipelineTaskRunner) RunTask(ctx context.Context, task *models.Task) err
 		errType := string(ClassifyRetryError(feedbackText))
 		r.metrics.TaskFailuresTotal.WithLabelValues(errType, "builtin").Inc()
 	}
+	// Write context feedback on failure too, so the system can learn from missed files.
+	r.writeContextFeedback(ctx, task, nil)
 	return fmt.Errorf("task %q failed after %d attempts", task.Title, r.config.MaxImplementationRetries+1)
 }
 
@@ -512,4 +522,32 @@ func detectEscalation(output string) string {
 		}
 	}
 	return ""
+}
+
+// writeContextFeedback records which files were selected vs touched for REQ-CTX-003.
+// parsed may be nil (for failure cases where no output was parsed).
+func (r *PipelineTaskRunner) writeContextFeedback(ctx context.Context, task *models.Task, parsed *ParsedOutput) {
+	filesSelected := make([]string, 0, len(task.FilesToRead)+len(task.FilesToModify))
+	filesSelected = append(filesSelected, task.FilesToRead...)
+	for _, f := range task.FilesToModify {
+		filesSelected = append(filesSelected, strings.TrimSuffix(f, " (new)"))
+	}
+
+	var filesTouched []string
+	if parsed != nil {
+		for _, fc := range parsed.Files {
+			filesTouched = append(filesTouched, fc.Path)
+		}
+	}
+
+	ticketID := task.TicketID
+	row := dbpkg.ContextFeedbackRow{
+		TicketID:      ticketID,
+		TaskID:        task.ID,
+		FilesSelected: filesSelected,
+		FilesTouched:  filesTouched,
+	}
+	if err := r.db.WriteContextFeedback(ctx, row); err != nil {
+		log.Warn().Err(err).Str("task_id", task.ID).Msg("context_feedback: failed to write feedback row")
+	}
 }

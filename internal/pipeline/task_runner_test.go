@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	dbpkg "github.com/canhta/foreman/internal/db"
 	"github.com/canhta/foreman/internal/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -53,6 +54,10 @@ func (m *mockTaskRunnerDB) IncrementTaskLlmCalls(_ context.Context, id string) (
 }
 
 func (m *mockTaskRunnerDB) SetTaskErrorType(_ context.Context, _, _ string) error { return nil }
+
+func (m *mockTaskRunnerDB) WriteContextFeedback(_ context.Context, _ dbpkg.ContextFeedbackRow) error {
+	return nil
+}
 
 // --- Tests ---
 

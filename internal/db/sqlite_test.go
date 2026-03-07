@@ -911,6 +911,51 @@ func TestEmbeddingStore_DeleteByRepoSHA(t *testing.T) {
 	assert.Empty(t, rows)
 }
 
+// TestDB_ContextFeedback_WriteAndQuery verifies writing and querying context_feedback rows
+// with Jaccard similarity filtering.
+func TestDB_ContextFeedback_WriteAndQuery(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	// Insert a row: files_selected=["a.go","b.go","c.go"], files_touched=["a.go","b.go","d.go"]
+	err := db.WriteContextFeedback(ctx, ContextFeedbackRow{
+		TicketID:      "ticket-1",
+		TaskID:        "task-1",
+		FilesSelected: []string{"a.go", "b.go", "c.go"},
+		FilesTouched:  []string{"a.go", "b.go", "d.go"},
+	})
+	require.NoError(t, err, "WriteContextFeedback must succeed")
+
+	// Insert another row with very different files (low Jaccard with query set)
+	err = db.WriteContextFeedback(ctx, ContextFeedbackRow{
+		TicketID:      "ticket-2",
+		TaskID:        "task-2",
+		FilesSelected: []string{"x.go", "y.go", "z.go"},
+		FilesTouched:  []string{"x.go", "y.go"},
+	})
+	require.NoError(t, err)
+
+	// Query with candidates=["a.go","b.go","e.go"] — Jaccard vs ["a.go","b.go","c.go"] = |{a,b}|/|{a,b,c,e}| = 2/4 = 0.5 >= 0.3
+	rows, err := db.QueryContextFeedback(ctx, []string{"a.go", "b.go", "e.go"}, 0.3)
+	require.NoError(t, err)
+	require.Len(t, rows, 1, "only the first row should match Jaccard >= 0.3")
+	assert.Equal(t, "task-1", rows[0].TaskID)
+	assert.ElementsMatch(t, []string{"a.go", "b.go", "d.go"}, rows[0].FilesTouched)
+
+	// Query with candidates=["a.go"] — Jaccard vs ["a.go","b.go","c.go"] = 1/3 = 0.33 >= 0.3
+	rows2, err := db.QueryContextFeedback(ctx, []string{"a.go"}, 0.3)
+	require.NoError(t, err)
+	require.Len(t, rows2, 1)
+	assert.Equal(t, "task-1", rows2[0].TaskID)
+
+	// Query with candidates=["z.go"] — Jaccard vs ["a.go","b.go","c.go"] = 0/4=0, vs ["x.go","y.go","z.go"]=1/3=0.33 >= 0.3
+	rows3, err := db.QueryContextFeedback(ctx, []string{"z.go"}, 0.3)
+	require.NoError(t, err)
+	require.Len(t, rows3, 1)
+	assert.Equal(t, "task-2", rows3[0].TaskID)
+}
+
 // TestSQLiteDB_StoreCallDetails_NoFKRequired verifies that StoreCallDetails succeeds
 // with a call ID that has no corresponding row in llm_calls. The table must be a
 // standalone log table without a FK constraint.

@@ -2,14 +2,22 @@
 package context
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 
+	"github.com/canhta/foreman/internal/db"
 	"github.com/canhta/foreman/internal/models"
 	"github.com/rs/zerolog/log"
 )
+
+// FeedbackQuerier is the interface for querying context feedback history.
+// It is satisfied by db.Database.
+type FeedbackQuerier interface {
+	QueryContextFeedback(ctx context.Context, candidates []string, minJaccard float64) ([]db.ContextFeedbackRow, error)
+}
 
 // ScoredFile is a file ranked by relevance to a task.
 type ScoredFile struct {
@@ -21,7 +29,14 @@ type ScoredFile struct {
 
 // SelectFilesForTask returns the most relevant files within the token budget.
 // cache is optional (nil = no caching for the source file walk).
-func SelectFilesForTask(task *models.Task, workDir string, tokenBudget int, cache *ContextCache) ([]ScoredFile, error) {
+// fq is an optional FeedbackQuerier; when non-nil, files that appeared in
+// files_touched of prior similar tasks receive a boost of feedbackBoost.
+// If feedbackBoost <= 0, 1.5 is used as the default.
+func SelectFilesForTask(task *models.Task, workDir string, tokenBudget int, cache *ContextCache, fq FeedbackQuerier, feedbackBoost float64) ([]ScoredFile, error) {
+	if feedbackBoost <= 0 {
+		feedbackBoost = 1.5
+	}
+
 	candidates := map[string]*ScoredFile{}
 
 	// Signal 1: Explicit planner references (highest priority)
@@ -51,6 +66,51 @@ func SelectFilesForTask(task *models.Task, workDir string, tokenBudget int, cach
 		}
 		if inAnyDirectory(f, taskDirs) {
 			addCandidate(candidates, workDir, f, 30, "proximity")
+		}
+	}
+
+	// Signal 4: Context feedback boost (REQ-CTX-003)
+	// Query prior feedback rows with Jaccard similarity >= 0.3 against current candidates.
+	// Boost files that appeared in files_touched but not already in candidates.
+	if fq != nil {
+		candidatePaths := make([]string, 0, len(candidates))
+		for p := range candidates {
+			candidatePaths = append(candidatePaths, p)
+		}
+		feedbackRows, err := fq.QueryContextFeedback(context.Background(), candidatePaths, 0.3)
+		if err != nil {
+			log.Warn().Err(err).Msg("context_feedback: failed to query feedback rows, skipping boost")
+		} else {
+			// Build set of already-selected file paths for fast lookup
+			selectedSet := make(map[string]struct{}, len(candidatePaths))
+			for _, p := range candidatePaths {
+				selectedSet[p] = struct{}{}
+			}
+
+			// Collect files that were touched but not selected — these get boosted
+			boostedFiles := map[string]struct{}{}
+			for _, row := range feedbackRows {
+				for _, touched := range row.FilesTouched {
+					if _, inSelected := selectedSet[touched]; !inSelected {
+						boostedFiles[touched] = struct{}{}
+					}
+				}
+			}
+
+			// Apply boost: add to candidates if they exist on disk; use base score * feedbackBoost
+			// Base score for feedback-boosted files is 30 (same as proximity), then multiplied.
+			baseFeedbackScore := 30.0
+			boostedScore := baseFeedbackScore * feedbackBoost
+			for f := range boostedFiles {
+				if _, exists := candidates[f]; exists {
+					// Already in candidates — just apply boost to existing score
+					candidates[f].Score *= feedbackBoost
+					candidates[f].Reason += "+feedback_boost"
+				} else {
+					// New file from feedback — add with boosted score if it exists on disk
+					addCandidate(candidates, workDir, f, boostedScore, "feedback_boost")
+				}
+			}
 		}
 	}
 

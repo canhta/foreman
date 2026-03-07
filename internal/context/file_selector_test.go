@@ -2,10 +2,12 @@
 package context
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/canhta/foreman/internal/db"
 	"github.com/canhta/foreman/internal/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -38,7 +40,7 @@ func TestSelectFilesForTask_ExplicitFiles(t *testing.T) {
 		FilesToModify: []string{"internal/handler.go"},
 	}
 
-	files, err := SelectFilesForTask(task, workDir, 80000, nil)
+	files, err := SelectFilesForTask(task, workDir, 80000, nil, nil, 1.5)
 	require.NoError(t, err)
 	assert.NotEmpty(t, files)
 
@@ -53,7 +55,7 @@ func TestSelectFilesForTask_TestSibling(t *testing.T) {
 		FilesToModify: []string{"internal/handler.go"},
 	}
 
-	files, err := SelectFilesForTask(task, workDir, 80000, nil)
+	files, err := SelectFilesForTask(task, workDir, 80000, nil, nil, 1.5)
 	require.NoError(t, err)
 
 	paths := filePaths(files)
@@ -67,7 +69,7 @@ func TestSelectFilesForTask_ProximityBoost(t *testing.T) {
 		FilesToModify: []string{"internal/handler.go"},
 	}
 
-	files, err := SelectFilesForTask(task, workDir, 80000, nil)
+	files, err := SelectFilesForTask(task, workDir, 80000, nil, nil, 1.5)
 	require.NoError(t, err)
 
 	// internal/models/user.go is NOT in the same directory (it's in internal/models/)
@@ -87,7 +89,7 @@ func TestSelectFilesForTask_ScoreOrdering(t *testing.T) {
 		FilesToModify: []string{"internal/handler.go"},
 	}
 
-	files, err := SelectFilesForTask(task, workDir, 80000, nil)
+	files, err := SelectFilesForTask(task, workDir, 80000, nil, nil, 1.5)
 	require.NoError(t, err)
 	require.NotEmpty(t, files)
 
@@ -102,9 +104,75 @@ func TestSelectFilesForTask_TokenBudget(t *testing.T) {
 	}
 
 	// Very small budget should limit results
-	files, err := SelectFilesForTask(task, workDir, 100, nil)
+	files, err := SelectFilesForTask(task, workDir, 100, nil, nil, 1.5)
 	require.NoError(t, err)
 	// Should include at least the explicit file
+	assert.NotEmpty(t, files)
+}
+
+// mockFeedbackQuerier is a test double for the FeedbackQuerier interface.
+type mockFeedbackQuerier struct {
+	rows []db.ContextFeedbackRow
+}
+
+func (m *mockFeedbackQuerier) QueryContextFeedback(_ context.Context, _ []string, _ float64) ([]db.ContextFeedbackRow, error) {
+	return m.rows, nil
+}
+
+// TestFileSelector_AppliesFeedbackBoost verifies that files in files_touched
+// but not in files_selected receive a boost to their score.
+func TestFileSelector_AppliesFeedbackBoost(t *testing.T) {
+	workDir := setupTestRepo(t)
+
+	// The task explicitly references handler.go only.
+	task := &models.Task{
+		FilesToModify: []string{"internal/handler.go"},
+	}
+
+	// The mock returns a feedback row where internal/utils/helper.go was
+	// touched in a prior similar task but was NOT in files_selected.
+	mockFB := &mockFeedbackQuerier{
+		rows: []db.ContextFeedbackRow{
+			{
+				FilesSelected: []string{"internal/handler.go"},
+				FilesTouched:  []string{"internal/handler.go", "internal/utils/helper.go"},
+			},
+		},
+	}
+
+	files, err := SelectFilesForTask(task, workDir, 80000, nil, mockFB, 1.5)
+	require.NoError(t, err)
+
+	// internal/utils/helper.go should be boosted: base proximity score * 1.5
+	var helperScore float64
+	found := false
+	for _, f := range files {
+		if f.Path == "internal/utils/helper.go" {
+			helperScore = f.Score
+			found = true
+			break
+		}
+	}
+	require.True(t, found, "internal/utils/helper.go should be in results after feedback boost")
+
+	// Without boost: proximity score = 0 (different dir). With boost it must be > 0.
+	// The base score for an unrelated directory would be 0 (not proximity-matching internal/).
+	// But since the file IS in a different directory, it would normally not be selected.
+	// The boost should bring it into scoring.
+	assert.Greater(t, helperScore, 0.0, "feedback-boosted file must have positive score")
+}
+
+// TestFileSelector_NilFeedbackQuerier verifies that passing nil as the feedback querier
+// works fine (backward compatibility).
+func TestFileSelector_NilFeedbackQuerier(t *testing.T) {
+	workDir := setupTestRepo(t)
+	task := &models.Task{
+		FilesToModify: []string{"internal/handler.go"},
+	}
+
+	// nil querier must not panic
+	files, err := SelectFilesForTask(task, workDir, 80000, nil, nil, 1.5)
+	require.NoError(t, err)
 	assert.NotEmpty(t, files)
 }
 

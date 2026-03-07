@@ -151,6 +151,12 @@ func (m *mockDB) GetGlobalEvents(_ context.Context, _, _ int) ([]models.EventRec
 func (m *mockDB) AcquireLock(_ context.Context, _ string, _ int) (bool, error) { return false, nil }
 func (m *mockDB) ReleaseLock(_ context.Context, _ string) error                { return nil }
 func (m *mockDB) Close() error                                                 { return nil }
+func (m *mockDB) WriteContextFeedback(_ context.Context, _ db.ContextFeedbackRow) error {
+	return nil
+}
+func (m *mockDB) QueryContextFeedback(_ context.Context, _ []string, _ float64) ([]db.ContextFeedbackRow, error) {
+	return nil, nil
+}
 
 // --- Helpers ---
 

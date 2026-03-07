@@ -212,6 +212,12 @@ func (m *orchMockDB) GetTaskContextStats(_ context.Context, _ string) (db.TaskCo
 func (m *orchMockDB) UpdateTaskContextStats(_ context.Context, _ string, _ db.TaskContextStats) error {
 	return nil
 }
+func (m *orchMockDB) WriteContextFeedback(_ context.Context, _ db.ContextFeedbackRow) error {
+	return nil
+}
+func (m *orchMockDB) QueryContextFeedback(_ context.Context, _ []string, _ float64) ([]db.ContextFeedbackRow, error) {
+	return nil, nil
+}
 
 func (m *orchMockDB) lastStatus(id string) models.TicketStatus {
 	for i := len(m.statusUpdates) - 1; i >= 0; i-- {

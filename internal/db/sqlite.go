@@ -1127,3 +1127,97 @@ func (s *SQLiteDB) DeleteEmbeddingsByRepoExceptSHA(ctx context.Context, repoPath
 	}
 	return nil
 }
+
+// WriteContextFeedback inserts a context feedback row recording which files were
+// selected vs touched for a completed or failed task.
+func (s *SQLiteDB) WriteContextFeedback(ctx context.Context, row ContextFeedbackRow) error {
+	id := uuid.New().String()
+	selected := strings.Join(row.FilesSelected, ",")
+	touched := strings.Join(row.FilesTouched, ",")
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO context_feedback (id, ticket_id, task_id, files_selected, files_touched, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
+		id, row.TicketID, row.TaskID, selected, touched, time.Now(),
+	)
+	if err != nil {
+		return fmt.Errorf("write context feedback: %w", err)
+	}
+	return nil
+}
+
+// QueryContextFeedback returns prior feedback rows whose files_selected set has
+// Jaccard similarity >= minJaccard with the provided candidates set.
+// The Jaccard comparison is computed in Go after loading rows (SQLite has no native set ops).
+func (s *SQLiteDB) QueryContextFeedback(ctx context.Context, candidates []string, minJaccard float64) ([]ContextFeedbackRow, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, ticket_id, task_id, files_selected, files_touched, created_at FROM context_feedback`)
+	if err != nil {
+		return nil, fmt.Errorf("query context feedback: %w", err)
+	}
+	defer rows.Close()
+
+	candidateSet := toStringSet(candidates)
+	var results []ContextFeedbackRow
+	for rows.Next() {
+		var r ContextFeedbackRow
+		var sel, touched string
+		if err := rows.Scan(&r.ID, &r.TicketID, &r.TaskID, &sel, &touched, &r.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan context feedback row: %w", err)
+		}
+		r.FilesSelected = splitFiles(sel)
+		r.FilesTouched = splitFiles(touched)
+
+		if jaccardSimilarity(candidateSet, toStringSet(r.FilesSelected)) >= minJaccard {
+			results = append(results, r)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate context feedback rows: %w", err)
+	}
+	return results, nil
+}
+
+// toStringSet converts a slice of strings to a set (map[string]struct{}).
+func toStringSet(ss []string) map[string]struct{} {
+	m := make(map[string]struct{}, len(ss))
+	for _, s := range ss {
+		if s != "" {
+			m[s] = struct{}{}
+		}
+	}
+	return m
+}
+
+// splitFiles splits a comma-separated file list, filtering empty strings.
+func splitFiles(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p != "" {
+			result = append(result, p)
+		}
+	}
+	return result
+}
+
+// jaccardSimilarity computes |A ∩ B| / |A ∪ B| for two string sets.
+// Returns 0 if both sets are empty.
+func jaccardSimilarity(a, b map[string]struct{}) float64 {
+	if len(a) == 0 && len(b) == 0 {
+		return 0
+	}
+	intersection := 0
+	for k := range a {
+		if _, ok := b[k]; ok {
+			intersection++
+		}
+	}
+	union := len(a) + len(b) - intersection
+	if union == 0 {
+		return 0
+	}
+	return float64(intersection) / float64(union)
+}

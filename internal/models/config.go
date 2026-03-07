@@ -19,6 +19,7 @@ type Config struct {
 	Skills    SkillsConfig      `mapstructure:"skills"`
 	Limits    LimitsConfig      `mapstructure:"limits"`
 	RateLimit RateLimitConfig   `mapstructure:"rate_limit"`
+	Context   ContextConfig     `mapstructure:"context"`
 }
 
 // AgentRoleConfig defines a custom named agent with specific tools, model, and prompt.
@@ -151,6 +152,14 @@ type LimitsConfig struct {
 	EnableTDDVerification    bool    `mapstructure:"enable_tdd_verification"`
 	SearchReplaceSimilarity  float64 `mapstructure:"search_replace_similarity"`
 	SearchReplaceMinContext  int     `mapstructure:"search_replace_min_context_lines"`
+}
+
+// ContextConfig holds configuration for the context assembly subsystem.
+type ContextConfig struct {
+	// ContextFeedbackBoost is the multiplier applied to file scores when a file
+	// appears in files_touched of a prior similar task but was NOT in files_selected.
+	// Default: 1.5
+	ContextFeedbackBoost float64 `mapstructure:"context_feedback_boost"`
 }
 
 type SecretsConfig struct {

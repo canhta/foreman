@@ -173,6 +173,15 @@ CREATE TABLE IF NOT EXISTS embeddings (
     PRIMARY KEY (repo_path, head_sha, file_path, start_line)
 );
 
+CREATE TABLE IF NOT EXISTS context_feedback (
+    id          TEXT PRIMARY KEY,
+    ticket_id   TEXT NOT NULL,
+    task_id     TEXT NOT NULL,
+    files_selected TEXT NOT NULL DEFAULT '',
+    files_touched  TEXT NOT NULL DEFAULT '',
+    created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_embeddings_repo_sha
     ON embeddings(repo_path, head_sha);
 

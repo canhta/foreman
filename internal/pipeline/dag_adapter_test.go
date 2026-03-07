@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/canhta/foreman/internal/daemon"
+	dbpkg "github.com/canhta/foreman/internal/db"
 	"github.com/canhta/foreman/internal/git"
 	"github.com/canhta/foreman/internal/models"
 	"github.com/canhta/foreman/internal/runner"
@@ -58,6 +59,10 @@ func (m *mockAdapterDB) IncrementTaskLlmCalls(_ context.Context, id string) (int
 }
 
 func (m *mockAdapterDB) SetTaskErrorType(_ context.Context, _, _ string) error { return nil }
+
+func (m *mockAdapterDB) WriteContextFeedback(_ context.Context, _ dbpkg.ContextFeedbackRow) error {
+	return nil
+}
 
 // realMockGitProvider implements git.GitProvider using the real package types.
 type realMockGitProvider struct {
