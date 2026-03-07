@@ -308,6 +308,12 @@ func parseUnifiedDiff(patch string) ([]patchHunk, error) {
 
 // applyHunks applies parsed hunks to the file lines, returning the result or
 // a specific rejection reason.
+//
+// Note: the "\ No newline at end of file" marker in unified diffs is not
+// currently tracked; trailing-newline semantics are preserved from the original
+// file via the trailing "" sentinel produced by strings.Split on newline-terminated
+// content. If a patch changes the trailing-newline status, that change is silently
+// ignored and the original file's trailing-newline behaviour is retained.
 func applyHunks(fileLines []string, hunks []patchHunk) ([]string, error) {
 	result := make([]string, len(fileLines))
 	copy(result, fileLines)
@@ -318,8 +324,24 @@ func applyHunks(fileLines []string, hunks []patchHunk) ([]string, error) {
 		// origStart is 1-based; convert to 0-based index.
 		pos := h.origStart - 1
 		if h.origCount == 0 {
-			// insertion before pos
-			pos = h.origStart // insert after origStart line (0-based)
+			// Pure insertion: insert new lines after origStart (1-based).
+			// origStart==0 means prepend; otherwise insert after that line.
+			pos = h.origStart // 0-based index of the line to insert before = origStart
+
+			// For newline-terminated files, strings.Split produces a trailing ""
+			// sentinel at index len(fileLines)-1. When origStart equals the number
+			// of real lines (i.e. pos == len(result)-1 and result[pos-1] == ""),
+			// inserting at pos would place the new lines before the sentinel,
+			// correctly. But if pos == len(result) and result[len(result)-1] == "",
+			// the slice append puts new lines between the last real line and the
+			// sentinel, which is also correct. The problem occurs when pos equals
+			// len(result) and the trailing sentinel is included in the prefix:
+			//   result[:pos] includes the trailing "" → joining produces an extra blank line.
+			// Fix: when pos points past all real lines and the last element is the
+			// trailing "" sentinel, insert before the sentinel instead of after it.
+			if pos > 0 && pos == len(result) && result[pos-1] == "" {
+				pos = pos - 1 // insert before trailing "" sentinel
+			}
 		}
 		if pos < 0 {
 			pos = 0

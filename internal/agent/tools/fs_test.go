@@ -219,8 +219,32 @@ func TestApplyPatch_MultipleHunks(t *testing.T) {
 		t.Errorf("expected OK, got %q", out)
 	}
 	data, _ := os.ReadFile(filepath.Join(dir, "multi_hunk.txt"))
-	if !strings.Contains(string(data), "LINE2") || !strings.Contains(string(data), "LINE6") {
-		t.Errorf("expected both hunks applied, got %q", string(data))
+	expected := "line1\nLINE2\nline3\nline4\nline5\nLINE6\nline7\nline8\n"
+	if string(data) != expected {
+		t.Errorf("expected %q, got %q", expected, string(data))
+	}
+}
+
+func TestApplyPatch_AppendToEOF(t *testing.T) {
+	// Exercises the @@ -N,0 +N+1 @@ pure-insertion format produced by git diff
+	// when appending after the last line of a newline-terminated file.
+	// The critical bug was that strings.Split("a\nb\nc\n", "\n") produces a
+	// trailing "" sentinel, and inserting at pos==len(fileLines) would include
+	// that sentinel in the prefix, resulting in a spurious blank line.
+	reg, dir := newFSRegistry(t)
+	original := "line1\nline2\nline3\n"
+	os.WriteFile(filepath.Join(dir, "append_eof.txt"), []byte(original), 0644)
+
+	patch := `--- a/append_eof.txt
++++ b/append_eof.txt
+@@ -3,0 +4,1 @@
++line4
+`
+	execTool(t, reg, dir, "ApplyPatch", map[string]string{"path": "append_eof.txt", "patch": patch})
+	data, _ := os.ReadFile(filepath.Join(dir, "append_eof.txt"))
+	expected := "line1\nline2\nline3\nline4\n"
+	if string(data) != expected {
+		t.Errorf("expected %q, got %q", expected, string(data))
 	}
 }
 
