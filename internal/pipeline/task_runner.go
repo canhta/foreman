@@ -61,6 +61,10 @@ type TaskRunnerConfig struct {
 	// check runs. After every N completed tasks (where N = IntermediateReviewInterval),
 	// a lightweight LLM consistency check is triggered. 0 disables the check.
 	IntermediateReviewInterval int
+	// DiscoveryBoard is the shared board for this ticket (ARCH-S02).
+	// When non-nil, patterns from the board are merged with DB patterns
+	// during context-file selection so parallel tasks share discoveries.
+	DiscoveryBoard *models.DiscoveryBoard
 }
 
 // ConsistencyReviewDB is the subset of db.Database needed by the intermediate
@@ -433,6 +437,20 @@ func (r *PipelineTaskRunner) selectContextFiles(task *models.Task, budget int) m
 	if err != nil {
 		log.Warn().Err(err).Str("task_id", task.ID).Msg("context_assembly: failed to load progress patterns, skipping bonus")
 		patterns = nil
+	}
+
+	// Publish DB-loaded patterns to the shared DiscoveryBoard (ARCH-S02) so
+	// parallel tasks can read them immediately without their own DB round-trip.
+	if r.config.DiscoveryBoard != nil {
+		for _, p := range patterns {
+			r.config.DiscoveryBoard.AddPattern(p.PatternKey, p.PatternValue)
+		}
+	}
+
+	// Merge in any discoveries from the shared DiscoveryBoard (ARCH-S02).
+	if r.config.DiscoveryBoard != nil {
+		boardPatterns := r.config.DiscoveryBoard.Patterns(task.TicketID)
+		patterns = append(patterns, boardPatterns...)
 	}
 
 	scored, err := appcontext.SelectFilesForTask(task, r.config.WorkDir, budget, r.config.Cache, r.db, boost, patterns...)

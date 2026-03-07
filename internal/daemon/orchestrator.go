@@ -68,6 +68,11 @@ type TaskRunnerFactoryInput struct {
 	// IntermediateReviewInterval controls how often the cross-task consistency
 	// check runs (REQ-PIPE-006). 0 disables it.
 	IntermediateReviewInterval int
+	// DiscoveryBoard is the shared board for this ticket. Parallel tasks write
+	// discovered patterns and file-relevance scores to it so subsequent tasks
+	// (and parallel tasks on their next LLM turn) can benefit (ARCH-S02).
+	// Optional — nil disables discovery sharing.
+	DiscoveryBoard *models.DiscoveryBoard
 }
 
 // PlanResult mirrors pipeline.PlannerResult without creating an import cycle.
@@ -425,6 +430,10 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 		return returnErr
 	}
 
+	// Create a shared DiscoveryBoard for this ticket invocation (ARCH-S02).
+	// All parallel tasks share the same board so discoveries propagate across them.
+	discoveryBoard := models.NewDiscoveryBoard()
+
 	// Build task runner via factory.
 	codebasePatterns := formatCodebasePatterns(planResult.CodebasePatterns)
 	dagRunner := o.runnerFactory.Create(TaskRunnerFactoryInput{
@@ -444,6 +453,7 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 		ContextCache:               ticketCache,
 		PromptVersions:             o.config.PromptVersions,
 		HookRunner:                 o.hookRunner,
+		DiscoveryBoard:             discoveryBoard,
 	})
 
 	// Build DAG tasks (resolve title->ID dependencies).

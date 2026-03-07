@@ -18,6 +18,8 @@ import (
 
 // DAGTaskAdapter adapts PipelineTaskRunner to the daemon.TaskRunner interface,
 // bridging task ID lookups with the full pipeline execution.
+//
+//nolint:govet // fieldalignment: struct field order prioritises readability over padding
 type DAGTaskAdapter struct {
 	db                TaskRunnerDB
 	llm               LLMProvider

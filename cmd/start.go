@@ -106,6 +106,7 @@ func (f *taskRunnerFactory) Create(input daemon.TaskRunnerFactoryInput) daemon.T
 		Cache:                      input.ContextCache,
 		PromptVersions:             input.PromptVersions,
 		HookRunner:                 input.HookRunner,
+		DiscoveryBoard:             input.DiscoveryBoard,
 	}
 	tr := pipeline.NewPipelineTaskRunner(f.llm, f.db, f.gitProv, f.cmdRunner, cfg)
 	return pipeline.NewDAGTaskAdapterWithConsistency(tr, f.db, input.TicketID, f.llm, f.db, f.gitProv, cfg)
