@@ -28,6 +28,8 @@ type Database interface {
 	// LLM calls
 	RecordLlmCall(ctx context.Context, call *models.LlmCallRecord) error
 	ListLlmCalls(ctx context.Context, ticketID string) ([]models.LlmCallRecord, error)
+	StoreCallDetails(ctx context.Context, callID, fullPrompt, fullResponse string) error
+	GetCallDetails(ctx context.Context, callID string) (fullPrompt, fullResponse string, err error)
 
 	// Handoffs
 	SetHandoff(ctx context.Context, h *models.HandoffRecord) error

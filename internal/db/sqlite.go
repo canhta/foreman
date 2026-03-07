@@ -66,6 +66,16 @@ func runSQLiteMigrations(db *sql.DB) error {
 	_, _ = db.ExecContext(ctx,
 		`ALTER TABLE tasks ADD COLUMN last_error_type TEXT NOT NULL DEFAULT ''`)
 
+	// Create llm_call_details table for full prompt/response storage (ARCH-O02).
+	if _, err := db.ExecContext(ctx,
+		`CREATE TABLE IF NOT EXISTS llm_call_details (
+		    llm_call_id TEXT PRIMARY KEY REFERENCES llm_calls(id),
+		    full_prompt TEXT NOT NULL DEFAULT '',
+		    full_response TEXT NOT NULL DEFAULT ''
+		)`); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -290,6 +300,27 @@ func (s *SQLiteDB) RecordLlmCall(ctx context.Context, call *models.LlmCallRecord
 		call.CacheReadTokens, call.CacheCreationTokens, call.CreatedAt,
 	)
 	return err
+}
+
+func (s *SQLiteDB) StoreCallDetails(ctx context.Context, callID, fullPrompt, fullResponse string) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO llm_call_details (llm_call_id, full_prompt, full_response)
+		 VALUES (?, ?, ?)
+		 ON CONFLICT(llm_call_id) DO UPDATE SET full_prompt=excluded.full_prompt, full_response=excluded.full_response`,
+		callID, fullPrompt, fullResponse,
+	)
+	return err
+}
+
+func (s *SQLiteDB) GetCallDetails(ctx context.Context, callID string) (string, string, error) {
+	var prompt, response string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT full_prompt, full_response FROM llm_call_details WHERE llm_call_id = ?`, callID,
+	).Scan(&prompt, &response)
+	if err == sql.ErrNoRows {
+		return "", "", nil
+	}
+	return prompt, response, err
 }
 
 func (s *SQLiteDB) SetHandoff(ctx context.Context, h *models.HandoffRecord) error {

@@ -240,6 +240,27 @@ func (p *PostgresDB) RecordLlmCall(ctx context.Context, call *models.LlmCallReco
 	return err
 }
 
+func (p *PostgresDB) StoreCallDetails(ctx context.Context, callID, fullPrompt, fullResponse string) error {
+	_, err := p.db.ExecContext(ctx,
+		`INSERT INTO llm_call_details (llm_call_id, full_prompt, full_response)
+		 VALUES ($1, $2, $3)
+		 ON CONFLICT(llm_call_id) DO UPDATE SET full_prompt=EXCLUDED.full_prompt, full_response=EXCLUDED.full_response`,
+		callID, fullPrompt, fullResponse,
+	)
+	return err
+}
+
+func (p *PostgresDB) GetCallDetails(ctx context.Context, callID string) (string, string, error) {
+	var prompt, response string
+	err := p.db.QueryRowContext(ctx,
+		`SELECT full_prompt, full_response FROM llm_call_details WHERE llm_call_id = $1`, callID,
+	).Scan(&prompt, &response)
+	if err == sql.ErrNoRows {
+		return "", "", nil
+	}
+	return prompt, response, err
+}
+
 // --- Handoffs ---
 
 func (p *PostgresDB) SetHandoff(ctx context.Context, h *models.HandoffRecord) error {

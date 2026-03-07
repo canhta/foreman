@@ -78,6 +78,12 @@ CREATE TABLE IF NOT EXISTS llm_calls (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS llm_call_details (
+    llm_call_id TEXT PRIMARY KEY REFERENCES llm_calls(id),
+    full_prompt TEXT NOT NULL DEFAULT '',
+    full_response TEXT NOT NULL DEFAULT ''
+);
+
 CREATE TABLE IF NOT EXISTS handoffs (
     id TEXT PRIMARY KEY,
     ticket_id TEXT NOT NULL REFERENCES tickets(id),
