@@ -99,7 +99,7 @@ func TestWebSocketCORS_CheckOrigin(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			r := httptest.NewRequest("GET", "/ws/events", nil)
+			r := httptest.NewRequestWithContext(t.Context(), "GET", "/ws/events", nil)
 			r.Host = tt.host
 			if tt.origin != "" {
 				r.Header.Set("Origin", tt.origin)

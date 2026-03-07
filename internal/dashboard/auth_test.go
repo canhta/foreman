@@ -24,7 +24,7 @@ func TestAuthMiddleware_ValidToken(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	req := httptest.NewRequest("GET", "/api/status", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/status", nil)
 	req.Header.Set("Authorization", "Bearer test-token")
 	rec := httptest.NewRecorder()
 
@@ -42,7 +42,7 @@ func TestAuthMiddleware_MissingToken(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	req := httptest.NewRequest("GET", "/api/status", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/status", nil)
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
@@ -63,7 +63,7 @@ func TestAuthMiddleware_MetricsEndpointRequiresAuth(t *testing.T) {
 	handler := authMiddleware(db)(inner)
 
 	// Request without auth should get 401
-	req := httptest.NewRequest("GET", "/api/metrics", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/metrics", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -79,7 +79,7 @@ func TestAuthMiddleware_InvalidToken(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	req := httptest.NewRequest("GET", "/api/status", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/status", nil)
 	req.Header.Set("Authorization", "Bearer wrong-token")
 	rec := httptest.NewRecorder()
 

@@ -113,7 +113,7 @@ func TestAPIGetStatus(t *testing.T) {
 	db := &mockDashboardDB{}
 	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
 
-	req := httptest.NewRequest("GET", "/api/status", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/status", nil)
 	rec := httptest.NewRecorder()
 	api.handleStatus(rec, req)
 
@@ -136,7 +136,7 @@ func TestAPIListTickets(t *testing.T) {
 	}
 	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
 
-	req := httptest.NewRequest("GET", "/api/tickets", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/tickets", nil)
 	rec := httptest.NewRecorder()
 	api.handleListTickets(rec, req)
 
@@ -156,7 +156,7 @@ func TestAPIGetTicket(t *testing.T) {
 		tickets: []models.Ticket{{ID: "t1", Title: "Test", Status: models.TicketStatusImplementing}},
 	}
 	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequest("GET", "/api/tickets/t1", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/tickets/t1", nil)
 	rec := httptest.NewRecorder()
 	api.handleGetTicket(rec, req)
 	if rec.Code != http.StatusOK {
@@ -167,7 +167,7 @@ func TestAPIGetTicket(t *testing.T) {
 func TestAPIGetTicketNotFound(t *testing.T) {
 	db := &mockDashboardDB{}
 	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequest("GET", "/api/tickets/nonexistent", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/tickets/nonexistent", nil)
 	rec := httptest.NewRecorder()
 	api.handleGetTicket(rec, req)
 	if rec.Code != http.StatusNotFound {
@@ -182,7 +182,7 @@ func TestAPIGetEvents(t *testing.T) {
 		},
 	}
 	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequest("GET", "/api/tickets/t1/events", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/tickets/t1/events", nil)
 	rec := httptest.NewRecorder()
 	api.handleGetEvents(rec, req)
 	if rec.Code != http.StatusOK {
@@ -193,7 +193,7 @@ func TestAPIGetEvents(t *testing.T) {
 func TestAPICostsToday(t *testing.T) {
 	db := &mockDashboardDB{}
 	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequest("GET", "/api/costs/today", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/costs/today", nil)
 	rec := httptest.NewRecorder()
 	api.handleCostsToday(rec, req)
 	if rec.Code != http.StatusOK {
@@ -204,7 +204,7 @@ func TestAPICostsToday(t *testing.T) {
 func TestAPIGetTicketTasks(t *testing.T) {
 	db := &mockDashboardDB{}
 	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequest("GET", "/api/tickets/t1/tasks", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/tickets/t1/tasks", nil)
 	rec := httptest.NewRecorder()
 	api.handleGetTasks(rec, req)
 	if rec.Code != http.StatusOK {
@@ -215,7 +215,7 @@ func TestAPIGetTicketTasks(t *testing.T) {
 func TestAPIGetCostsWeek(t *testing.T) {
 	db := &mockDashboardDB{}
 	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequest("GET", "/api/costs/week", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/costs/week", nil)
 	rec := httptest.NewRecorder()
 	api.handleCostsWeek(rec, req)
 	if rec.Code != http.StatusOK {
@@ -230,7 +230,7 @@ func TestAPIGetActivePipelines(t *testing.T) {
 		},
 	}
 	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequest("GET", "/api/pipeline/active", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/pipeline/active", nil)
 	rec := httptest.NewRecorder()
 	api.handleActivePipelines(rec, req)
 	if rec.Code != http.StatusOK {
@@ -242,7 +242,7 @@ func TestAPIGetStatus_DaemonRunning(t *testing.T) {
 	db := &mockDashboardDB{}
 	api := NewAPI(db, nil, &mockDaemonStatus{running: true, paused: false}, models.CostConfig{}, "1.0.0")
 
-	req := httptest.NewRequest("GET", "/api/status", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/status", nil)
 	rec := httptest.NewRecorder()
 	api.handleStatus(rec, req)
 
@@ -260,7 +260,7 @@ func TestAPIGetStatus_DaemonPaused(t *testing.T) {
 	db := &mockDashboardDB{}
 	api := NewAPI(db, nil, &mockDaemonStatus{running: true, paused: true}, models.CostConfig{}, "1.0.0")
 
-	req := httptest.NewRequest("GET", "/api/status", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/status", nil)
 	rec := httptest.NewRecorder()
 	api.handleStatus(rec, req)
 
@@ -279,7 +279,7 @@ func TestAPIGetStatus_NilProvider(t *testing.T) {
 	db := &mockDashboardDB{}
 	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
 
-	req := httptest.NewRequest("GET", "/api/status", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/status", nil)
 	rec := httptest.NewRecorder()
 	api.handleStatus(rec, req)
 
@@ -294,7 +294,7 @@ func TestAPIGetStatus_DaemonStopped(t *testing.T) {
 	db := &mockDashboardDB{}
 	api := NewAPI(db, nil, &mockDaemonStatus{running: false, paused: false}, models.CostConfig{}, "1.0.0")
 
-	req := httptest.NewRequest("GET", "/api/status", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/status", nil)
 	rec := httptest.NewRecorder()
 	api.handleStatus(rec, req)
 
@@ -311,7 +311,7 @@ func TestAPIGetStatus_DaemonStopped(t *testing.T) {
 func TestAPIGetLlmCalls(t *testing.T) {
 	db := &mockDashboardDB{}
 	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequest("GET", "/api/tickets/t1/llm-calls", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/tickets/t1/llm-calls", nil)
 	rec := httptest.NewRecorder()
 	api.handleGetLlmCalls(rec, req)
 	if rec.Code != http.StatusOK {
@@ -322,7 +322,7 @@ func TestAPIGetLlmCalls(t *testing.T) {
 func TestAPICostsMonth(t *testing.T) {
 	db := &mockDashboardDB{}
 	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequest("GET", "/api/costs/month", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/costs/month", nil)
 	rec := httptest.NewRecorder()
 	api.handleCostsMonth(rec, req)
 	if rec.Code != http.StatusOK {
@@ -343,7 +343,7 @@ func TestAPICostsMonth(t *testing.T) {
 func TestAPIRetryTicket_NoRetrier(t *testing.T) {
 	db := &mockDashboardDB{}
 	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequest("POST", "/api/tickets/t1/retry", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "POST", "/api/tickets/t1/retry", nil)
 	rec := httptest.NewRecorder()
 	api.handleRetryTicket(rec, req)
 	if rec.Code != http.StatusServiceUnavailable {
@@ -354,7 +354,7 @@ func TestAPIRetryTicket_NoRetrier(t *testing.T) {
 func TestAPIDaemonPause_NoController(t *testing.T) {
 	db := &mockDashboardDB{}
 	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequest("POST", "/api/daemon/pause", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "POST", "/api/daemon/pause", nil)
 	rec := httptest.NewRecorder()
 	api.handleDaemonPause(rec, req)
 	if rec.Code != http.StatusServiceUnavailable {
@@ -365,7 +365,7 @@ func TestAPIDaemonPause_NoController(t *testing.T) {
 func TestAPIDaemonResume_NoController(t *testing.T) {
 	db := &mockDashboardDB{}
 	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequest("POST", "/api/daemon/resume", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "POST", "/api/daemon/resume", nil)
 	rec := httptest.NewRecorder()
 	api.handleDaemonResume(rec, req)
 	if rec.Code != http.StatusServiceUnavailable {
@@ -385,7 +385,7 @@ func TestAPIGetStatus_WithChannelHealth(t *testing.T) {
 	api := NewAPI(db, nil, &mockDaemonStatus{running: true}, models.CostConfig{}, "1.0.0")
 	api.SetChannelHealth("whatsapp", ch)
 
-	req := httptest.NewRequest("GET", "/api/status", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/status", nil)
 	rec := httptest.NewRecorder()
 	api.handleStatus(rec, req)
 
@@ -412,7 +412,7 @@ func TestAPIGetTeamStats(t *testing.T) {
 		},
 	}
 	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequest("GET", "/api/stats/team", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/stats/team", nil)
 	rec := httptest.NewRecorder()
 	api.handleTeamStats(rec, req)
 	if rec.Code != http.StatusOK {
@@ -427,7 +427,7 @@ func TestAPIGetRecentPRs(t *testing.T) {
 		},
 	}
 	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequest("GET", "/api/stats/recent-prs", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/stats/recent-prs", nil)
 	rec := httptest.NewRecorder()
 	api.handleRecentPRs(rec, req)
 	if rec.Code != http.StatusOK {
@@ -442,7 +442,7 @@ func TestAPIGetTicketSummaries(t *testing.T) {
 		},
 	}
 	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequest("GET", "/api/ticket-summaries", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/ticket-summaries", nil)
 	rec := httptest.NewRecorder()
 	api.handleTicketSummaries(rec, req)
 	if rec.Code != http.StatusOK {
@@ -457,7 +457,7 @@ func TestAPIGetGlobalEvents(t *testing.T) {
 		},
 	}
 	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequest("GET", "/api/events", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/events", nil)
 	rec := httptest.NewRecorder()
 	api.handleGlobalEvents(rec, req)
 	if rec.Code != http.StatusOK {
@@ -488,7 +488,7 @@ func TestAPIDaemonPause_Wired(t *testing.T) {
 	api := NewAPI(&mockDashboardDB{}, nil, ctrl, models.CostConfig{}, "1.0.0")
 	api.SetDaemonController(ctrl)
 
-	req := httptest.NewRequest("POST", "/api/daemon/pause", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "POST", "/api/daemon/pause", nil)
 	rec := httptest.NewRecorder()
 	api.handleDaemonPause(rec, req)
 	if rec.Code != http.StatusOK {
@@ -504,7 +504,7 @@ func TestAPIDaemonResume_Wired(t *testing.T) {
 	api := NewAPI(&mockDashboardDB{}, nil, ctrl, models.CostConfig{}, "1.0.0")
 	api.SetDaemonController(ctrl)
 
-	req := httptest.NewRequest("POST", "/api/daemon/resume", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "POST", "/api/daemon/resume", nil)
 	rec := httptest.NewRecorder()
 	api.handleDaemonResume(rec, req)
 	if rec.Code != http.StatusOK {
@@ -520,7 +520,7 @@ func TestAPIRetryTicket_Wired(t *testing.T) {
 	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
 	api.SetTicketRetrier(retrier)
 
-	req := httptest.NewRequest("POST", "/api/tickets/t1/retry", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "POST", "/api/tickets/t1/retry", nil)
 	rec := httptest.NewRecorder()
 	api.handleRetryTicket(rec, req)
 	if rec.Code != http.StatusOK {
@@ -533,7 +533,7 @@ func TestAPIRetryTicket_Wired(t *testing.T) {
 
 func TestAPIRetryTask(t *testing.T) {
 	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequest("POST", "/api/tasks/task-1/retry", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "POST", "/api/tasks/task-1/retry", nil)
 	rec := httptest.NewRecorder()
 	api.handleRetryTask(rec, req)
 	if rec.Code != http.StatusOK {
@@ -548,7 +548,7 @@ func TestAPIHandleCostsBudgets(t *testing.T) {
 		AlertThresholdPct: 80,
 	}, "1.0.0")
 
-	req := httptest.NewRequest("GET", "/api/costs/budgets", nil)
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/costs/budgets", nil)
 	rec := httptest.NewRecorder()
 	api.handleCostsBudgets(rec, req)
 
