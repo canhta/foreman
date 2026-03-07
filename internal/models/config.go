@@ -242,6 +242,10 @@ type AgentRunnerConfig struct {
 }
 
 type BuiltinRunnerConfig struct {
+	// Model overrides the LLM model used by the builtin runner for all agent sessions.
+	// When empty, the runner falls back to the model passed at construction time
+	// (i.e., the pipeline's implementer model).
+	Model               string   `mapstructure:"model"`
 	DefaultAllowedTools []string `mapstructure:"default_allowed_tools"`
 }
 

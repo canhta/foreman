@@ -35,6 +35,7 @@ func NewAgentRunner(
 		builtinRunner := NewBuiltinRunner(llmProvider, agentModel, BuiltinConfig{
 			MaxTurnsDefault:     cfg.MaxTurnsDefault,
 			DefaultAllowedTools: cfg.Builtin.DefaultAllowedTools,
+			Model:               cfg.Builtin.Model,
 		}, reg, nil)
 		reg.SetRunFn(builtinRunner.subagentRunFn)
 		return builtinRunner, nil

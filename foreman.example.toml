@@ -124,6 +124,8 @@ timeout_secs_default = 120
 
 [skills.agent_runner.builtin]
 default_allowed_tools = ["Read", "Glob", "Grep"]
+# model = "claude-3-5-sonnet-20241022"  # optional: override model for all builtin agent sessions (REQ-LOOP-005)
+                                         # when unset, falls back to the pipeline implementer model
 
 [skills.agent_runner.claudecode]
 bin = "claude"                  # resolved via $PATH if relative

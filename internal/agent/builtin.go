@@ -40,6 +40,9 @@ const reflectionPrompt = "Before continuing, briefly summarize: (1) what you hav
 
 // BuiltinConfig holds configuration for the builtin runner.
 type BuiltinConfig struct {
+	// Model overrides the LLM model for all calls within agent sessions (REQ-LOOP-005).
+	// When empty, the model passed to NewBuiltinRunner is used unchanged.
+	Model               string
 	DefaultAllowedTools []string
 	MaxTurnsDefault     int
 	ContextWindowBudget int // optional override; defaults to contextWindowBudget
@@ -73,9 +76,15 @@ func NewBuiltinRunner(
 	registry *tools.Registry,
 	cp ContextProvider,
 ) *BuiltinRunner {
+	// REQ-LOOP-005: if a model is explicitly configured, it takes priority over
+	// the fallback model passed by the caller (pipeline's implementer model).
+	effectiveModel := model
+	if config.Model != "" {
+		effectiveModel = config.Model
+	}
 	return &BuiltinRunner{
 		provider:        provider,
-		model:           model,
+		model:           effectiveModel,
 		config:          config,
 		registry:        registry,
 		contextProvider: cp,

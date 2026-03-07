@@ -260,7 +260,141 @@ func (m *mockFallbackLLM) Complete(_ context.Context, req models.LlmRequest) (*m
 func (m *mockFallbackLLM) ProviderName() string                { return "mock" }
 func (m *mockFallbackLLM) HealthCheck(_ context.Context) error { return nil }
 
-// --- Task 1.4: Subagent Budget Inheritance + Depth Enforcement tests ---
+// --- REQ-LOOP-005: Per-Model Router tests ---
+
+// mockCapturingLLM records every model used in LLM requests.
+type mockCapturingLLM struct {
+	capturedModels []string
+}
+
+func (m *mockCapturingLLM) Complete(_ context.Context, req models.LlmRequest) (*models.LlmResponse, error) {
+	m.capturedModels = append(m.capturedModels, req.Model)
+	return &models.LlmResponse{
+		Content:      "done",
+		StopReason:   models.StopReasonEndTurn,
+		TokensInput:  100,
+		TokensOutput: 50,
+		Model:        req.Model,
+	}, nil
+}
+func (m *mockCapturingLLM) ProviderName() string                { return "mock" }
+func (m *mockCapturingLLM) HealthCheck(_ context.Context) error { return nil }
+
+func TestBuiltinRunner_UsesConfiguredModel(t *testing.T) {
+	t.Run("uses model from BuiltinConfig when set", func(t *testing.T) {
+		mockLLM := &mockCapturingLLM{}
+		runner := NewBuiltinRunner(mockLLM, "fallback-model", BuiltinConfig{
+			MaxTurnsDefault: 5,
+			Model:           "configured-model",
+		}, nil, nil)
+
+		_, err := runner.Run(context.Background(), AgentRequest{
+			Prompt:  "Do something",
+			WorkDir: t.TempDir(),
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(mockLLM.capturedModels) == 0 {
+			t.Fatal("expected at least one LLM call")
+		}
+		for i, m := range mockLLM.capturedModels {
+			if m != "configured-model" {
+				t.Errorf("call %d: expected model %q, got %q", i+1, "configured-model", m)
+			}
+		}
+	})
+
+	t.Run("falls back to constructor model when BuiltinConfig.Model is empty", func(t *testing.T) {
+		mockLLM := &mockCapturingLLM{}
+		runner := NewBuiltinRunner(mockLLM, "default-model", BuiltinConfig{
+			MaxTurnsDefault: 5,
+			Model:           "", // not set
+		}, nil, nil)
+
+		_, err := runner.Run(context.Background(), AgentRequest{
+			Prompt:  "Do something",
+			WorkDir: t.TempDir(),
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(mockLLM.capturedModels) == 0 {
+			t.Fatal("expected at least one LLM call")
+		}
+		for i, m := range mockLLM.capturedModels {
+			if m != "default-model" {
+				t.Errorf("call %d: expected model %q, got %q", i+1, "default-model", m)
+			}
+		}
+	})
+}
+
+func TestNewAgentRunner_BuiltinConfigModelOverride(t *testing.T) {
+	// When BuiltinRunnerConfig.Model is set, factory should use it instead of agentModel arg.
+	mockLLM := &mockCapturingLLM{}
+	cfg := models.AgentRunnerConfig{
+		Provider: "builtin",
+		Builtin: models.BuiltinRunnerConfig{
+			Model: "per-model-router-model",
+		},
+	}
+
+	agentRunner, err := NewAgentRunner(cfg, nil, mockLLM, "default-agent-model", nil, models.LLMConfig{}, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	_, err = agentRunner.Run(context.Background(), AgentRequest{
+		Prompt:  "test",
+		WorkDir: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(mockLLM.capturedModels) == 0 {
+		t.Fatal("expected at least one LLM call")
+	}
+	for i, m := range mockLLM.capturedModels {
+		if m != "per-model-router-model" {
+			t.Errorf("call %d: expected model %q, got %q", i+1, "per-model-router-model", m)
+		}
+	}
+}
+
+func TestNewAgentRunner_BuiltinFallsBackToAgentModel(t *testing.T) {
+	// When BuiltinRunnerConfig.Model is empty, factory uses agentModel arg.
+	mockLLM := &mockCapturingLLM{}
+	cfg := models.AgentRunnerConfig{
+		Provider: "builtin",
+		Builtin:  models.BuiltinRunnerConfig{
+			// Model not set
+		},
+	}
+
+	agentRunner, err := NewAgentRunner(cfg, nil, mockLLM, "default-agent-model", nil, models.LLMConfig{}, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	_, err = agentRunner.Run(context.Background(), AgentRequest{
+		Prompt:  "test",
+		WorkDir: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(mockLLM.capturedModels) == 0 {
+		t.Fatal("expected at least one LLM call")
+	}
+	for i, m := range mockLLM.capturedModels {
+		if m != "default-agent-model" {
+			t.Errorf("call %d: expected model %q, got %q", i+1, "default-agent-model", m)
+		}
+	}
+}
 
 // mockSubagentCaptureLLM records what MaxTurns the subagent runner receives.
 // First call: returns tool_use requesting Subagent. Second call: returns end_turn.

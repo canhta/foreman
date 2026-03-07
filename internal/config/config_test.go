@@ -235,6 +235,45 @@ func TestValidateConfig_DashboardEnabledWithoutAuthToken(t *testing.T) {
 	}
 }
 
+func TestBuiltinRunnerConfig_ModelField(t *testing.T) {
+	t.Run("model set via TOML", func(t *testing.T) {
+		dir := t.TempDir()
+		configFile := filepath.Join(dir, "foreman.toml")
+		err := os.WriteFile(configFile, []byte(`
+[skills.agent_runner]
+type = "builtin"
+
+[skills.agent_runner.builtin]
+model = "claude-3-5-sonnet-20241022"
+`), 0644)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		cfg, err := LoadFromFile(configFile)
+		if err != nil {
+			t.Fatalf("LoadFromFile: %v", err)
+		}
+
+		if cfg.Skills.AgentRunner.Builtin.Model != "claude-3-5-sonnet-20241022" {
+			t.Errorf("expected model=claude-3-5-sonnet-20241022, got %q",
+				cfg.Skills.AgentRunner.Builtin.Model)
+		}
+	})
+
+	t.Run("model not set defaults to empty string", func(t *testing.T) {
+		cfg, err := LoadDefaults()
+		if err != nil {
+			t.Fatalf("LoadDefaults: %v", err)
+		}
+
+		if cfg.Skills.AgentRunner.Builtin.Model != "" {
+			t.Errorf("expected empty model by default, got %q",
+				cfg.Skills.AgentRunner.Builtin.Model)
+		}
+	})
+}
+
 func TestValidateConfig_SQLiteMaxParallel(t *testing.T) {
 	cfg, _ := LoadDefaults()
 	cfg.Database.Driver = "sqlite"
