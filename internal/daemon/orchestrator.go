@@ -481,6 +481,19 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 	}
 	results := executor.Execute(execCtx, tasksToRun)
 
+	// Recovery case: if all tasks were already completed before this run
+	// (tasksToRun was empty because every task ID appeared in dagState.CompletedTasks),
+	// DAGExecutor.Execute returns an empty map. Synthesize "done" results for those
+	// previously-completed tasks so the doneCount==0 gate and the PR task summaries
+	// both see the correct state (ARCH-F03).
+	if dagState != nil && len(dagState.CompletedTasks) > 0 {
+		for _, id := range dagState.CompletedTasks {
+			if _, alreadyInResults := results[id]; !alreadyInResults {
+				results[id] = TaskResult{TaskID: id, Status: models.TaskStatusDone}
+			}
+		}
+	}
+
 	// Analyze results.
 	doneCount, failedCount, skippedCount := analyzeResults(results)
 	totalCount := len(results)
