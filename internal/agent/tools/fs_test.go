@@ -169,6 +169,151 @@ func TestGrep_CaseInsensitive(t *testing.T) {
 	}
 }
 
+// --- ApplyPatch tests ---
+
+func TestApplyPatch_BasicHunk(t *testing.T) {
+	reg, dir := newFSRegistry(t)
+	original := "line1\nline2\nline3\nline4\n"
+	os.WriteFile(filepath.Join(dir, "patch_basic.txt"), []byte(original), 0644)
+
+	patch := `--- a/patch_basic.txt
++++ b/patch_basic.txt
+@@ -1,4 +1,4 @@
+ line1
+-line2
++LINE2
+ line3
+ line4
+`
+	out := execTool(t, reg, dir, "ApplyPatch", map[string]string{"path": "patch_basic.txt", "patch": patch})
+	if !strings.Contains(out, "OK") {
+		t.Errorf("expected OK, got %q", out)
+	}
+	data, _ := os.ReadFile(filepath.Join(dir, "patch_basic.txt"))
+	expected := "line1\nLINE2\nline3\nline4\n"
+	if string(data) != expected {
+		t.Errorf("expected %q, got %q", expected, string(data))
+	}
+}
+
+func TestApplyPatch_MultipleHunks(t *testing.T) {
+	reg, dir := newFSRegistry(t)
+	original := "line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\n"
+	os.WriteFile(filepath.Join(dir, "multi_hunk.txt"), []byte(original), 0644)
+
+	patch := `--- a/multi_hunk.txt
++++ b/multi_hunk.txt
+@@ -1,3 +1,3 @@
+ line1
+-line2
++LINE2
+ line3
+@@ -5,3 +5,3 @@
+ line5
+-line6
++LINE6
+ line7
+`
+	out := execTool(t, reg, dir, "ApplyPatch", map[string]string{"path": "multi_hunk.txt", "patch": patch})
+	if !strings.Contains(out, "OK") {
+		t.Errorf("expected OK, got %q", out)
+	}
+	data, _ := os.ReadFile(filepath.Join(dir, "multi_hunk.txt"))
+	if !strings.Contains(string(data), "LINE2") || !strings.Contains(string(data), "LINE6") {
+		t.Errorf("expected both hunks applied, got %q", string(data))
+	}
+}
+
+func TestApplyPatch_PathTraversalRejected(t *testing.T) {
+	reg, dir := newFSRegistry(t)
+	patch := `--- a/../../etc/passwd
++++ b/../../etc/passwd
+@@ -1,1 +1,1 @@
+-root
++evil
+`
+	b, _ := json.Marshal(map[string]string{"path": "../../etc/passwd", "patch": patch})
+	_, err := reg.Execute(context.Background(), dir, "ApplyPatch", b)
+	if err == nil {
+		t.Fatal("expected error for path traversal in ApplyPatch")
+	}
+}
+
+func TestApplyPatch_ContextMismatchReturnsRejectionReason(t *testing.T) {
+	reg, dir := newFSRegistry(t)
+	// File content differs from what the patch expects
+	os.WriteFile(filepath.Join(dir, "mismatch.txt"), []byte("different content\n"), 0644)
+
+	patch := `--- a/mismatch.txt
++++ b/mismatch.txt
+@@ -1,3 +1,3 @@
+ line1
+-line2
++LINE2
+ line3
+`
+	b, _ := json.Marshal(map[string]string{"path": "mismatch.txt", "patch": patch})
+	_, err := reg.Execute(context.Background(), dir, "ApplyPatch", b)
+	if err == nil {
+		t.Fatal("expected error when patch context does not match file")
+	}
+	// Should contain specific rejection reason
+	if !strings.Contains(err.Error(), "hunk") && !strings.Contains(err.Error(), "context") && !strings.Contains(err.Error(), "mismatch") {
+		t.Errorf("expected specific rejection reason in error, got %q", err.Error())
+	}
+}
+
+func TestApplyPatch_AddLines(t *testing.T) {
+	reg, dir := newFSRegistry(t)
+	original := "line1\nline3\n"
+	os.WriteFile(filepath.Join(dir, "add_lines.txt"), []byte(original), 0644)
+
+	patch := `--- a/add_lines.txt
++++ b/add_lines.txt
+@@ -1,2 +1,3 @@
+ line1
++line2
+ line3
+`
+	execTool(t, reg, dir, "ApplyPatch", map[string]string{"path": "add_lines.txt", "patch": patch})
+	data, _ := os.ReadFile(filepath.Join(dir, "add_lines.txt"))
+	expected := "line1\nline2\nline3\n"
+	if string(data) != expected {
+		t.Errorf("expected %q, got %q", expected, string(data))
+	}
+}
+
+func TestApplyPatch_DeleteLines(t *testing.T) {
+	reg, dir := newFSRegistry(t)
+	original := "line1\nline2\nline3\n"
+	os.WriteFile(filepath.Join(dir, "del_lines.txt"), []byte(original), 0644)
+
+	patch := `--- a/del_lines.txt
++++ b/del_lines.txt
+@@ -1,3 +1,2 @@
+ line1
+-line2
+ line3
+`
+	execTool(t, reg, dir, "ApplyPatch", map[string]string{"path": "del_lines.txt", "patch": patch})
+	data, _ := os.ReadFile(filepath.Join(dir, "del_lines.txt"))
+	expected := "line1\nline3\n"
+	if string(data) != expected {
+		t.Errorf("expected %q, got %q", expected, string(data))
+	}
+}
+
+func TestApplyPatch_InvalidPatchFormat(t *testing.T) {
+	reg, dir := newFSRegistry(t)
+	os.WriteFile(filepath.Join(dir, "file.txt"), []byte("hello\n"), 0644)
+
+	b, _ := json.Marshal(map[string]string{"path": "file.txt", "patch": "not a valid patch"})
+	_, err := reg.Execute(context.Background(), dir, "ApplyPatch", b)
+	if err == nil {
+		t.Fatal("expected error for invalid patch format")
+	}
+}
+
 func TestReadRange_ReturnsLineRange(t *testing.T) {
 	reg, dir := newFSRegistry(t)
 	var lines []string

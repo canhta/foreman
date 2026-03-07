@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -18,6 +19,7 @@ func registerFS(r *Registry) {
 	r.Register(&writeTool{})
 	r.Register(&editTool{})
 	r.Register(&multiEditTool{})
+	r.Register(&applyPatchTool{})
 	r.Register(&listDirTool{})
 	r.Register(&globTool{})
 	r.Register(&grepTool{})
@@ -223,6 +225,193 @@ func (t *multiEditTool) Execute(_ context.Context, workDir string, input json.Ra
 		return "", fmt.Errorf("MultiEdit: %w", err)
 	}
 	return fmt.Sprintf("OK (%d edits applied)", len(args.Edits)), nil
+}
+
+// --- ApplyPatch ---
+
+// patchHunk represents a single hunk from a unified diff.
+type patchHunk struct {
+	lines     []patchLine
+	origStart int // 1-based start line in original
+	origCount int
+	newStart  int // 1-based start line in new file
+	newCount  int
+}
+
+type patchLine struct {
+	text string
+	op   byte // ' ' context, '+' insert, '-' delete
+}
+
+// parseUnifiedDiff parses a unified diff patch and returns a slice of hunks.
+// It accepts the standard format produced by `git diff` or `diff -u`.
+func parseUnifiedDiff(patch string) ([]patchHunk, error) {
+	hunkHeader := regexp.MustCompile(`^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@`)
+	var hunks []patchHunk
+	var current *patchHunk
+	sawHunk := false
+
+	scanner := bufio.NewScanner(strings.NewReader(patch))
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "--- ") || strings.HasPrefix(line, "+++ ") {
+			// file header lines — skip
+			current = nil
+			continue
+		}
+		if m := hunkHeader.FindStringSubmatch(line); m != nil {
+			if current != nil {
+				hunks = append(hunks, *current)
+			}
+			h := patchHunk{}
+			h.origStart, _ = strconv.Atoi(m[1])
+			if m[2] == "" {
+				h.origCount = 1
+			} else {
+				h.origCount, _ = strconv.Atoi(m[2])
+			}
+			h.newStart, _ = strconv.Atoi(m[3])
+			if m[4] == "" {
+				h.newCount = 1
+			} else {
+				h.newCount, _ = strconv.Atoi(m[4])
+			}
+			current = &h
+			sawHunk = true
+			continue
+		}
+		if current == nil {
+			continue
+		}
+		if len(line) == 0 {
+			// blank line within hunk = context line with empty content
+			current.lines = append(current.lines, patchLine{op: ' ', text: ""})
+			continue
+		}
+		op := line[0]
+		if op != '+' && op != '-' && op != ' ' {
+			// unknown prefix — treat as end of hunk
+			hunks = append(hunks, *current)
+			current = nil
+			continue
+		}
+		current.lines = append(current.lines, patchLine{op: op, text: line[1:]})
+	}
+	if current != nil {
+		hunks = append(hunks, *current)
+	}
+	if !sawHunk {
+		return nil, fmt.Errorf("no hunk headers found in patch")
+	}
+	return hunks, nil
+}
+
+// applyHunks applies parsed hunks to the file lines, returning the result or
+// a specific rejection reason.
+func applyHunks(fileLines []string, hunks []patchHunk) ([]string, error) {
+	result := make([]string, len(fileLines))
+	copy(result, fileLines)
+
+	// Apply hunks in reverse order so line number offsets don't shift earlier hunks.
+	for i := len(hunks) - 1; i >= 0; i-- {
+		h := hunks[i]
+		// origStart is 1-based; convert to 0-based index.
+		pos := h.origStart - 1
+		if h.origCount == 0 {
+			// insertion before pos
+			pos = h.origStart // insert after origStart line (0-based)
+		}
+		if pos < 0 {
+			pos = 0
+		}
+
+		// Verify context lines match.
+		origIdx := pos
+		for _, pl := range h.lines {
+			if pl.op == '+' {
+				continue
+			}
+			if origIdx >= len(result) {
+				return nil, fmt.Errorf("ApplyPatch: hunk @@ -%d,%d +%d,%d @@ context mismatch: file has only %d lines, expected context at line %d",
+					h.origStart, h.origCount, h.newStart, h.newCount, len(result), origIdx+1)
+			}
+			if result[origIdx] != pl.text {
+				return nil, fmt.Errorf("ApplyPatch: hunk @@ -%d,%d +%d,%d @@ context mismatch at line %d: expected %q, got %q",
+					h.origStart, h.origCount, h.newStart, h.newCount, origIdx+1, pl.text, result[origIdx])
+			}
+			origIdx++
+		}
+
+		// Build replacement lines.
+		var newLines []string
+		for _, pl := range h.lines {
+			if pl.op == ' ' || pl.op == '+' {
+				newLines = append(newLines, pl.text)
+			}
+			// '-' lines are removed (not included)
+		}
+
+		// Replace the original span with new lines.
+		end := pos + h.origCount
+		if end > len(result) {
+			end = len(result)
+		}
+		result = append(result[:pos], append(newLines, result[end:]...)...)
+	}
+	return result, nil
+}
+
+type applyPatchTool struct{}
+
+func (t *applyPatchTool) Name() string { return "ApplyPatch" }
+func (t *applyPatchTool) Description() string {
+	return "Apply a unified diff format patch to a file. The patch must be in standard unified diff format (as produced by git diff or diff -u)."
+}
+func (t *applyPatchTool) Schema() json.RawMessage {
+	return json.RawMessage(`{"type":"object","properties":{"path":{"type":"string","description":"Relative file path to patch"},"patch":{"type":"string","description":"Unified diff patch string (--- / +++ / @@ headers + +/-/space lines)"}},"required":["path","patch"]}`)
+}
+func (t *applyPatchTool) Execute(_ context.Context, workDir string, input json.RawMessage) (string, error) {
+	var args struct {
+		Path  string `json:"path"`
+		Patch string `json:"patch"`
+	}
+	if err := json.Unmarshal(input, &args); err != nil {
+		return "", fmt.Errorf("ApplyPatch: %w", err)
+	}
+	if err := ValidatePath(workDir, args.Path); err != nil {
+		return "", fmt.Errorf("ApplyPatch: %w", err)
+	}
+
+	hunks, err := parseUnifiedDiff(args.Patch)
+	if err != nil {
+		return "", fmt.Errorf("ApplyPatch: parse error: %w", err)
+	}
+
+	abs := AbsPath(workDir, args.Path)
+	contentBytes, err := os.ReadFile(abs)
+	if err != nil {
+		return "", fmt.Errorf("ApplyPatch: %w", err)
+	}
+
+	// Split into lines, preserving trailing newline awareness.
+	content := string(contentBytes)
+	lines := strings.Split(content, "\n")
+	// If the file ends with a newline, Split produces a trailing empty string — keep it.
+
+	patched, err := applyHunks(lines, hunks)
+	if err != nil {
+		return "", err
+	}
+
+	if err := CheckSecrets(args.Path, strings.Join(patched, "\n")); err != nil {
+		return "", fmt.Errorf("ApplyPatch: %w", err)
+	}
+
+	result := strings.Join(patched, "\n")
+	if err := os.WriteFile(abs, []byte(result), 0644); err != nil {
+		return "", fmt.Errorf("ApplyPatch: %w", err)
+	}
+	return fmt.Sprintf("OK (%d hunk(s) applied)", len(hunks)), nil
 }
 
 // --- ListDir ---
