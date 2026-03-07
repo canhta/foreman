@@ -66,6 +66,7 @@ func (p *Planner) Plan(ctx context.Context, workDir string, ticket *models.Ticke
 		Model:        p.model,
 		SystemPrompt: assembled.SystemPrompt,
 		UserPrompt:   assembled.UserPrompt,
+		Stage:        "planning",
 		MaxTokens:    plannerMaxTokens,
 		Temperature:  plannerTemperature,
 	})

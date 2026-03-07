@@ -116,6 +116,7 @@ NO: <one sentence reason>`, ticket.Title, ticket.Description)
 	req := models.LlmRequest{
 		SystemPrompt: "You are a technical project manager evaluating ticket scope.",
 		UserPrompt:   prompt,
+		Stage:        "decomposition",
 		MaxTokens:    256,
 		Temperature:  0.0,
 	}
@@ -253,6 +254,7 @@ Return a JSON object with this schema:
 	resp, err := d.llm.Complete(ctx, models.LlmRequest{
 		SystemPrompt: "You are a technical project manager. Decompose tickets into focused, implementable child tickets.",
 		UserPrompt:   prompt,
+		Stage:        "decomposition",
 		MaxTokens:    4096,
 		Temperature:  0.2,
 	})

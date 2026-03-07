@@ -161,6 +161,7 @@ func (a *DAGTaskAdapter) runIntermediateConsistencyReview(ctx context.Context) {
 	resp, err := a.llm.Complete(ctx, models.LlmRequest{
 		SystemPrompt: "You are a code consistency reviewer. Respond only with a JSON array of violations.",
 		UserPrompt:   prompt,
+		Stage:        "consistency_review",
 		MaxTokens:    2048,
 	})
 	if err != nil {

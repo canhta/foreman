@@ -45,6 +45,7 @@ func (impl *Implementer) Execute(ctx context.Context, input ImplementerInput) (*
 		SystemPrompt:  systemPrompt,
 		UserPrompt:    userPrompt,
 		PromptVersion: input.PromptVersion,
+		Stage:         "implementing",
 		MaxTokens:     input.MaxTokens,
 		Temperature:   0.0,
 	})

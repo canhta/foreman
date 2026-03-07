@@ -47,6 +47,7 @@ func (r *QualityReviewer) Review(ctx context.Context, input QualityReviewInput) 
 		SystemPrompt:  system,
 		UserPrompt:    "Please provide your review.",
 		PromptVersion: input.PromptVersion,
+		Stage:         "quality_review",
 		MaxTokens:     2048,
 		Temperature:   0.1,
 	})

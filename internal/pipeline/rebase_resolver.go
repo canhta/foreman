@@ -77,6 +77,7 @@ Output format:
 
 If you cannot confidently resolve the conflict, say "CANNOT_RESOLVE" and explain why.`,
 		UserPrompt: sb.String(),
+		Stage:      "rebase_resolve",
 		MaxTokens:  4096,
 	})
 	if err != nil {

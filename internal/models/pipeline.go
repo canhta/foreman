@@ -85,18 +85,23 @@ type ThinkingConfig struct {
 
 // LlmRequest holds the parameters for a single stateless LLM call.
 type LlmRequest struct {
-	OutputSchema      *json.RawMessage `json:"output_schema,omitempty"`
-	Thinking          *ThinkingConfig  `json:"thinking,omitempty"`
-	Model             string           `json:"model"`
-	SystemPrompt      string           `json:"system_prompt"`
-	UserPrompt        string           `json:"user_prompt"`
-	PromptVersion     string           `json:"prompt_version,omitempty"` // SHA256 of the prompt template used
-	StopSequences     []string         `json:"stop_sequences,omitempty"`
-	Messages          []Message        `json:"messages,omitempty"`
-	Tools             []ToolDef        `json:"tools,omitempty"`
-	MaxTokens         int              `json:"max_tokens"`
-	Temperature       float64          `json:"temperature"`
-	CacheSystemPrompt bool             `json:"cache_system_prompt,omitempty"`
+	OutputSchema  *json.RawMessage `json:"output_schema,omitempty"`
+	Thinking      *ThinkingConfig  `json:"thinking,omitempty"`
+	Model         string           `json:"model"`
+	SystemPrompt  string           `json:"system_prompt"`
+	UserPrompt    string           `json:"user_prompt"`
+	PromptVersion string           `json:"prompt_version,omitempty"` // SHA256 of the prompt template used
+	// Stage identifies the pipeline stage making this LLM call (e.g. "planning",
+	// "implementing", "spec_review"). Populated by callers so RecordLlmCall can
+	// store per-stage cost breakdowns (ARCH-O04). Empty string is valid and means
+	// the stage is unknown.
+	Stage             string    `json:"stage,omitempty"`
+	StopSequences     []string  `json:"stop_sequences,omitempty"`
+	Messages          []Message `json:"messages,omitempty"`
+	Tools             []ToolDef `json:"tools,omitempty"`
+	MaxTokens         int       `json:"max_tokens"`
+	Temperature       float64   `json:"temperature"`
+	CacheSystemPrompt bool      `json:"cache_system_prompt,omitempty"`
 }
 
 // LlmResponse holds the result of a single LLM call.

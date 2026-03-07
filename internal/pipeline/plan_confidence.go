@@ -65,6 +65,7 @@ CONCERNS:
 
 If no concerns, write "CONCERNS:\n- none"`,
 		UserPrompt:  sb.String(),
+		Stage:       "plan_confidence",
 		MaxTokens:   512,
 		Temperature: 0.0,
 	})

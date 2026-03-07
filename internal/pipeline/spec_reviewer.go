@@ -56,6 +56,7 @@ func (r *SpecReviewer) Review(ctx context.Context, input SpecReviewInput) (*Revi
 		SystemPrompt:  system,
 		UserPrompt:    "Please provide your review.",
 		PromptVersion: input.PromptVersion,
+		Stage:         "spec_review",
 		MaxTokens:     2048,
 		Temperature:   0.1,
 	})

@@ -62,6 +62,7 @@ func (r *FinalReviewer) Review(ctx context.Context, input FinalReviewInput) (*Re
 	resp, err := r.llm.Complete(ctx, models.LlmRequest{
 		SystemPrompt: system,
 		UserPrompt:   "Please provide your review.",
+		Stage:        "final_review",
 		MaxTokens:    2048,
 		Temperature:  0.1,
 	})

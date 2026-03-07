@@ -18,17 +18,47 @@ type CallDetailsStore interface {
 	StoreCallDetails(ctx context.Context, callID, fullPrompt, fullResponse string) error
 }
 
+// LlmCallRecorder is the subset of db.Database needed to record structured LLM call
+// records with per-stage cost attribution (ARCH-O04). Implementations that also
+// satisfy CallDetailsStore can be passed directly to NewRecordingProvider.
+type LlmCallRecorder interface {
+	RecordLlmCall(ctx context.Context, call *models.LlmCallRecord) error
+}
+
 // RecordingProvider wraps an LlmProvider and persists full prompt/response details
 // to the database after every successful call (ARCH-O02 observability).
+// If the db also implements LlmCallRecorder, a structured LlmCallRecord is written
+// with per-stage cost data so GetTicketCostByStage returns meaningful results (ARCH-O04).
 // DB errors are logged as warnings and never propagate to callers.
 type RecordingProvider struct {
-	inner LlmProvider
-	db    CallDetailsStore
+	inner    LlmProvider
+	db       CallDetailsStore
+	recorder LlmCallRecorder // optional; set when db also implements LlmCallRecorder
+	costCtrl CostCalculator  // optional; used to compute cost_usd per call
+}
+
+// CostCalculator computes a USD cost given a model name and token counts.
+// Implemented by telemetry.CostController.
+type CostCalculator interface {
+	CalculateCost(model string, inputTokens, outputTokens int) float64
 }
 
 // NewRecordingProvider wraps provider with a RecordingProvider that stores call details.
+// If db also implements LlmCallRecorder, structured LlmCallRecord rows are written
+// for per-stage cost attribution (ARCH-O04).
 func NewRecordingProvider(provider LlmProvider, db CallDetailsStore) *RecordingProvider {
-	return &RecordingProvider{inner: provider, db: db}
+	rp := &RecordingProvider{inner: provider, db: db}
+	if rec, ok := db.(LlmCallRecorder); ok {
+		rp.recorder = rec
+	}
+	return rp
+}
+
+// WithCostCalculator attaches a cost calculator so each recorded LlmCallRecord
+// is populated with a cost_usd value (ARCH-O04).
+func (r *RecordingProvider) WithCostCalculator(cc CostCalculator) *RecordingProvider {
+	r.costCtrl = cc
+	return r
 }
 
 // Inner returns the wrapped LlmProvider. Useful for bypassing recording for internal calls.
@@ -52,18 +82,25 @@ func (r *RecordingProvider) Complete(ctx context.Context, req models.LlmRequest)
 	}
 
 	// Store call details — best-effort; DB errors are not propagated to the caller.
-	r.storeDetails(ctx, req, resp)
+	callID := r.storeDetails(ctx, req, resp)
+
+	// Record structured LlmCallRecord for per-stage cost attribution (ARCH-O04).
+	// Only executed when the db also implements LlmCallRecorder (i.e. in production).
+	if r.recorder != nil {
+		r.recordCall(ctx, callID, req, resp)
+	}
 
 	return resp, nil
 }
 
-func (r *RecordingProvider) storeDetails(ctx context.Context, req models.LlmRequest, resp *models.LlmResponse) {
+// storeDetails persists the full prompt/response pair and returns the generated call ID.
+func (r *RecordingProvider) storeDetails(ctx context.Context, req models.LlmRequest, resp *models.LlmResponse) string {
 	callID := fmt.Sprintf("llm-%d", time.Now().UnixNano())
 
 	promptBytes, err := json.Marshal(req)
 	if err != nil {
 		log.Warn().Err(err).Str("call_id", callID).Msg("recording_provider: failed to marshal request")
-		return
+		return callID
 	}
 	fullPrompt := string(promptBytes)
 
@@ -75,5 +112,39 @@ func (r *RecordingProvider) storeDetails(ctx context.Context, req models.LlmRequ
 
 	if storeErr := r.db.StoreCallDetails(ctx, callID, fullPrompt, fullResponse); storeErr != nil {
 		log.Warn().Err(storeErr).Str("call_id", callID).Msg("recording_provider: failed to store call details")
+	}
+	return callID
+}
+
+// recordCall writes a structured LlmCallRecord so GetTicketCostByStage returns
+// meaningful per-stage data (ARCH-O04). Best-effort: errors are logged, not propagated.
+func (r *RecordingProvider) recordCall(ctx context.Context, callID string, req models.LlmRequest, resp *models.LlmResponse) {
+	tc := telemetry.TraceFromContext(ctx)
+
+	var costUSD float64
+	if r.costCtrl != nil {
+		costUSD = r.costCtrl.CalculateCost(resp.Model, resp.TokensInput, resp.TokensOutput)
+	}
+
+	call := &models.LlmCallRecord{
+		ID:                  callID,
+		TicketID:            tc.TicketID,
+		Role:                r.inner.ProviderName(),
+		Provider:            r.inner.ProviderName(),
+		Model:               resp.Model,
+		Stage:               req.Stage,
+		TokensInput:         resp.TokensInput,
+		TokensOutput:        resp.TokensOutput,
+		CacheReadTokens:     resp.CacheReadTokens,
+		CacheCreationTokens: resp.CacheCreationTokens,
+		DurationMs:          resp.DurationMs,
+		CostUSD:             costUSD,
+		PromptVersion:       req.PromptVersion,
+		Status:              "success",
+		CreatedAt:           time.Now(),
+	}
+
+	if err := r.recorder.RecordLlmCall(ctx, call); err != nil {
+		log.Warn().Err(err).Str("call_id", callID).Msg("recording_provider: failed to record llm call")
 	}
 }
