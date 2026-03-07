@@ -5,9 +5,12 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	appcontext "github.com/canhta/foreman/internal/context"
 	"github.com/canhta/foreman/internal/models"
+	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
 )
 
 // LLMProvider is the interface for making LLM calls (matches llm.LlmProvider).
@@ -17,6 +20,12 @@ type LLMProvider interface {
 	HealthCheck(ctx context.Context) error
 }
 
+// HandoffStorer persists handoff records produced during the planning stage.
+// It is a subset of db.Database, defined here to avoid an import cycle.
+type HandoffStorer interface {
+	SetHandoff(ctx context.Context, h *models.HandoffRecord) error
+}
+
 const (
 	plannerMaxTokens   = 4096
 	plannerTemperature = 0.2
@@ -24,9 +33,10 @@ const (
 
 // Planner decomposes a ticket into implementation tasks via LLM.
 type Planner struct {
-	llm    LLMProvider
-	limits *models.LimitsConfig
-	model  string
+	llm          LLMProvider
+	handoffStore HandoffStorer
+	limits       *models.LimitsConfig
+	model        string
 	// planConfidenceThreshold triggers clarification when confidence < threshold.
 	// 0 disables confidence scoring (no second LLM call).
 	planConfidenceThreshold float64
@@ -47,6 +57,13 @@ func NewPlannerWithModel(llm LLMProvider, limits *models.LimitsConfig, model str
 // threshold=0 disables scoring (default).
 func (p *Planner) WithConfidenceScoring(threshold float64) *Planner {
 	p.planConfidenceThreshold = threshold
+	return p
+}
+
+// WithHandoffStore attaches a store for persisting the plan_confidence score
+// as a handoff record after scoring (REQ-PIPE-002).
+func (p *Planner) WithHandoffStore(store HandoffStorer) *Planner {
+	p.handoffStore = store
 	return p
 }
 
@@ -102,11 +119,33 @@ func (p *Planner) Plan(ctx context.Context, workDir string, ticket *models.Ticke
 	if p.planConfidenceThreshold > 0 {
 		confidence, confErr := ScorePlanConfidence(ctx, p.llm, result.Tasks, p.model)
 		if confErr != nil {
-			// Non-fatal: log and continue without blocking.
-			_ = confErr
+			// Non-fatal: log warning and proceed without blocking.
+			log.Warn().Err(confErr).
+				Str("ticket_id", ticket.ID).
+				Msg("plan confidence scoring failed (non-fatal, proceeding)")
 		} else {
 			result.ConfidenceScore = confidence.Score
 			result.ConfidenceConcerns = confidence.Concerns
+
+			// Store confidence score as a handoff for downstream consumers.
+			if p.handoffStore != nil {
+				scoreStr := fmt.Sprintf("%.2f", confidence.Score)
+				handoffErr := p.handoffStore.SetHandoff(ctx, &models.HandoffRecord{
+					ID:        uuid.New().String(),
+					TicketID:  ticket.ID,
+					FromRole:  "planner",
+					ToRole:    "implementer",
+					Key:       "plan_confidence",
+					Value:     scoreStr,
+					CreatedAt: time.Now(),
+				})
+				if handoffErr != nil {
+					log.Warn().Err(handoffErr).
+						Str("ticket_id", ticket.ID).
+						Msg("failed to store plan_confidence handoff (non-fatal)")
+				}
+			}
+
 			if confidence.Score < p.planConfidenceThreshold {
 				result.Status = "CLARIFICATION_NEEDED"
 				concerns := strings.Join(confidence.Concerns, "; ")
