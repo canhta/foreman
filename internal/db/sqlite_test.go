@@ -799,6 +799,88 @@ func TestReleaseLock_OnlyReleaseOwnLock(t *testing.T) {
 	assert.Equal(t, 1, count, "lock held by another must not be released")
 }
 
+// ---------------------------------------------------------------------------
+// REQ-INFRA-002: Embedding Index Store tests
+// ---------------------------------------------------------------------------
+
+func TestEmbeddingStore_RoundTrip(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	rec := EmbeddingRecord{
+		RepoPath:  "/repo/myproject",
+		HeadSHA:   "abc123def456",
+		FilePath:  "internal/foo/bar.go",
+		StartLine: 10,
+		EndLine:   20,
+		ChunkText: "func Foo() {}",
+		Vector:    []float32{0.1, 0.2, 0.3, 0.4},
+	}
+
+	require.NoError(t, db.UpsertEmbedding(ctx, rec))
+
+	results, err := db.GetEmbeddingsByRepoSHA(ctx, rec.RepoPath, rec.HeadSHA)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+
+	got := results[0]
+	assert.Equal(t, rec.RepoPath, got.RepoPath)
+	assert.Equal(t, rec.HeadSHA, got.HeadSHA)
+	assert.Equal(t, rec.FilePath, got.FilePath)
+	assert.Equal(t, rec.StartLine, got.StartLine)
+	assert.Equal(t, rec.EndLine, got.EndLine)
+	assert.Equal(t, rec.ChunkText, got.ChunkText)
+	require.Len(t, got.Vector, len(rec.Vector))
+	for i := range rec.Vector {
+		assert.InDelta(t, rec.Vector[i], got.Vector[i], 1e-6, "vector[%d] mismatch", i)
+	}
+}
+
+func TestCosineSimilarity_Orthogonal(t *testing.T) {
+	a := []float32{1, 0, 0}
+	b := []float32{0, 1, 0}
+	assert.InDelta(t, float32(0), CosineSimilarity(a, b), 1e-6)
+}
+
+func TestCosineSimilarity_Identical(t *testing.T) {
+	v := []float32{1, 2, 3}
+	assert.InDelta(t, float32(1.0), CosineSimilarity(v, v), 1e-6)
+}
+
+func TestEmbeddingStore_DeleteByRepoSHA(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	repoPath := "/repo/myproject"
+	headSHA := "deadbeef1234"
+
+	for i, fp := range []string{"a.go", "b.go"} {
+		require.NoError(t, db.UpsertEmbedding(ctx, EmbeddingRecord{
+			RepoPath:  repoPath,
+			HeadSHA:   headSHA,
+			FilePath:  fp,
+			StartLine: i * 10,
+			EndLine:   i*10 + 5,
+			ChunkText: "chunk " + fp,
+			Vector:    []float32{float32(i), float32(i + 1)},
+		}))
+	}
+
+	// Verify 2 rows inserted.
+	rows, err := db.GetEmbeddingsByRepoSHA(ctx, repoPath, headSHA)
+	require.NoError(t, err)
+	require.Len(t, rows, 2)
+
+	// Delete and verify count=0.
+	require.NoError(t, db.DeleteEmbeddingsByRepoSHA(ctx, repoPath, headSHA))
+
+	rows, err = db.GetEmbeddingsByRepoSHA(ctx, repoPath, headSHA)
+	require.NoError(t, err)
+	assert.Empty(t, rows)
+}
+
 // TestSQLiteDB_StoreCallDetails_NoFKRequired verifies that StoreCallDetails succeeds
 // with a call ID that has no corresponding row in llm_calls. The table must be a
 // standalone log table without a FK constraint.

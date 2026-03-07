@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/canhta/foreman/internal/db"
 	"github.com/canhta/foreman/internal/git"
 	"github.com/canhta/foreman/internal/models"
 	"github.com/canhta/foreman/internal/telemetry"
@@ -193,6 +194,14 @@ func (m *orchMockDB) AcquireLock(_ context.Context, _ string, _ int) (bool, erro
 	return true, nil
 }
 func (m *orchMockDB) ReleaseLock(_ context.Context, _ string) error { return nil }
+
+func (m *orchMockDB) UpsertEmbedding(_ context.Context, _ db.EmbeddingRecord) error {
+	return nil
+}
+func (m *orchMockDB) GetEmbeddingsByRepoSHA(_ context.Context, _, _ string) ([]db.EmbeddingRecord, error) {
+	return nil, nil
+}
+func (m *orchMockDB) DeleteEmbeddingsByRepoSHA(_ context.Context, _, _ string) error { return nil }
 
 func (m *orchMockDB) lastStatus(id string) models.TicketStatus {
 	for i := len(m.statusUpdates) - 1; i >= 0; i-- {

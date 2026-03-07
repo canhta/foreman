@@ -82,5 +82,10 @@ type Database interface {
 	AcquireLock(ctx context.Context, lockName string, ttlSeconds int) (acquired bool, err error)
 	ReleaseLock(ctx context.Context, lockName string) error
 
+	// Embedding store
+	UpsertEmbedding(ctx context.Context, e EmbeddingRecord) error
+	GetEmbeddingsByRepoSHA(ctx context.Context, repoPath, headSHA string) ([]EmbeddingRecord, error)
+	DeleteEmbeddingsByRepoSHA(ctx context.Context, repoPath, headSHA string) error
+
 	io.Closer
 }

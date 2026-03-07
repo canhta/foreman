@@ -156,6 +156,23 @@ CREATE TABLE IF NOT EXISTS distributed_locks (
     holder_id   TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS embeddings (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    repo_path   TEXT NOT NULL,
+    head_sha    TEXT NOT NULL,
+    file_path   TEXT NOT NULL,
+    start_line  INTEGER NOT NULL,
+    end_line    INTEGER NOT NULL,
+    chunk_text  TEXT NOT NULL,
+    vector      BLOB NOT NULL,
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_embeddings_repo_sha_file_line
+    ON embeddings(repo_path, head_sha, file_path, start_line);
+CREATE INDEX IF NOT EXISTS idx_embeddings_repo_sha
+    ON embeddings(repo_path, head_sha);
+
 CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(status);
 CREATE INDEX IF NOT EXISTS idx_tickets_external_id ON tickets(external_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_ticket_id ON tasks(ticket_id);

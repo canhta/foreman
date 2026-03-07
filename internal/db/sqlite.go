@@ -1021,3 +1021,59 @@ func (s *SQLiteDB) ReleaseLock(ctx context.Context, lockName string) error {
 	}
 	return nil
 }
+
+// --- Embedding Store (REQ-INFRA-002) ---
+
+// UpsertEmbedding inserts or replaces an embedding record, serializing the vector as BLOB.
+func (s *SQLiteDB) UpsertEmbedding(ctx context.Context, e EmbeddingRecord) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT OR REPLACE INTO embeddings (repo_path, head_sha, file_path, start_line, end_line, chunk_text, vector)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		e.RepoPath, e.HeadSHA, e.FilePath, e.StartLine, e.EndLine, e.ChunkText, SerializeVector(e.Vector),
+	)
+	if err != nil {
+		return fmt.Errorf("upsert embedding: %w", err)
+	}
+	return nil
+}
+
+// GetEmbeddingsByRepoSHA retrieves all embedding records for a given repo and commit SHA.
+func (s *SQLiteDB) GetEmbeddingsByRepoSHA(ctx context.Context, repoPath, headSHA string) ([]EmbeddingRecord, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, repo_path, head_sha, file_path, start_line, end_line, chunk_text, vector
+		 FROM embeddings WHERE repo_path = ? AND head_sha = ?`,
+		repoPath, headSHA,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("get embeddings: %w", err)
+	}
+	defer rows.Close()
+
+	var results []EmbeddingRecord
+	for rows.Next() {
+		var rec EmbeddingRecord
+		var blob []byte
+		if err := rows.Scan(&rec.ID, &rec.RepoPath, &rec.HeadSHA, &rec.FilePath,
+			&rec.StartLine, &rec.EndLine, &rec.ChunkText, &blob); err != nil {
+			return nil, fmt.Errorf("scan embedding row: %w", err)
+		}
+		rec.Vector = DeserializeVector(blob)
+		results = append(results, rec)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate embedding rows: %w", err)
+	}
+	return results, nil
+}
+
+// DeleteEmbeddingsByRepoSHA deletes all embedding records for a given repo and commit SHA.
+func (s *SQLiteDB) DeleteEmbeddingsByRepoSHA(ctx context.Context, repoPath, headSHA string) error {
+	_, err := s.db.ExecContext(ctx,
+		`DELETE FROM embeddings WHERE repo_path = ? AND head_sha = ?`,
+		repoPath, headSHA,
+	)
+	if err != nil {
+		return fmt.Errorf("delete embeddings: %w", err)
+	}
+	return nil
+}
