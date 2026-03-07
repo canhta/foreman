@@ -20,14 +20,17 @@ func NewImplementer(provider LLMProvider) *Implementer {
 }
 
 // ImplementerInput holds all parameters for a single implementer call.
+//
+//nolint:govet // fieldalignment: struct field order prioritises readability over padding
 type ImplementerInput struct {
-	Task          *models.Task
-	ContextFiles  map[string]string
-	Model         string
-	Feedback      string
-	PromptVersion string
-	MaxTokens     int
-	Attempt       int
+	Task           *models.Task
+	ContextFiles   map[string]string
+	Model          string
+	Feedback       string
+	PromptVersion  string
+	MaxTokens      int
+	Attempt        int
+	RetryErrorType ErrorType
 }
 
 // ImplementerResult holds the raw LLM response from the implementer.
@@ -54,6 +57,38 @@ func (impl *Implementer) Execute(ctx context.Context, input ImplementerInput) (*
 	}
 
 	return &ImplementerResult{Response: resp}, nil
+}
+
+// retryHeadingAndGuidance returns the markdown heading and per-error-type guidance
+// paragraph for a retry prompt section. For unknown/zero-value error types it
+// returns the legacy generic heading and no guidance (backward compatible).
+func retryHeadingAndGuidance(errType ErrorType, attempt int) (heading, guidance string) {
+	switch errType {
+	case ErrorTypeCompile:
+		return fmt.Sprintf("## RETRY — Compile Error (attempt %d)\n\n", attempt),
+			"Focus on fixing the build error. Check import paths, undefined symbols, and missing return statements. Do not refactor unrelated code."
+	case ErrorTypeTypeError:
+		return fmt.Sprintf("## RETRY — Type Error (attempt %d)\n\n", attempt),
+			"Focus on fixing the type mismatch. Verify interface implementations, check function signatures, and ensure correct type assertions."
+	case ErrorTypeLintStyle:
+		return fmt.Sprintf("## RETRY — Lint/Style (attempt %d)\n\n", attempt),
+			"Focus on fixing the lint/style issues listed below. Do not rewrite working logic."
+	case ErrorTypeTestAssertion:
+		return fmt.Sprintf("## RETRY — Test Assertion (attempt %d)\n\n", attempt),
+			"Focus on making the failing test assertions pass. Read the expected vs actual values carefully and adjust implementation, not tests."
+	case ErrorTypeTestRuntime:
+		return fmt.Sprintf("## RETRY — Test Runtime (attempt %d)\n\n", attempt),
+			"Focus on preventing the runtime panic. Check nil pointer dereferences, slice/map bounds, and error returns before use."
+	case ErrorTypeSpecViolation:
+		return fmt.Sprintf("## RETRY — Spec Violation (attempt %d)\n\n", attempt),
+			"Focus on satisfying the acceptance criteria listed below. Do not change code unrelated to the failing criteria."
+	case ErrorTypeQualityConcern:
+		return fmt.Sprintf("## RETRY — Quality Concern (attempt %d)\n\n", attempt),
+			"Focus on addressing the quality concerns listed below. Refactor only the flagged areas."
+	default:
+		// ErrorTypeUnknown or zero value: preserve the original generic header.
+		return fmt.Sprintf("## RETRY (attempt %d)\n\n", attempt), ""
+	}
 }
 
 func buildImplementerSystemPrompt() string {
@@ -88,7 +123,12 @@ func buildImplementerUserPrompt(input ImplementerInput) string {
 	}
 
 	if input.Attempt > 1 && input.Feedback != "" {
-		prompt += fmt.Sprintf("## RETRY (attempt %d)\n\n%s\n\n", input.Attempt, input.Feedback)
+		heading, guidance := retryHeadingAndGuidance(input.RetryErrorType, input.Attempt)
+		prompt += heading
+		if guidance != "" {
+			prompt += guidance + "\n\n"
+		}
+		prompt += input.Feedback + "\n\n"
 	}
 
 	return prompt

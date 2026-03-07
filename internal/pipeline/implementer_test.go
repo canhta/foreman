@@ -107,3 +107,93 @@ func TestImplementer_ExecuteRetry(t *testing.T) {
 		t.Errorf("expected user prompt to contain feedback text, got:\n%s", req.UserPrompt)
 	}
 }
+
+// TestBuildImplementerUserPrompt_NoRetryOnFirstAttempt verifies no retry section
+// appears when Attempt == 1.
+func TestBuildImplementerUserPrompt_NoRetryOnFirstAttempt(t *testing.T) {
+	input := ImplementerInput{
+		Task:     &models.Task{ID: "t1", Title: "Some task"},
+		Attempt:  1,
+		Feedback: "some feedback",
+	}
+	prompt := buildImplementerUserPrompt(input)
+	if strings.Contains(prompt, "RETRY") {
+		t.Errorf("expected no RETRY section on first attempt, got:\n%s", prompt)
+	}
+}
+
+// TestBuildImplementerUserPrompt_CompileErrorGuidance verifies the compile-error
+// heading and guidance appear before the feedback text on retry.
+func TestBuildImplementerUserPrompt_CompileErrorGuidance(t *testing.T) {
+	input := ImplementerInput{
+		Task:           &models.Task{ID: "t1", Title: "Fix compile"},
+		Attempt:        2,
+		Feedback:       "syntax error: unexpected token",
+		RetryErrorType: ErrorTypeCompile,
+	}
+	prompt := buildImplementerUserPrompt(input)
+
+	if !strings.Contains(prompt, "Compile Error") {
+		t.Errorf("expected heading to contain 'Compile Error', got:\n%s", prompt)
+	}
+	if !strings.Contains(prompt, "Focus on fixing the build error") {
+		t.Errorf("expected compile guidance, got:\n%s", prompt)
+	}
+	// Guidance must appear BEFORE the raw feedback text.
+	guidanceIdx := strings.Index(prompt, "Focus on fixing the build error")
+	feedbackIdx := strings.Index(prompt, "syntax error: unexpected token")
+	if guidanceIdx == -1 || feedbackIdx == -1 || guidanceIdx > feedbackIdx {
+		t.Errorf("guidance must appear before feedback text; guidanceIdx=%d feedbackIdx=%d", guidanceIdx, feedbackIdx)
+	}
+}
+
+// TestBuildImplementerUserPrompt_TestAssertionGuidance verifies the test-assertion
+// heading and guidance appear on retry.
+func TestBuildImplementerUserPrompt_TestAssertionGuidance(t *testing.T) {
+	input := ImplementerInput{
+		Task:           &models.Task{ID: "t1", Title: "Fix test"},
+		Attempt:        2,
+		Feedback:       "expected: 5, got: 0",
+		RetryErrorType: ErrorTypeTestAssertion,
+	}
+	prompt := buildImplementerUserPrompt(input)
+
+	if !strings.Contains(prompt, "Test Assertion") {
+		t.Errorf("expected heading to contain 'Test Assertion', got:\n%s", prompt)
+	}
+	if !strings.Contains(prompt, "Focus on making the failing test assertions pass") {
+		t.Errorf("expected test assertion guidance, got:\n%s", prompt)
+	}
+}
+
+// TestBuildImplementerUserPrompt_UnknownTypeGenericHeader verifies that the
+// unknown / zero-value error type still produces the old generic ## RETRY header.
+func TestBuildImplementerUserPrompt_UnknownTypeGenericHeader(t *testing.T) {
+	input := ImplementerInput{
+		Task:           &models.Task{ID: "t1", Title: "Fix unknown"},
+		Attempt:        2,
+		Feedback:       "something went wrong",
+		RetryErrorType: ErrorTypeUnknown,
+	}
+	prompt := buildImplementerUserPrompt(input)
+
+	if !strings.Contains(prompt, "## RETRY (attempt 2)") {
+		t.Errorf("expected generic '## RETRY (attempt 2)' header for unknown type, got:\n%s", prompt)
+	}
+}
+
+// TestBuildImplementerUserPrompt_ZeroValueTypeGenericHeader verifies backward
+// compatibility when RetryErrorType is the zero value (empty string).
+func TestBuildImplementerUserPrompt_ZeroValueTypeGenericHeader(t *testing.T) {
+	input := ImplementerInput{
+		Task:     &models.Task{ID: "t1", Title: "Fix unknown"},
+		Attempt:  2,
+		Feedback: "something went wrong",
+		// RetryErrorType intentionally left as zero value
+	}
+	prompt := buildImplementerUserPrompt(input)
+
+	if !strings.Contains(prompt, "## RETRY (attempt 2)") {
+		t.Errorf("expected generic '## RETRY (attempt 2)' header for zero-value type, got:\n%s", prompt)
+	}
+}

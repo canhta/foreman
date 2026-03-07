@@ -158,6 +158,8 @@ func (r *PipelineTaskRunner) RunTask(ctx context.Context, task *models.Task) err
 
 	feedback := NewFeedbackAccumulator()
 
+	var currentRetryErrorType ErrorType
+
 	for attempt := 1; attempt <= r.config.MaxImplementationRetries+1; attempt++ {
 		// Collapse prior feedback into a summary so the implementer retains
 		// context from previous attempts without raw entries growing unboundedly.
@@ -170,6 +172,7 @@ func (r *PipelineTaskRunner) RunTask(ctx context.Context, task *models.Task) err
 			// Classify the error before retry for targeted feedback and metrics.
 			feedbackText := feedback.Render()
 			errType := ClassifyRetryError(feedbackText)
+			currentRetryErrorType = errType
 			if dbErr := r.db.SetTaskErrorType(ctx, task.ID, string(errType)); dbErr != nil {
 				log.Warn().Err(dbErr).Str("task_id", task.ID).Str("error_type", string(errType)).
 					Msg("failed to record task error type")
@@ -205,13 +208,14 @@ func (r *PipelineTaskRunner) RunTask(ctx context.Context, task *models.Task) err
 			contextFilePaths = append(contextFilePaths, p)
 		}
 		result, err := r.implementer.Execute(ctx, ImplementerInput{
-			Task:          task,
-			ContextFiles:  contextFiles,
-			Model:         r.config.Models.Implementer,
-			Feedback:      feedback.Render(),
-			PromptVersion: r.promptVersion("implementer"),
-			MaxTokens:     4096,
-			Attempt:       attempt,
+			Task:           task,
+			ContextFiles:   contextFiles,
+			Model:          r.config.Models.Implementer,
+			Feedback:       feedback.Render(),
+			PromptVersion:  r.promptVersion("implementer"),
+			MaxTokens:      4096,
+			Attempt:        attempt,
+			RetryErrorType: currentRetryErrorType,
 		})
 		if err != nil {
 			return fmt.Errorf("implementer (attempt %d): %w", attempt, err)
