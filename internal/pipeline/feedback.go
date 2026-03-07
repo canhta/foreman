@@ -83,6 +83,23 @@ func (f *FeedbackAccumulator) Reset() {
 	f.entries = f.entries[:0]
 }
 
+// ResetKeepingSummary collapses all current entries into a single "Prior attempt
+// summary" entry, then clears the rest. This preserves context from prior retry
+// attempts without growing the feedback list unboundedly. If there is no current
+// feedback, the accumulator is left empty.
+func (f *FeedbackAccumulator) ResetKeepingSummary() {
+	if len(f.entries) == 0 {
+		return
+	}
+	// Render the current state into a single summary string.
+	summary := f.Render()
+	f.entries = f.entries[:0]
+	f.entries = append(f.entries, feedbackEntry{
+		category: "Prior attempt summary",
+		content:  truncate(summary, maxFeedbackLen),
+	})
+}
+
 // Render produces the combined feedback string for inclusion in retry prompts.
 func (f *FeedbackAccumulator) Render() string {
 	if len(f.entries) == 0 {

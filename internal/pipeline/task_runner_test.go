@@ -179,23 +179,47 @@ func TestQualityReviewPassesTaskID(t *testing.T) {
 }
 
 func TestFeedbackAccumulator_ResetBetweenRetries(t *testing.T) {
-	// Simulate what RunTask does: feedback should be cleared at the start
-	// of each retry loop iteration so that stale feedback from attempt N
-	// does not leak into attempt N+1.
+	// Simulate what RunTask does: feedback should be collapsed at the start
+	// of each retry loop iteration (attempt > 1) so that stale raw entries
+	// from attempt N do not grow unboundedly into attempt N+1.
 	feedback := NewFeedbackAccumulator()
 
 	for attempt := 1; attempt <= 3; attempt++ {
-		// Reset at the very start of each iteration (the fix).
-		feedback.Reset()
-
-		// At the start of every attempt, feedback must be empty.
-		assert.False(t, feedback.HasFeedback(),
-			"attempt %d: feedback should be empty at start of loop iteration", attempt)
+		if attempt > 1 {
+			// ResetKeepingSummary collapses prior feedback to one summary entry.
+			feedback.ResetKeepingSummary()
+			// After collapse, should have at most 1 entry (the summary).
+			assert.LessOrEqual(t, feedback.Attempt(), 1,
+				"attempt %d: after ResetKeepingSummary should have at most 1 summary entry", attempt)
+		}
 
 		// Simulate a failure that adds feedback.
 		feedback.AddTestError("test failed on attempt " + fmt.Sprintf("%d", attempt))
 		assert.True(t, feedback.HasFeedback())
 	}
+}
+
+func TestFeedbackAccumulator_ResetKeepingSummary_CarriesPriorContext(t *testing.T) {
+	feedback := NewFeedbackAccumulator()
+
+	// Attempt 1: quality reviewer found a critical issue.
+	feedback.AddQualityFeedback("[CRITICAL] hardcoded secret key in config.go")
+	require.Equal(t, 1, feedback.Attempt())
+
+	// Between attempt 1 and 2: collapse.
+	feedback.ResetKeepingSummary()
+	assert.Equal(t, 1, feedback.Attempt(), "collapsed to single summary entry")
+
+	// Attempt 2: test failure.
+	feedback.AddTestError("panic: runtime error in handler_test.go:42")
+	assert.Equal(t, 2, feedback.Attempt())
+
+	rendered := feedback.Render()
+	// The collapsed prior context must still be visible to the implementer.
+	assert.Contains(t, rendered, "Prior attempt summary")
+	assert.Contains(t, rendered, "hardcoded secret")
+	// And the new attempt 2 error must be there too.
+	assert.Contains(t, rendered, "runtime error")
 }
 
 func TestTaskRunnerConfig_Defaults(t *testing.T) {

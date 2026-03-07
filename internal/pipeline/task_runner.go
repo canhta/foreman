@@ -87,14 +87,16 @@ func (r *PipelineTaskRunner) RunTask(ctx context.Context, task *models.Task) err
 	feedback := NewFeedbackAccumulator()
 
 	for attempt := 1; attempt <= r.config.MaxImplementationRetries+1; attempt++ {
-		// Clear stale feedback from previous attempt so it does not leak
-		// into this iteration's retry prompt.
-		feedback.Reset()
+		// Collapse prior feedback into a summary so the implementer retains
+		// context from previous attempts without raw entries growing unboundedly.
+		// On the very first attempt this is a no-op (accumulator is empty).
+		feedback.ResetKeepingSummary()
 
-		// Revert any file changes left by the previous attempt.
+		// Revert only the files this task is supposed to modify, preserving
+		// committed changes from prior tasks in the pipeline.
 		if attempt > 1 {
-			if cleanErr := r.git.CleanWorkingTree(ctx, r.config.WorkDir); cleanErr != nil {
-				return fmt.Errorf("clean working tree before retry: %w", cleanErr)
+			if resetErr := r.resetWorkingTree(ctx, task.FilesToModify); resetErr != nil {
+				return fmt.Errorf("reset working tree before retry: %w", resetErr)
 			}
 		}
 
@@ -268,6 +270,23 @@ func (r *PipelineTaskRunner) runQualityReview(
 	if !result.Approved {
 		feedback.AddQualityFeedback(result.IssuesText())
 		return &reviewRejectedError{reviewer: "quality"}
+	}
+	return nil
+}
+
+// resetWorkingTree reverts only the files listed in filesToModify to their
+// last-committed state using `git checkout -- <file>`. This is intentionally
+// narrower than CleanWorkingTree (which nukes the entire tree) so that
+// committed changes from prior tasks in the same pipeline run are preserved.
+func (r *PipelineTaskRunner) resetWorkingTree(ctx context.Context, filesToModify []string) error {
+	for _, f := range filesToModify {
+		fullPath := filepath.Join(r.config.WorkDir, f)
+		args := []string{"checkout", "--", fullPath}
+		if _, err := r.cmdRunner.Run(ctx, r.config.WorkDir, "git", args, 30); err != nil {
+			// Ignore errors for files that don't exist in the index yet
+			// (e.g. a new file that was never committed).
+			continue
+		}
 	}
 	return nil
 }

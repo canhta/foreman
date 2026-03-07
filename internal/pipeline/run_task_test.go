@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/canhta/foreman/internal/git"
@@ -278,14 +279,18 @@ func TestRunTask_SpecReviewRejection_TriggersRetry(t *testing.T) {
 }
 
 // =============================================
-// RunTask: CleanWorkingTree called between retries
+// RunTask: resetWorkingTree (via git checkout) called between retries, not CleanWorkingTree
 // =============================================
 
-func TestRunTask_CleanWorkingTree_CalledBetweenRetries(t *testing.T) {
+func TestRunTask_ResetWorkingTree_CalledBetweenRetries_NotCleanWorkingTree(t *testing.T) {
 	db := newMockTaskRunnerDB()
 	cleanCount := 0
+	// CleanWorkingTree must NOT be called — we track it to assert it stays at 0.
 	g := &realMockGitProvider{diffOutput: "+x", commitSHA: "sha-clean", cleanCalled: &cleanCount}
-	cmd := &realMockCmdRunner{exitCode: 0}
+
+	var checkoutArgs [][]string
+	baseCmd := &realMockCmdRunner{exitCode: 0}
+	trackCmd := &trackingCmdRunner{inner: baseCmd, checkoutArgs: &checkoutArgs}
 
 	// First attempt: invalid output (triggers retry). Second attempt: valid.
 	llm2 := &implCountingLLM{
@@ -299,17 +304,122 @@ func TestRunTask_CleanWorkingTree_CalledBetweenRetries(t *testing.T) {
 		qualityResponse: "STATUS: APPROVED\nISSUES:\n- None",
 	}
 
-	r := newTaskRunnerForTest(t, db, llm2, g, cmd, TaskRunnerConfig{
+	r := newTaskRunnerForTest(t, db, llm2, g, trackCmd, TaskRunnerConfig{
 		MaxImplementationRetries: 2,
 		EnableTDDVerification:    false,
 	})
 
-	task := simpleTask("t-clean", "Clean test")
+	task := &models.Task{
+		ID:            "t-clean",
+		Title:         "Clean test",
+		FilesToModify: []string{"handler.go"},
+	}
 	err := r.RunTask(context.Background(), task)
 	require.NoError(t, err)
 
-	// CleanWorkingTree should have been called once (before attempt 2).
-	assert.Equal(t, 1, cleanCount, "CleanWorkingTree should be called once between retries")
+	// CleanWorkingTree (nuke-all) must NOT be called — only per-file checkout is allowed.
+	assert.Equal(t, 0, cleanCount, "CleanWorkingTree must not be called; use resetWorkingTree instead")
+
+	// At least one git checkout -- call must have happened (for the retry).
+	hasCheckout := false
+	for _, args := range checkoutArgs {
+		if len(args) >= 2 && args[0] == "git" && args[1] == "checkout" {
+			hasCheckout = true
+		}
+	}
+	assert.True(t, hasCheckout, "resetWorkingTree should have invoked git checkout between retries")
+}
+
+// =============================================
+// RunTask: resetWorkingTree only touches FilesToModify files (BUG-C02)
+// =============================================
+
+func TestRunTask_ResetWorkingTree_OnlyTouchesFilesToModify(t *testing.T) {
+	workDir := t.TempDir()
+
+	// Create two files in the work directory.
+	fileA := "internal/handler.go"
+	fileB := "internal/util.go"
+	require.NoError(t, os.MkdirAll(filepath.Join(workDir, "internal"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(workDir, fileA), []byte("package handler\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(workDir, fileB), []byte("package util\n"), 0o644))
+
+	// Track which git checkout -- calls are made.
+	var checkoutArgs [][]string
+
+	baseCmd := &realMockCmdRunner{exitCode: 0}
+	trackCmd := &trackingCmdRunner{
+		inner:        baseCmd,
+		checkoutArgs: &checkoutArgs,
+	}
+
+	db := newMockTaskRunnerDB()
+	g := &realMockGitProvider{diffOutput: "+x", commitSHA: "sha-reset"}
+
+	// First attempt: implementer gives bad output (triggers retry).
+	// Second attempt: implementer succeeds.
+	callN := 0
+	llm3 := &implCountingLLM{
+		implResponses: func(n int) string {
+			callN = n
+			if n == 1 {
+				return "not valid implementer output at all"
+			}
+			return buildNewFileResponse("out.go", "package main\n")
+		},
+		specResponse:    "STATUS: APPROVED\nCRITERIA:\n- [pass] ok\nISSUES:\n- None",
+		qualityResponse: "STATUS: APPROVED\nISSUES:\n- None",
+	}
+
+	r := newTaskRunnerForTest(t, db, llm3, g, trackCmd, TaskRunnerConfig{
+		WorkDir:                  workDir,
+		MaxImplementationRetries: 2,
+		EnableTDDVerification:    false,
+	})
+
+	task := &models.Task{
+		ID:            "t-reset",
+		Title:         "Reset test",
+		FilesToModify: []string{fileA}, // only fileA is in scope
+	}
+	err := r.RunTask(context.Background(), task)
+	require.NoError(t, err)
+	_ = callN
+
+	// After retry, git checkout -- should have been called with fileA only,
+	// not fileB and not ".".
+	checkedOut := false
+	for _, args := range checkoutArgs {
+		// args is the argv slice for git checkout
+		if len(args) >= 3 && args[0] == "git" && args[1] == "checkout" {
+			// Should contain "--" and the specific file.
+			argsStr := strings.Join(args, " ")
+			assert.NotContains(t, argsStr, fileB, "resetWorkingTree must not touch fileB which is not in FilesToModify")
+			assert.NotContains(t, argsStr, "checkout -- .", "resetWorkingTree must not run git checkout -- . (all files)")
+			if strings.Contains(argsStr, fileA) {
+				checkedOut = true
+			}
+		}
+	}
+	assert.True(t, checkedOut, "resetWorkingTree should have run git checkout -- for fileA")
+}
+
+// trackingCmdRunner wraps another CommandRunner and records git checkout calls.
+type trackingCmdRunner struct {
+	inner        runner.CommandRunner
+	checkoutArgs *[][]string
+}
+
+func (m *trackingCmdRunner) Run(ctx context.Context, workDir, cmd string, args []string, timeout int) (*runner.CommandOutput, error) {
+	if cmd == "git" && len(args) >= 2 && args[0] == "checkout" {
+		full := append([]string{"git"}, args...)
+		*m.checkoutArgs = append(*m.checkoutArgs, full)
+	}
+	return m.inner.Run(ctx, workDir, cmd, args, timeout)
+}
+
+func (m *trackingCmdRunner) CommandExists(ctx context.Context, name string) bool {
+	return m.inner.CommandExists(ctx, name)
 }
 
 // implCountingLLM tracks per-role call counts with separate impl call counter.

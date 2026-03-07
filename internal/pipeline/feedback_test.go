@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestFeedbackAccumulator_Empty(t *testing.T) {
@@ -86,4 +87,51 @@ func TestFeedbackAccumulator_Truncation(t *testing.T) {
 	fb.AddTestError(string(longError))
 	rendered := fb.Render()
 	assert.Less(t, len(rendered), 4000) // Should be truncated
+}
+
+func TestFeedbackAccumulator_ResetKeepingSummary_CollapsesPriorFeedback(t *testing.T) {
+	fb := NewFeedbackAccumulator()
+
+	// Simulate feedback from attempt 1.
+	fb.AddTestError("test failed: panic in handler")
+	fb.AddQualityFeedback("[CRITICAL] SQL injection vulnerability")
+	require.True(t, fb.HasFeedback())
+	require.Equal(t, 2, fb.Attempt())
+
+	// Collapse to summary.
+	fb.ResetKeepingSummary()
+
+	// Should have exactly one entry now.
+	assert.Equal(t, 1, fb.Attempt(), "ResetKeepingSummary should collapse to a single entry")
+	assert.True(t, fb.HasFeedback(), "should still have feedback after collapse")
+
+	// The single entry should mention prior attempt / summary.
+	rendered := fb.Render()
+	assert.Contains(t, rendered, "Prior attempt summary", "collapsed entry should be labelled as prior summary")
+	// Original content should be preserved in the summary.
+	assert.Contains(t, rendered, "test failed", "prior test error content should survive in summary")
+	assert.Contains(t, rendered, "SQL injection", "prior quality feedback should survive in summary")
+}
+
+func TestFeedbackAccumulator_ResetKeepingSummary_ThenAddNewFeedback(t *testing.T) {
+	fb := NewFeedbackAccumulator()
+
+	// Attempt 1 feedback.
+	fb.AddLintError("unused import")
+	fb.ResetKeepingSummary()
+
+	// Attempt 2 feedback.
+	fb.AddTestError("new test failure")
+
+	rendered := fb.Render()
+	// Both the collapsed summary and the new error should appear.
+	assert.Contains(t, rendered, "Prior attempt summary")
+	assert.Contains(t, rendered, "new test failure")
+}
+
+func TestFeedbackAccumulator_ResetKeepingSummary_WhenEmpty_RemainsEmpty(t *testing.T) {
+	fb := NewFeedbackAccumulator()
+	fb.ResetKeepingSummary()
+	assert.False(t, fb.HasFeedback(), "empty accumulator should stay empty after ResetKeepingSummary")
+	assert.Equal(t, 0, fb.Attempt())
 }
