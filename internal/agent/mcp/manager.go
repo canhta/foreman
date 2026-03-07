@@ -7,11 +7,13 @@ import (
 	"strings"
 
 	"github.com/canhta/foreman/internal/models"
+	"github.com/canhta/foreman/internal/telemetry"
 )
 
 // Manager coordinates multiple MCP server clients.
 type Manager struct {
 	clients map[string]Client
+	metrics *telemetry.Metrics
 }
 
 // NewManager creates a new MCP Manager.
@@ -19,6 +21,12 @@ func NewManager() *Manager {
 	return &Manager{
 		clients: make(map[string]Client),
 	}
+}
+
+// WithMetrics attaches a Metrics instance for instrumentation.
+func (m *Manager) WithMetrics(met *telemetry.Metrics) *Manager {
+	m.metrics = met
+	return m
 }
 
 // RegisterClient registers a named MCP client with the manager.
@@ -88,7 +96,15 @@ func (m *Manager) CallTool(ctx context.Context, toolName string, input json.RawM
 		if strings.HasPrefix(toolName, prefix) {
 			// Extract original tool name portion and pass it through
 			originalTool := toolName[len(prefix):]
-			return client.Call(ctx, originalTool, input)
+			result, err := client.Call(ctx, originalTool, input)
+			if m.metrics != nil {
+				status := "success"
+				if err != nil {
+					status = "error"
+				}
+				m.metrics.MCPToolCallsTotal.WithLabelValues(name, originalTool, status).Inc()
+			}
+			return result, err
 		}
 	}
 

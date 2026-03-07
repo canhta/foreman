@@ -13,6 +13,7 @@ import (
 	"github.com/canhta/foreman/internal/git"
 	"github.com/canhta/foreman/internal/models"
 	"github.com/canhta/foreman/internal/runner"
+	"github.com/canhta/foreman/internal/telemetry"
 )
 
 // EscalationError signals that the implementer detected ambiguity mid-task
@@ -63,6 +64,7 @@ type PipelineTaskRunner struct {
 	implementer     *Implementer
 	specReviewer    *SpecReviewer
 	qualityReviewer *QualityReviewer
+	metrics         *telemetry.Metrics
 	config          TaskRunnerConfig
 }
 
@@ -84,6 +86,11 @@ func NewPipelineTaskRunner(
 		specReviewer:    NewSpecReviewer(llm),
 		qualityReviewer: NewQualityReviewer(llm),
 	}
+}
+
+// SetMetrics attaches a Metrics instance for instrumentation.
+func (r *PipelineTaskRunner) SetMetrics(m *telemetry.Metrics) {
+	r.metrics = m
 }
 
 // RunTask executes the full per-task pipeline. Returns nil on success,
@@ -110,6 +117,11 @@ func (r *PipelineTaskRunner) RunTask(ctx context.Context, task *models.Task) err
 			if dbErr := r.db.SetTaskErrorType(ctx, task.ID, string(errType)); dbErr != nil {
 				log.Warn().Err(dbErr).Str("task_id", task.ID).Str("error_type", string(errType)).
 					Msg("failed to record task error type")
+			}
+
+			// Record retry triggered metric.
+			if r.metrics != nil {
+				r.metrics.RetryTriggeredTotal.WithLabelValues("implement", string(errType)).Inc()
 			}
 
 			if resetErr := r.resetWorkingTree(ctx, task.FilesToModify); resetErr != nil {
@@ -236,6 +248,11 @@ func (r *PipelineTaskRunner) RunTask(ctx context.Context, task *models.Task) err
 
 	// All retries exhausted.
 	_ = r.db.UpdateTaskStatus(ctx, task.ID, models.TaskStatusFailed)
+	if r.metrics != nil {
+		feedbackText := feedback.Render()
+		errType := string(ClassifyRetryError(feedbackText))
+		r.metrics.TaskFailuresTotal.WithLabelValues(errType, "builtin").Inc()
+	}
 	return fmt.Errorf("task %q failed after %d attempts", task.Title, r.config.MaxImplementationRetries+1)
 }
 

@@ -122,6 +122,57 @@ func TestMetrics_RecordDAGExecution(t *testing.T) {
 	}
 }
 
+func TestMetrics_NewMetrics_RegistersAllCounters(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	m := NewMetrics(reg)
+
+	if m.TaskFailuresTotal == nil {
+		t.Error("expected non-nil TaskFailuresTotal")
+	}
+	if m.RetryTriggeredTotal == nil {
+		t.Error("expected non-nil RetryTriggeredTotal")
+	}
+	if m.PlanConfidenceScore == nil {
+		t.Error("expected non-nil PlanConfidenceScore")
+	}
+	if m.ContextCacheHitRatio == nil {
+		t.Error("expected non-nil ContextCacheHitRatio")
+	}
+	if m.MCPToolCallsTotal == nil {
+		t.Error("expected non-nil MCPToolCallsTotal")
+	}
+}
+
+func TestMetrics_TaskFailuresTotal_CanBeIncremented(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	m := NewMetrics(reg)
+
+	m.TaskFailuresTotal.WithLabelValues("compile_error", "builtin").Inc()
+
+	families, err := reg.Gather()
+	if err != nil {
+		t.Fatalf("gather failed: %v", err)
+	}
+
+	var found bool
+	for _, f := range families {
+		if f.GetName() == "foreman_task_failures_total" {
+			found = true
+			mets := f.GetMetric()
+			if len(mets) == 0 {
+				t.Fatal("expected at least one metric sample")
+			}
+			val := mets[0].GetCounter().GetValue()
+			if val != 1 {
+				t.Errorf("expected task_failures_total counter = 1, got %v", val)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("metric foreman_task_failures_total not found")
+	}
+}
+
 func TestMetrics_RecordCacheSavings(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	m := NewMetrics(reg)

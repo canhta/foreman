@@ -39,6 +39,12 @@ type Metrics struct {
 	DAGDuration       prometheus.Histogram
 
 	AnthropicCacheSavingsTotal prometheus.Counter
+
+	TaskFailuresTotal    *prometheus.CounterVec // labels: error_type, runner
+	RetryTriggeredTotal  *prometheus.CounterVec // labels: stage, error_type
+	PlanConfidenceScore  prometheus.Histogram
+	ContextCacheHitRatio prometheus.Gauge
+	MCPToolCallsTotal    *prometheus.CounterVec // labels: server, tool, status
 }
 
 // NewMetrics creates and registers all Prometheus metrics with the given registerer.
@@ -159,6 +165,27 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 			Name: "foreman_anthropic_cache_savings_tokens_total",
 			Help: "Total tokens served from Anthropic prompt cache (cache_read_input_tokens)",
 		}),
+		TaskFailuresTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "foreman_task_failures_total",
+			Help: "Total number of task failures by error type and runner.",
+		}, []string{"error_type", "runner"}),
+		RetryTriggeredTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "foreman_retry_triggered_total",
+			Help: "Total number of retries triggered by stage and error type.",
+		}, []string{"stage", "error_type"}),
+		PlanConfidenceScore: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Name:    "foreman_plan_confidence_score_histogram",
+			Help:    "Distribution of plan confidence scores.",
+			Buckets: prometheus.LinearBuckets(0.1, 0.1, 10),
+		}),
+		ContextCacheHitRatio: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: "foreman_context_cache_hit_ratio",
+			Help: "Ratio of context cache hits to total context lookups.",
+		}),
+		MCPToolCallsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "foreman_mcp_tool_calls_total",
+			Help: "Total number of MCP tool calls by server, tool name, and status.",
+		}, []string{"server", "tool", "status"}),
 	}
 
 	reg.MustRegister(
@@ -173,6 +200,8 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 		m.ProviderOutages, m.CrashRecoveries,
 		m.DAGTasksCompleted, m.DAGTasksFailed, m.DAGTasksSkipped, m.DAGDuration,
 		m.AnthropicCacheSavingsTotal,
+		m.TaskFailuresTotal, m.RetryTriggeredTotal, m.PlanConfidenceScore,
+		m.ContextCacheHitRatio, m.MCPToolCallsTotal,
 	)
 
 	return m
