@@ -20,6 +20,7 @@ import (
 	"github.com/canhta/foreman/internal/models"
 	"github.com/canhta/foreman/internal/pipeline"
 	"github.com/canhta/foreman/internal/runner"
+	"github.com/canhta/foreman/internal/skills"
 	"github.com/canhta/foreman/internal/telemetry"
 	"github.com/canhta/foreman/internal/tracker"
 	"github.com/prometheus/client_golang/prometheus"
@@ -104,6 +105,7 @@ func (f *taskRunnerFactory) Create(input daemon.TaskRunnerFactoryInput) daemon.T
 		IntermediateReviewInterval: input.IntermediateReviewInterval,
 		Cache:                      input.ContextCache,
 		PromptVersions:             input.PromptVersions,
+		HookRunner:                 input.HookRunner,
 	}
 	tr := pipeline.NewPipelineTaskRunner(f.llm, f.db, f.gitProv, f.cmdRunner, cfg)
 	return pipeline.NewDAGTaskAdapterWithConsistency(tr, f.db, input.TicketID, f.llm, f.db, f.gitProv, cfg)
@@ -283,6 +285,24 @@ func newStartCmd() *cobra.Command {
 			// 9c. Wire event emitter to orchestrator (always, even without dashboard).
 			emitter := telemetry.NewEventEmitter(database)
 			orch.SetEventEmitter(emitter)
+
+			// 9d. Build skill hook runner (best-effort — non-fatal if skills dir missing).
+			// Skills are loaded from "./skills" in the working directory.
+			// If the directory does not exist, hooks are silently disabled.
+			{
+				skillsDir := "./skills"
+				loadedSkills, loadErr := skills.LoadSkillsDir(skillsDir)
+				if loadErr != nil {
+					log.Warn().Err(loadErr).Str("skills_dir", skillsDir).Msg("failed to load skills directory; skill hooks disabled")
+				} else {
+					engine := skills.NewEngine(llmProv, cmdRunner, cfg.Daemon.WorkDir, cfg.Git.DefaultBranch)
+					hr := skills.NewHookRunner(engine, loadedSkills)
+					orch.SetHookRunner(hr)
+					d.SetHookRunner(hr)
+					d.SetSkillEventEmitter(emitter)
+					log.Info().Int("count", len(loadedSkills)).Str("skills_dir", skillsDir).Msg("skill hooks registered")
+				}
+			}
 
 			// 10. Signal context.
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

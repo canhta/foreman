@@ -14,6 +14,7 @@ import (
 	"github.com/canhta/foreman/internal/git"
 	"github.com/canhta/foreman/internal/models"
 	"github.com/canhta/foreman/internal/runner"
+	"github.com/canhta/foreman/internal/skills"
 	"github.com/canhta/foreman/internal/telemetry"
 )
 
@@ -31,11 +32,18 @@ func (e *EscalationError) Error() string {
 //
 //nolint:govet // fieldalignment: struct field order prioritises readability over padding
 type TaskRunnerConfig struct {
-	Cache                    *appcontext.ContextCache
-	Models                   models.ModelsConfig
-	WorkDir                  string
-	CodebasePatterns         string
-	TestCommand              string
+	Cache            *appcontext.ContextCache
+	Models           models.ModelsConfig
+	WorkDir          string
+	CodebasePatterns string
+	TestCommand      string
+	// PromptVersions maps prompt template filenames (e.g. "planner.md.j2") to
+	// their SHA256 hashes computed at startup (REQ-OBS-001). Used to populate
+	// LlmRequest.PromptVersion so each call is traceable to a specific template version.
+	PromptVersions map[string]string
+	// HookRunner fires post_lint skill hooks after each task commit (REQ-OBS-002).
+	// Optional — nil disables skill hooks in the task runner.
+	HookRunner               *skills.HookRunner
 	MaxImplementationRetries int
 	MaxSpecReviewCycles      int
 	MaxQualityReviewCycles   int
@@ -53,10 +61,6 @@ type TaskRunnerConfig struct {
 	// check runs. After every N completed tasks (where N = IntermediateReviewInterval),
 	// a lightweight LLM consistency check is triggered. 0 disables the check.
 	IntermediateReviewInterval int
-	// PromptVersions maps prompt template filenames (e.g. "planner.md.j2") to
-	// their SHA256 hashes computed at startup (REQ-OBS-001). Used to populate
-	// LlmRequest.PromptVersion so each call is traceable to a specific template version.
-	PromptVersions map[string]string
 }
 
 // ConsistencyReviewDB is the subset of db.Database needed by the intermediate
@@ -113,6 +117,31 @@ func NewPipelineTaskRunner(
 // SetMetrics attaches a Metrics instance for instrumentation.
 func (r *PipelineTaskRunner) SetMetrics(m *telemetry.Metrics) {
 	r.metrics = m
+}
+
+// runPostLintHook fires post_lint skill hooks after a task commit (REQ-OBS-002).
+// Failures are logged as warnings and do not abort the task.
+func (r *PipelineTaskRunner) runPostLintHook(ctx context.Context, task *models.Task) {
+	if r.config.HookRunner == nil {
+		return
+	}
+	tc := telemetry.TraceFromContext(ctx)
+	sCtx := &skills.SkillContext{
+		PipelineCtx: &telemetry.PipelineContext{
+			TraceID:  tc.TraceID,
+			TicketID: task.TicketID,
+			TaskID:   task.ID,
+			Stage:    "post_lint",
+		},
+	}
+	for _, hr := range r.config.HookRunner.RunHook(ctx, "post_lint", sCtx) {
+		if hr.Error != nil {
+			log.Warn().Err(hr.Error).
+				Str("task_id", task.ID).
+				Str("skill", hr.SkillID).
+				Msg("post_lint hook failed (non-fatal)")
+		}
+	}
 }
 
 // RunTask executes the full per-task pipeline. Returns nil on success,
@@ -266,6 +295,9 @@ func (r *PipelineTaskRunner) RunTask(ctx context.Context, task *models.Task) err
 		if r.config.Cache != nil {
 			r.config.Cache.Invalidate()
 		}
+
+		// Fire post_lint skill hooks after successful commit (REQ-OBS-002).
+		r.runPostLintHook(ctx, task)
 
 		// Write context feedback row so future tasks can learn from this one.
 		r.writeContextFeedback(ctx, task, contextFilePaths, parsed)

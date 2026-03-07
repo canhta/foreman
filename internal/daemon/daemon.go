@@ -65,6 +65,7 @@ type Daemon struct {
 	channel       channel.Channel
 	channelRouter channel.InboundHandler
 	hookRunner    *skills.HookRunner
+	emitter       skills.SkillEventEmitter
 	scheduler     *Scheduler
 	tickets       chan struct{}
 	startedAt     time.Time
@@ -113,6 +114,13 @@ func (d *Daemon) SetHookRunner(runner *skills.HookRunner) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.hookRunner = runner
+}
+
+// SetSkillEventEmitter attaches the event emitter forwarded into skill hook contexts (REQ-OBS-002).
+func (d *Daemon) SetSkillEventEmitter(emitter skills.SkillEventEmitter) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.emitter = emitter
 }
 
 // SetTracker attaches a tracker for parent ticket completion.
@@ -195,6 +203,7 @@ func (d *Daemon) Start(ctx context.Context) {
 	runnerMode := d.config.RunnerMode
 	prChecker := d.prChecker
 	hookRunner := d.hookRunner
+	emitter := d.emitter
 	tr := d.tracker
 	daemonChannel := d.channel
 	d.mu.Unlock()
@@ -225,6 +234,9 @@ func (d *Daemon) Start(ctx context.Context) {
 	// Start merge checker goroutine
 	if prChecker != nil && database != nil {
 		mc := NewMergeChecker(database, prChecker, hookRunner, tr, log.Logger)
+		// Wire pipeline context accessors so post_merge skill hooks receive
+		// HandoffDB, ProgressDB, and EventEmitter (REQ-OBS-002).
+		mc.SetSkillContextAccessors(database, database, emitter)
 		if daemonChannel != nil {
 			mc.SetNotify(func(ctx context.Context, ticket *models.Ticket, msg string) {
 				if ticket.ChannelSenderID == "" {

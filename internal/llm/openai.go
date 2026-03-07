@@ -35,7 +35,6 @@ func NewOpenAIProvider(apiKey, baseURL string) *OpenAIProvider {
 
 func (p *OpenAIProvider) ProviderName() string { return "openai" }
 
-//nolint:govet // fieldalignment: Temperature must be *float64 so callers can send 0.0 explicitly
 type openaiRequest struct {
 	Temperature         *float64        `json:"temperature,omitempty"`
 	Model               string          `json:"model"`

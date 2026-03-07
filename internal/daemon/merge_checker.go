@@ -8,6 +8,7 @@ import (
 	"github.com/canhta/foreman/internal/git"
 	"github.com/canhta/foreman/internal/models"
 	"github.com/canhta/foreman/internal/skills"
+	"github.com/canhta/foreman/internal/telemetry"
 	"github.com/canhta/foreman/internal/tracker"
 	"github.com/rs/zerolog"
 )
@@ -30,6 +31,11 @@ type MergeChecker struct {
 	tracker    tracker.IssueTracker
 	notify     func(ctx context.Context, ticket *models.Ticket, msg string)
 	log        zerolog.Logger
+
+	// Optional pipeline context accessors for skill hook injection (REQ-OBS-002).
+	handoffDB    skills.HandoffAccessor
+	progressDB   skills.ProgressAccessor
+	eventEmitter skills.SkillEventEmitter
 }
 
 // NewMergeChecker creates a new MergeChecker.
@@ -41,6 +47,15 @@ func NewMergeChecker(db MergeCheckerDB, prChecker git.PRChecker, hookRunner *ski
 		tracker:    tr,
 		log:        log,
 	}
+}
+
+// SetSkillContextAccessors attaches optional database accessors and an event emitter
+// that are forwarded into SkillContext when triggering hook runners (REQ-OBS-002).
+// All three arguments are optional; pass nil to leave any accessor unset.
+func (m *MergeChecker) SetSkillContextAccessors(handoffDB skills.HandoffAccessor, progressDB skills.ProgressAccessor, emitter skills.SkillEventEmitter) {
+	m.handoffDB = handoffDB
+	m.progressDB = progressDB
+	m.eventEmitter = emitter
 }
 
 // SetNotify attaches a notification callback invoked when the pr_updated status is set.
@@ -103,9 +118,22 @@ func (m *MergeChecker) handleMerged(ctx context.Context, ticket *models.Ticket) 
 	}
 	ticket.Status = models.TicketStatusMerged
 
-	// Fire post_merge hooks
+	// Fire post_merge hooks, injecting pipeline context so agentsdk steps can
+	// read/write handoffs and emit structured events (REQ-OBS-002).
 	if m.hookRunner != nil {
-		sCtx := &skills.SkillContext{Ticket: ticket}
+		// Extract the trace ID from the context if one was set upstream.
+		tc := telemetry.TraceFromContext(ctx)
+		sCtx := &skills.SkillContext{
+			Ticket: ticket,
+			PipelineCtx: &telemetry.PipelineContext{
+				TraceID:  tc.TraceID,
+				TicketID: ticket.ID,
+				Stage:    "post_merge",
+			},
+			HandoffDB:    m.handoffDB,
+			ProgressDB:   m.progressDB,
+			EventEmitter: m.eventEmitter,
+		}
 		for _, hr := range m.hookRunner.RunHook(ctx, "post_merge", sCtx) {
 			if hr.Error != nil {
 				m.log.Warn().Err(hr.Error).Str("ticket", ticket.ID).Str("skill", hr.SkillID).Msg("post_merge hook failed")

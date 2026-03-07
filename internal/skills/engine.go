@@ -16,10 +16,24 @@ import (
 	"github.com/canhta/foreman/internal/llm"
 	"github.com/canhta/foreman/internal/models"
 	"github.com/canhta/foreman/internal/runner"
+	"github.com/canhta/foreman/internal/telemetry"
 )
 
 // SkillContext holds the execution context for a skill run.
 type SkillContext struct {
+	// PipelineCtx carries pipeline execution state (REQ-OBS-002).
+	// Optional — nil when running outside a pipeline context.
+	PipelineCtx *telemetry.PipelineContext
+
+	// HandoffDB provides read/write access to handoff records. Optional.
+	HandoffDB HandoffAccessor
+
+	// ProgressDB provides write access to progress patterns. Optional.
+	ProgressDB ProgressAccessor
+
+	// EventEmitter provides structured event emission. Optional.
+	EventEmitter SkillEventEmitter
+
 	Ticket   interface{}
 	Models   map[string]string
 	Steps    map[string]*StepResult
@@ -105,7 +119,7 @@ func (e *Engine) executeStep(ctx context.Context, step SkillStep, sCtx *SkillCon
 	case "git_diff":
 		return e.executeGitDiff(ctx)
 	case "agentsdk":
-		return e.executeAgentSDK(ctx, step)
+		return e.executeAgentSDK(ctx, step, sCtx)
 	case "subskill":
 		return e.executeSubSkill(ctx, step, sCtx)
 	default:
@@ -113,7 +127,7 @@ func (e *Engine) executeStep(ctx context.Context, step SkillStep, sCtx *SkillCon
 	}
 }
 
-func (e *Engine) executeLLMCall(ctx context.Context, step SkillStep, _ *SkillContext) (*StepResult, error) {
+func (e *Engine) executeLLMCall(ctx context.Context, step SkillStep, sCtx *SkillContext) (*StepResult, error) {
 	prompt := step.Content
 	if prompt == "" {
 		prompt = fmt.Sprintf("Execute skill step: %s", step.ID)
@@ -127,6 +141,17 @@ func (e *Engine) executeLLMCall(ctx context.Context, step SkillStep, _ *SkillCon
 	if err != nil {
 		return nil, err
 	}
+
+	// Emit structured event on completion (REQ-OBS-002).
+	if sCtx != nil && sCtx.EventEmitter != nil && sCtx.PipelineCtx != nil {
+		sCtx.EventEmitter.Emit(ctx,
+			sCtx.PipelineCtx.TicketID, sCtx.PipelineCtx.TaskID,
+			"skill_llm_call_completed", "info",
+			fmt.Sprintf("step=%s output_len=%d", step.ID, len(resp.Content)),
+			nil,
+		)
+	}
+
 	return &StepResult{Output: resp.Content}, nil
 }
 
@@ -194,7 +219,7 @@ func (e *Engine) executeGitDiff(ctx context.Context) (*StepResult, error) {
 	return &StepResult{Output: diff}, nil
 }
 
-func (e *Engine) executeAgentSDK(ctx context.Context, step SkillStep) (*StepResult, error) {
+func (e *Engine) executeAgentSDK(ctx context.Context, step SkillStep, sCtx *SkillContext) (*StepResult, error) {
 	if e.agentRunner == nil {
 		return nil, fmt.Errorf("agentsdk step '%s': no agent runner configured", step.ID)
 	}
@@ -230,9 +255,53 @@ func (e *Engine) executeAgentSDK(ctx context.Context, step SkillStep) (*StepResu
 		req.SystemPrompt = fc
 	}
 
+	// Inject pipeline context and handoff data into system prompt (REQ-OBS-002).
+	// If HandoffDB and PipelineCtx are set, fetch available handoffs for this ticket
+	// and annotate the system prompt so the agent has full context.
+	if sCtx != nil && sCtx.HandoffDB != nil && sCtx.PipelineCtx != nil {
+		handoffs, err := sCtx.HandoffDB.GetHandoffs(ctx, sCtx.PipelineCtx.TicketID, "")
+		if err != nil {
+			log.Warn().Err(err).
+				Str("ticket_id", sCtx.PipelineCtx.TicketID).
+				Str("step_id", step.ID).
+				Msg("agentsdk: failed to fetch handoffs (continuing without)")
+		} else if len(handoffs) > 0 {
+			req.SystemPrompt += "\n\n## Available Handoffs\n"
+			for _, h := range handoffs {
+				req.SystemPrompt += fmt.Sprintf("- %s (from %s → %s): %s\n", h.Key, h.FromRole, h.ToRole, h.Value)
+			}
+		}
+	}
+
 	result, err := e.agentRunner.Run(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("agentsdk step '%s': %w", step.ID, err)
+	}
+
+	// Save progress patterns from step output if ProgressDB is available (REQ-OBS-002).
+	if sCtx != nil && sCtx.ProgressDB != nil && sCtx.PipelineCtx != nil && result.Output != "" {
+		p := &models.ProgressPattern{
+			TicketID:         sCtx.PipelineCtx.TicketID,
+			DiscoveredByTask: sCtx.PipelineCtx.TaskID,
+			PatternKey:       step.ID,
+			PatternValue:     result.Output,
+		}
+		if saveErr := sCtx.ProgressDB.SaveProgressPattern(ctx, p); saveErr != nil {
+			log.Warn().Err(saveErr).
+				Str("ticket_id", sCtx.PipelineCtx.TicketID).
+				Str("step_id", step.ID).
+				Msg("agentsdk: failed to save progress pattern (non-fatal)")
+		}
+	}
+
+	// Emit structured event on completion (REQ-OBS-002).
+	if sCtx != nil && sCtx.EventEmitter != nil && sCtx.PipelineCtx != nil {
+		sCtx.EventEmitter.Emit(ctx,
+			sCtx.PipelineCtx.TicketID, sCtx.PipelineCtx.TaskID,
+			"skill_step_completed", "info",
+			fmt.Sprintf("step=%s output_len=%d", step.ID, len(result.Output)),
+			nil,
+		)
 	}
 
 	// Validate output_format
@@ -267,6 +336,12 @@ func (e *Engine) executeSubSkill(ctx context.Context, step SkillStep, sCtx *Skil
 		FileTree: sCtx.FileTree,
 		Models:   sCtx.Models,
 		Steps:    make(map[string]*StepResult),
+		// Propagate pipeline context fields so sub-skills also benefit from
+		// handoff injection and progress pattern recording (REQ-OBS-002).
+		PipelineCtx:  sCtx.PipelineCtx,
+		HandoffDB:    sCtx.HandoffDB,
+		ProgressDB:   sCtx.ProgressDB,
+		EventEmitter: sCtx.EventEmitter,
 	}
 	// Inject input vars as step results so templates can reference them
 	for k, v := range step.Input {

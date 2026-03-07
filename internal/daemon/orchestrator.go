@@ -15,6 +15,7 @@ import (
 	"github.com/canhta/foreman/internal/db"
 	"github.com/canhta/foreman/internal/git"
 	"github.com/canhta/foreman/internal/models"
+	"github.com/canhta/foreman/internal/skills"
 	"github.com/canhta/foreman/internal/telemetry"
 	"github.com/canhta/foreman/internal/tracker"
 )
@@ -43,12 +44,18 @@ type DAGTaskRunnerFactory interface {
 //
 //nolint:govet // fieldalignment: struct field order prioritises readability over padding
 type TaskRunnerFactoryInput struct {
-	ContextCache             *appcontext.ContextCache
-	Models                   models.ModelsConfig
-	TicketID                 string
-	WorkDir                  string
-	CodebasePatterns         string
-	TestCommand              string
+	ContextCache     *appcontext.ContextCache
+	Models           models.ModelsConfig
+	TicketID         string
+	WorkDir          string
+	CodebasePatterns string
+	TestCommand      string
+	// PromptVersions maps prompt template filenames (e.g. "planner.md.j2") to
+	// their SHA256 hashes for LlmRequest.PromptVersion (REQ-OBS-001).
+	PromptVersions map[string]string
+	// HookRunner fires post_lint skill hooks after each task commit (REQ-OBS-002).
+	// Optional — nil disables skill hooks in the task runner.
+	HookRunner               *skills.HookRunner
 	MaxImplementationRetries int
 	MaxSpecReviewCycles      int
 	MaxQualityReviewCycles   int
@@ -61,9 +68,6 @@ type TaskRunnerFactoryInput struct {
 	// IntermediateReviewInterval controls how often the cross-task consistency
 	// check runs (REQ-PIPE-006). 0 disables it.
 	IntermediateReviewInterval int
-	// PromptVersions maps prompt template filenames (e.g. "planner.md.j2") to
-	// their SHA256 hashes for LlmRequest.PromptVersion (REQ-OBS-001).
-	PromptVersions map[string]string
 }
 
 // PlanResult mirrors pipeline.PlannerResult without creating an import cycle.
@@ -98,13 +102,17 @@ type PlannedTask struct {
 //
 //nolint:govet // fieldalignment: struct field order prioritises readability over padding
 type OrchestratorConfig struct {
-	Models                 models.ModelsConfig
-	WorkDir                string
-	DefaultBranch          string
-	BranchPrefix           string
-	TestCommand            string
-	ClarificationLabel     string
-	PRReviewers            []string
+	Models             models.ModelsConfig
+	WorkDir            string
+	DefaultBranch      string
+	BranchPrefix       string
+	TestCommand        string
+	ClarificationLabel string
+	PRReviewers        []string
+	// PromptVersions maps prompt template filenames (e.g. "planner.md.j2") to
+	// their SHA256 hashes, computed at startup (REQ-OBS-001). Passed to the
+	// task runner so LlmRequest.PromptVersion is populated for each LLM call.
+	PromptVersions         map[string]string
 	MaxParallelTasks       int
 	TaskTimeoutMinutes     int
 	DAGTimeoutMinutes      int
@@ -126,10 +134,6 @@ type OrchestratorConfig struct {
 	// check runs. After every N completed tasks a lightweight LLM check fires.
 	// 0 disables the check (REQ-PIPE-006).
 	IntermediateReviewInterval int
-	// PromptVersions maps prompt template filenames (e.g. "planner.md.j2") to
-	// their SHA256 hashes, computed at startup (REQ-OBS-001). Passed to the
-	// task runner so LlmRequest.PromptVersion is populated for each LLM call.
-	PromptVersions map[string]string
 }
 
 // Orchestrator coordinates the full ticket-to-PR lifecycle.
@@ -145,6 +149,7 @@ type Orchestrator struct {
 	runnerFactory  DAGTaskRunnerFactory
 	ch             channel.Channel
 	emitter        *telemetry.EventEmitter
+	hookRunner     *skills.HookRunner
 	log            zerolog.Logger
 	config         OrchestratorConfig
 }
@@ -188,12 +193,54 @@ func (o *Orchestrator) SetEventEmitter(e *telemetry.EventEmitter) {
 	o.emitter = e
 }
 
+// SetHookRunner attaches a hook runner so the orchestrator can fire pre_pr, post_pr,
+// and post_lint skill hooks (REQ-OBS-002). Optional — nil disables skill hooks.
+func (o *Orchestrator) SetHookRunner(hr *skills.HookRunner) {
+	o.hookRunner = hr
+}
+
 // emitEvent broadcasts a lifecycle event to the dashboard (no-op if emitter not set).
 func (o *Orchestrator) emitEvent(ctx context.Context, ticketID, eventType, severity, message string) {
 	if o.emitter == nil {
 		return
 	}
 	o.emitter.Emit(ctx, ticketID, "", eventType, severity, message, nil)
+}
+
+// runSkillHook fires all skills registered for hookName for the given ticket (REQ-OBS-002).
+// Failures are logged as warnings and do not abort the calling workflow.
+func (o *Orchestrator) runSkillHook(ctx context.Context, ticket models.Ticket, hookName string) {
+	if o.hookRunner == nil {
+		return
+	}
+	tc := telemetry.TraceFromContext(ctx)
+	sCtx := &skills.SkillContext{
+		Ticket: ticket,
+		PipelineCtx: &telemetry.PipelineContext{
+			TraceID:  tc.TraceID,
+			TicketID: ticket.ID,
+			Stage:    hookName,
+		},
+	}
+	// Wire EventEmitter only when non-nil to avoid non-nil interface with nil pointer.
+	if o.emitter != nil {
+		sCtx.EventEmitter = o.emitter
+	}
+	// Wire HandoffDB and ProgressDB from the orchestrator's database (REQ-OBS-002).
+	// Guard against non-nil interface holding a nil pointer.
+	if o.db != nil {
+		sCtx.HandoffDB = o.db
+		sCtx.ProgressDB = o.db
+	}
+	for _, hr := range o.hookRunner.RunHook(ctx, hookName, sCtx) {
+		if hr.Error != nil {
+			o.log.Warn().Err(hr.Error).
+				Str("ticket", ticket.ID).
+				Str("skill", hr.SkillID).
+				Str("hook", hookName).
+				Msg("skill hook failed (non-fatal)")
+		}
+	}
 }
 
 func (o *Orchestrator) notify(ctx context.Context, ticket models.Ticket, msg string) {
@@ -396,6 +443,7 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 		IntermediateReviewInterval: o.config.IntermediateReviewInterval,
 		ContextCache:               ticketCache,
 		PromptVersions:             o.config.PromptVersions,
+		HookRunner:                 o.hookRunner,
 	})
 
 	// Build DAG tasks (resolve title->ID dependencies).
@@ -500,12 +548,18 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 	}
 	prReq.Body = prBody
 
+	// Fire pre_pr skill hooks before PR creation (REQ-OBS-002).
+	o.runSkillHook(ctx, ticket, "pre_pr")
+
 	// Create the PR.
 	prResp, err := o.prCreator.CreatePR(ctx, prReq)
 	if err != nil {
 		returnErr = fmt.Errorf("create PR: %w", err)
 		return returnErr
 	}
+
+	// Fire post_pr skill hooks after successful PR creation (REQ-OBS-002).
+	o.runSkillHook(ctx, ticket, "post_pr")
 
 	// Attach PR to tracker.
 	if err := o.tracker.AttachPR(ctx, ticket.ExternalID, prResp.HTMLURL); err != nil {

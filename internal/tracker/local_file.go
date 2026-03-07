@@ -122,7 +122,10 @@ func (t *LocalFileTracker) AddComment(ctx context.Context, externalID, comment s
 	var comments []map[string]string
 
 	if data, err := os.ReadFile(commentsFile); err == nil {
-		json.Unmarshal(data, &comments) //nolint:errcheck
+		if err := json.Unmarshal(data, &comments); err != nil {
+			log.Warn().Err(err).Str("file", commentsFile).Msg("failed to parse comments file, starting fresh")
+			comments = nil
+		}
 	}
 
 	comments = append(comments, map[string]string{
