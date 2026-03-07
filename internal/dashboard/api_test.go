@@ -653,3 +653,77 @@ func TestAPIHandleCostsBudgets(t *testing.T) {
 		t.Errorf("expected alert_threshold_pct=80, got %v", resp["alert_threshold_pct"])
 	}
 }
+
+// mockMCPHealthProvider implements MCPHealthProvider for tests.
+type mockMCPHealthProvider struct {
+	status map[string]bool
+}
+
+func (m *mockMCPHealthProvider) HealthStatus() map[string]bool { return m.status }
+
+func TestAPIGetStatus_WithMCPHealth(t *testing.T) {
+	db := &mockDashboardDB{}
+	api := NewAPI(db, nil, &mockDaemonStatus{running: true}, models.CostConfig{}, "1.0.0")
+	api.SetMCPHealthProvider(&mockMCPHealthProvider{
+		status: map[string]bool{
+			"filesystem": true,
+			"github":     false,
+		},
+	})
+
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/status", nil)
+	rec := httptest.NewRecorder()
+	api.handleStatus(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var resp map[string]interface{}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	mcpServers, ok := resp["mcp_servers"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected mcp_servers key in response")
+	}
+
+	fs, ok := mcpServers["filesystem"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected filesystem key in mcp_servers")
+	}
+	if fs["healthy"] != true {
+		t.Errorf("expected filesystem healthy=true, got %v", fs["healthy"])
+	}
+
+	gh, ok := mcpServers["github"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected github key in mcp_servers")
+	}
+	if gh["healthy"] != false {
+		t.Errorf("expected github healthy=false, got %v", gh["healthy"])
+	}
+}
+
+func TestAPIGetStatus_WithoutMCPHealth(t *testing.T) {
+	db := &mockDashboardDB{}
+	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
+	// No MCP health provider — mcp_servers key should be absent
+
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/status", nil)
+	rec := httptest.NewRecorder()
+	api.handleStatus(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var resp map[string]interface{}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if _, ok := resp["mcp_servers"]; ok {
+		t.Error("expected no mcp_servers key when no MCPHealthProvider registered")
+	}
+}

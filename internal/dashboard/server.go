@@ -147,6 +147,11 @@ func (s *Server) SetChannelHealth(name string, h interface{ IsConnected() bool }
 	s.api.SetChannelHealth(name, h)
 }
 
+// SetMCPHealthProvider wires a provider for MCP server health into the status endpoint.
+func (s *Server) SetMCPHealthProvider(p MCPHealthProvider) {
+	s.api.SetMCPHealthProvider(p)
+}
+
 // Handler returns the HTTP handler, useful for testing with httptest.NewServer.
 func (s *Server) Handler() http.Handler {
 	return s.server.Handler

@@ -40,14 +40,15 @@ type MCPConfig struct {
 
 // MCPServerEntry defines a single MCP server to connect to.
 type MCPServerEntry struct {
-	Env              map[string]string `mapstructure:"env"`
-	Name             string            `mapstructure:"name"`
-	Command          string            `mapstructure:"command"`
-	RestartPolicy    string            `mapstructure:"restart_policy"`
-	Args             []string          `mapstructure:"args"`
-	AllowedTools     []string          `mapstructure:"allowed_tools"`
-	MaxRestarts      int               `mapstructure:"max_restarts"`
-	RestartDelaySecs int               `mapstructure:"restart_delay_secs"`
+	Env                     map[string]string `mapstructure:"env"`
+	Name                    string            `mapstructure:"name"`
+	Command                 string            `mapstructure:"command"`
+	RestartPolicy           string            `mapstructure:"restart_policy"`
+	Args                    []string          `mapstructure:"args"`
+	AllowedTools            []string          `mapstructure:"allowed_tools"`
+	MaxRestarts             int               `mapstructure:"max_restarts"`
+	RestartDelaySecs        int               `mapstructure:"restart_delay_secs"`
+	HealthCheckIntervalSecs int               `mapstructure:"health_check_interval_secs"`
 }
 
 type DaemonConfig struct {

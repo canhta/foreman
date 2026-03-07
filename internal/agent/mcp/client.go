@@ -31,6 +31,9 @@ type MCPServerConfig struct {
 	RestartPolicy string   `json:"restart_policy,omitempty"`
 	AllowedTools  []string `json:"allowed_tools,omitempty"`
 	Args          []string `json:"args,omitempty"`
+	// HealthCheckIntervalSecs is how often to send a ping to check server health.
+	// 0 means use the default (30 seconds). Set to -1 to disable health checks.
+	HealthCheckIntervalSecs int `json:"health_check_interval_secs,omitempty"`
 }
 
 // EffectiveRestartPolicy returns the restart policy, defaulting to "on-failure".
@@ -39,6 +42,15 @@ func (c MCPServerConfig) EffectiveRestartPolicy() string {
 		return c.RestartPolicy
 	}
 	return "on-failure"
+}
+
+// EffectiveHealthCheckIntervalSecs returns the health check interval in seconds,
+// defaulting to 30. A value of -1 disables health checks.
+func (c MCPServerConfig) EffectiveHealthCheckIntervalSecs() int {
+	if c.HealthCheckIntervalSecs != 0 {
+		return c.HealthCheckIntervalSecs
+	}
+	return 30
 }
 
 // EffectiveMaxRestarts returns the max restarts, defaulting to 3.
@@ -65,6 +77,13 @@ type Client interface {
 	ListResources(ctx context.Context) ([]MCPResourceDef, error)
 	ReadResource(ctx context.Context, uri string) (string, error)
 	Close() error
+}
+
+// HealthChecker is an optional interface that clients may implement to expose
+// their health state. If a client does not implement this interface, it is
+// assumed to be healthy.
+type HealthChecker interface {
+	IsHealthy() bool
 }
 
 // NoopClient satisfies Client but does nothing. Placeholder until client-side

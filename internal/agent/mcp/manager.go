@@ -165,6 +165,22 @@ func (m *Manager) Close() error {
 	return firstErr
 }
 
+// HealthStatus returns the health state of all registered MCP servers.
+// The map key is the server name; the value is true if healthy, false if not.
+// Clients that do not implement the HealthChecker interface are assumed healthy.
+func (m *Manager) HealthStatus() map[string]bool {
+	status := make(map[string]bool, len(m.clients))
+	for name, c := range m.clients {
+		if hc, ok := c.(HealthChecker); ok {
+			status[name] = hc.IsHealthy()
+		} else {
+			// No health-check capability → assume healthy
+			status[name] = true
+		}
+	}
+	return status
+}
+
 // SetToolCache replaces the in-memory tool cache with the provided summaries.
 // This is used during initialisation (after MCP servers are ready) and in tests.
 // Safe for concurrent use.

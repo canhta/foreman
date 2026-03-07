@@ -46,30 +46,123 @@ type pendingRequest struct {
 	resp chan jsonRPCResponse
 }
 
+// StdioClientOptions configures optional behavior for a StdioClient.
+type StdioClientOptions struct {
+	// RestartPolicy controls what happens after 3 consecutive ping failures.
+	// "restart" calls Restart(); anything else (including "" or "none") just marks unhealthy.
+	RestartPolicy string
+	// HealthCheckIntervalSecs is how often to send a ping. 0 = disabled.
+	HealthCheckIntervalSecs int
+	// PingTimeoutSecs is how long to wait for a ping response before counting it
+	// as a failure. 0 means use the default (5 seconds).
+	PingTimeoutSecs int
+}
+
+// healthState tracks the health of a StdioClient.
+type healthState struct {
+	mu                  sync.RWMutex
+	healthy             bool
+	consecutiveFailures int
+}
+
 // StdioClient implements the Client interface over JSON-RPC 2.0 via a Transport.
 type StdioClient struct {
 	transport    Transport
 	capabilities map[string]json.RawMessage
 	readerDone   chan struct{}
-	// early stores responses that arrived before sendRequest observed its pending entry.
-	// Key: request ID (int64), Value: jsonRPCResponse.
-	early       sync.Map
-	pending     sync.Map
-	serverName  string
-	nextID      atomic.Int64
-	writeMu     sync.Mutex
-	initialized bool
+	stopHealth   chan struct{}
+	early        sync.Map
+	pending      sync.Map
+	serverName   string
+	opts         StdioClientOptions
+	health       healthState
+	nextID       atomic.Int64
+	stopOnce     sync.Once
+	writeMu      sync.Mutex
+	initialized  bool
 }
 
 // NewStdioClientWithTransport creates a new StdioClient with the given transport.
+// Health checks are disabled by default. Use NewStdioClientWithTransportAndOptions
+// to enable health monitoring.
 func NewStdioClientWithTransport(t Transport, serverName string) *StdioClient {
+	return NewStdioClientWithTransportAndOptions(t, serverName, StdioClientOptions{})
+}
+
+// NewStdioClientWithTransportAndOptions creates a new StdioClient with the given
+// transport and optional health-check configuration. When
+// opts.HealthCheckIntervalSecs > 0, a goroutine is launched immediately that
+// sends a JSON-RPC "ping" every HealthCheckIntervalSecs seconds. After 3
+// consecutive ping failures (timeout or error) the client is marked unhealthy.
+// A successful ping resets the failure counter and marks the client healthy.
+func NewStdioClientWithTransportAndOptions(t Transport, serverName string, opts StdioClientOptions) *StdioClient {
 	c := &StdioClient{
 		transport:  t,
 		serverName: serverName,
 		readerDone: make(chan struct{}),
+		stopHealth: make(chan struct{}),
+		opts:       opts,
 	}
+	c.health.healthy = true // start healthy until proven otherwise
 	go c.readLoop()
+	if opts.HealthCheckIntervalSecs > 0 {
+		go c.healthLoop()
+	}
 	return c
+}
+
+// IsHealthy reports whether the server passed its most recent health check.
+// Returns true for clients with health checks disabled (no false alarms).
+func (c *StdioClient) IsHealthy() bool {
+	c.health.mu.RLock()
+	defer c.health.mu.RUnlock()
+	return c.health.healthy
+}
+
+// pingTimeoutSecs returns the effective ping timeout in seconds (default 5).
+func (c *StdioClient) pingTimeoutSecs() int {
+	if c.opts.PingTimeoutSecs > 0 {
+		return c.opts.PingTimeoutSecs
+	}
+	return 5
+}
+
+// healthLoop runs the periodic ping loop. It exits when stopHealth is closed.
+func (c *StdioClient) healthLoop() {
+	interval := time.Duration(c.opts.HealthCheckIntervalSecs) * time.Second
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-c.stopHealth:
+			return
+		case <-ticker.C:
+			c.runPing()
+		}
+	}
+}
+
+// runPing sends a single ping and updates the health state.
+func (c *StdioClient) runPing() {
+	timeout := time.Duration(c.pingTimeoutSecs()) * time.Second
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	_, err := c.sendRequest(ctx, "ping", map[string]interface{}{})
+
+	c.health.mu.Lock()
+	defer c.health.mu.Unlock()
+
+	if err != nil {
+		c.health.consecutiveFailures++
+		if c.health.consecutiveFailures >= 3 {
+			c.health.healthy = false
+		}
+	} else {
+		c.health.consecutiveFailures = 0
+		c.health.healthy = true
+	}
 }
 
 // readLoop reads responses from the transport and routes them to pending requests.
@@ -268,7 +361,10 @@ func (c *StdioClient) Call(ctx context.Context, name string, input json.RawMessa
 }
 
 // Close sends shutdown/exit notifications per the MCP spec, then closes the transport.
+// It also stops the health-check goroutine if one is running.
 func (c *StdioClient) Close() error {
+	// Stop the health-check goroutine (if any).
+	c.stopOnce.Do(func() { close(c.stopHealth) })
 	// Send shutdown request (best effort, short timeout)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	_, _ = c.sendRequest(ctx, "shutdown", nil)

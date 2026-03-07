@@ -73,6 +73,12 @@ type TicketRetrier interface {
 	RetryTicket(ctx context.Context, ticketID string) error
 }
 
+// MCPHealthProvider exposes the health state of all registered MCP servers.
+// Implement this interface to include MCP server health in dashboard responses.
+type MCPHealthProvider interface {
+	HealthStatus() map[string]bool
+}
+
 // API handles REST API requests for the dashboard.
 type API struct {
 	startedAt      time.Time
@@ -81,6 +87,7 @@ type API struct {
 	statusProvider DaemonStatusProvider
 	controller     DaemonController
 	retrier        TicketRetrier
+	mcpHealth      MCPHealthProvider
 	channelHealth  map[string]interface{ IsConnected() bool }
 	version        string
 	costCfg        models.CostConfig
@@ -92,6 +99,11 @@ func (a *API) SetChannelHealth(name string, h interface{ IsConnected() bool }) {
 		a.channelHealth = make(map[string]interface{ IsConnected() bool })
 	}
 	a.channelHealth[name] = h
+}
+
+// SetMCPHealthProvider wires a provider that exposes MCP server health.
+func (a *API) SetMCPHealthProvider(p MCPHealthProvider) {
+	a.mcpHealth = p
 }
 
 // SetDaemonController wires a DaemonController for pause/resume.
@@ -144,6 +156,19 @@ func (a *API) handleStatus(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		resp["channels"] = channels
+	}
+
+	if a.mcpHealth != nil {
+		mcpStatus := a.mcpHealth.HealthStatus()
+		if len(mcpStatus) > 0 {
+			servers := make(map[string]interface{}, len(mcpStatus))
+			for name, healthy := range mcpStatus {
+				servers[name] = map[string]interface{}{
+					"healthy": healthy,
+				}
+			}
+			resp["mcp_servers"] = servers
+		}
 	}
 
 	writeJSON(w, http.StatusOK, resp)
