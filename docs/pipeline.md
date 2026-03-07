@@ -34,7 +34,10 @@ stateDiagram-v2
     pr_created --> awaiting_merge
 
     awaiting_merge --> merged : PR merged
+    awaiting_merge --> pr_updated : someone pushed to the branch
     awaiting_merge --> pr_closed : PR closed without merging
+
+    pr_updated --> awaiting_merge : re-labelled foreman-ready
 
     merged --> done
     done --> [*]
@@ -154,10 +157,18 @@ A deterministic validator checks the plan before any code is written:
 1. **File existence**: all `files_to_read` paths exist in the repo (or are marked `(new)`)
 2. **Dependency DAG**: no cycles in `depends_on` references
 3. **Ordering**: no two tasks modify the same file without an explicit ordering between them (warns, does not fail)
-4. **Cost estimation**: estimates total ticket cost using actual token budgets and model pricing — warns at 50%, rejects at 80% of the per-ticket budget
+4. **Cost estimation**: estimates total ticket cost using tiktoken-accurate token budgets and model pricing — warns at 50%, rejects at 80% of the per-ticket budget
 5. **Task count**: enforces `max_tasks_per_ticket`
 
 If validation fails, the planner is retried once with the validation errors as feedback. A second validation failure marks the ticket as failed.
+
+### 3a. Plan Confidence Scoring
+
+After deterministic validation passes, a second LLM call evaluates the plan's quality and returns:
+- `confidence_score` (0.0–1.0)
+- `concerns` list (free-text issues identified)
+
+If `confidence_score` < `plan_confidence_threshold` (default: 0.6), Foreman triggers the clarification flow with the concerns list as the question body rather than proceeding to implementation. The score is stored in the `handoffs` table under key `plan_confidence` and is visible in the dashboard ticket view.
 
 ### 4. Per-Task Execution
 
@@ -206,13 +217,13 @@ Before assembling any LLM context, Foreman scans the files relevant to the curre
 The context assembler builds a surgical prompt context for the implementing LLM:
 
 1. **Repo tree**: a directory listing for orientation
-2. **Relevant files**: scored and ranked using import graph analysis, path proximity to `files_to_modify`, and explicit `files_to_read` lists from the task
-3. **Directory-specific rules**: any `.foreman-rules.md` or `AGENTS.md` files found by walking up directories from the touched paths
+2. **Relevant files**: scored and ranked using import graph analysis, path proximity to `files_to_modify`, and explicit `files_to_read` lists from the task; boosted by `context_feedback` (files touched in similar past tasks that were not originally selected)
+3. **Directory-specific rules**: any `.foreman-rules.md` or `AGENTS.md` files found by walking up directories from the touched paths; served from the pipeline-scoped `ContextCache`
 4. **Progress patterns**: coding patterns discovered during earlier tasks of the same ticket (e.g., "uses ESM imports", "error handling pattern"), retrieved from the database
 5. **Task description and acceptance criteria**
-6. **Previous attempt feedback** (for retries): lint errors, test output, spec review rejection reasons, quality review feedback
+6. **Previous attempt feedback** (for retries): typed error output (see "Error Classification" below)
 
-All of this is assembled within a configurable token budget (`context_token_budget`, default 80,000 tokens), with priority tiers ensuring the most important context is never crowded out.
+The token budget is assembled within `context_token_budget` scaled by `estimated_complexity` (low: 0.5×, medium: 1.0×, high: 1.5× of the base budget). The `ContextCache` pre-computes file tree, rules, and secret patterns once at pipeline start and invalidates only after git operations.
 
 #### TDD Implementation
 
@@ -231,6 +242,14 @@ Mechanical TDD verification (enabled by default, controlled by `enable_tdd_verif
 
 2. **GREEN phase**: Apply implementation files. Run tests. They must pass.
    - If tests fail: retry implementer with the specific failure output
+
+#### Error Classification and Typed Retry Prompts
+
+Before every retry, Foreman runs a deterministic error classifier over the feedback string and assigns one of seven error types: `compile_error`, `type_error`, `lint_style`, `test_assertion`, `test_runtime`, `spec_violation`, `quality_concern`. Each type selects a different retry prompt template (e.g., `implementer_retry_compile.md.j2`). The error type is stored in `tasks.last_error_type` and exposed as a Prometheus label.
+
+#### Cross-Task Consistency Review
+
+After every `intermediate_review_interval` completed tasks (default: 3), a lightweight LLM consistency check runs on the cumulative diff. It checks only three concerns: naming conventions, error handling patterns, and import style. Violations are injected as new `progress_patterns` entries so subsequent tasks are aware. This review does not block task execution and never triggers a retry.
 
 #### Lint and Tests
 
@@ -274,9 +293,9 @@ After commit, Foreman diffs package manifest files (`go.mod`, `go.sum`, `package
 After all tasks complete (or partial completion), Foreman rebases the working branch onto the latest default branch. This keeps the PR diff clean and avoids stale conflicts.
 
 If the rebase produces conflicts:
-1. An LLM call receives the conflict markers and attempts to resolve them
+1. An LLM call receives the full file content from both base and head, plus conflict markers and task descriptions. Content is truncated in reverse priority order if it exceeds `conflict_resolution_token_budget` (default: 40 000 tokens).
 2. If resolution succeeds, the rebase continues
-3. If resolution fails (or the attempt produces invalid output), Foreman creates the PR anyway with a note listing the conflict files
+3. If resolution fails, Foreman creates the PR anyway with a note listing the conflict files
 
 ### 6. Full Test Suite
 
@@ -303,6 +322,11 @@ After a PR is created, the ticket enters the `awaiting_merge` state. A dedicated
 2. `post_merge` skill hooks are executed (e.g., deployment triggers, cleanup tasks)
 3. If the ticket is a child of a decomposed parent, the parent is checked for completion — when all children are merged, the parent ticket is automatically marked `done` and closed in the tracker
 
+**On PR updated (new push detected):**
+1. Foreman stores the PR HEAD SHA at creation time and compares it on each poll
+2. If the SHA changes, the ticket transitions to `pr_updated` and a `pr_sha_changed` event is emitted
+3. The ticket requires manual re-labelling with `foreman-ready` to re-enter the pipeline; no automated re-run occurs
+
 **On PR closed (not merged):**
 1. The ticket status changes to `pr_closed`
 2. No hooks are fired — the ticket can be manually re-processed
@@ -320,8 +344,9 @@ After a PR is created, the ticket enters the `awaiting_merge` state. A dedicated
 | `pr_created` | PR submitted |
 | `decomposing` | LLM generating child ticket specs |
 | `decomposed` | Parent ticket — waiting for children to merge |
-| `awaiting_merge` | PR open, polling for merge/close |
+| `awaiting_merge` | PR open, polling for merge/close/update |
 | `merged` | PR merged successfully |
+| `pr_updated` | New push detected on open PR branch |
 | `pr_closed` | PR closed without merging |
 | `done` | Ticket complete |
 | `partial` | Partial PR created |
@@ -335,11 +360,12 @@ After a PR is created, the ticket enters the `awaiting_merge` state. A dedicated
 | Stage | Max Retries | Feedback Provided |
 |---|---|---|
 | TDD verify — invalid RED | 2 | Specific failure type and test output |
-| Lint failure | 2 | Structured lint errors |
-| Test failure | 2 | Full test output with diff |
-| Spec review rejection | 2 cycles | Specific criterion violations |
-| Quality review rejection | 1 cycle | Quality feedback |
+| Lint failure | 2 | Structured lint errors via typed retry prompt |
+| Test failure | 2 | Full test output via typed retry prompt |
+| Spec review rejection | 2 cycles | Specific criterion violations (`spec_violation` prompt) |
+| Quality review rejection | 1 cycle | Quality feedback (`quality_concern` prompt) |
 | Plan validation failure | 1 | Validation errors |
+| Plan confidence too low | 1 | Clarification triggered with concern list |
 | Absolute LLM call cap | 8 per task | Task fails immediately at cap |
 
 ---
@@ -348,13 +374,16 @@ After a PR is created, the ticket enters the `awaiting_merge` state. A dedicated
 
 | Table | Purpose |
 |---|---|
-| `tickets` | Pipeline state, cost tracking, crash recovery (`last_completed_task_seq`) |
-| `tasks` | Per-task status, attempt counters, `total_llm_calls`, commit SHA |
-| `llm_calls` | Full audit log of every LLM call (model, tokens, cost, duration, role) |
-| `handoffs` | Structured data passed between pipeline stages |
+| `tickets` | Pipeline state, cost tracking, crash recovery (`last_completed_task_seq`), `pr_head_sha` |
+| `tasks` | Per-task status, attempt counters, `total_llm_calls`, `last_error_type`, commit SHA |
+| `llm_calls` | Full audit log of every LLM call (model, tokens, cost, duration, role, `prompt_version`, `trace_id`) |
+| `llm_call_details` | Full prompt and response text linked to `llm_calls.id` |
+| `handoffs` | Structured data passed between pipeline stages (incl. `plan_confidence`) |
 | `progress_patterns` | Coding patterns discovered during implementation, used in future task context |
 | `file_reservations` | Conflict prevention for parallel ticket processing |
 | `cost_daily` | Aggregated daily cost for budget enforcement |
+| `prompt_snapshots` | SHA-256 hashes of prompt templates at startup |
+| `context_feedback` | Files selected vs files touched per task, used for context scoring boost |
 | `events` | Full event log indexed by ticket and task |
 
 ---
@@ -367,11 +396,17 @@ LLM system prompts are Jinja2-compatible templates (`.md.j2`) rendered with `pon
 |---|---|
 | `prompts/planner.md.j2` | Ticket decomposition |
 | `prompts/implementer.md.j2` | First-attempt implementation |
-| `prompts/implementer_retry.md.j2` | Retry implementation with feedback |
+| `prompts/implementer_retry.md.j2` | Generic retry (fallback) |
+| `prompts/implementer_retry_compile.md.j2` | Retry for `compile_error` |
+| `prompts/implementer_retry_test.md.j2` | Retry for `test_assertion` / `test_runtime` |
+| `prompts/implementer_retry_spec.md.j2` | Retry for `spec_violation` |
+| `prompts/implementer_retry_quality.md.j2` | Retry for `quality_concern` |
 | `prompts/spec_reviewer.md.j2` | Spec compliance review |
 | `prompts/quality_reviewer.md.j2` | Code quality review |
 | `prompts/final_reviewer.md.j2` | Full-diff final review |
 | `prompts/clarifier.md.j2` | Clarification question generation |
+
+At startup, Foreman computes a SHA-256 hash of every template and records it as a `prompt_snapshot`. Each LLM call records the active `prompt_version` for change tracking.
 
 Templates have access to all relevant context variables including ticket details, task descriptions, accumulated feedback, code diffs, and repo context summaries.
 

@@ -55,6 +55,9 @@ All external dependencies are behind Go interfaces. You can swap the LLM provide
 ### 5. Graceful Degradation
 Partial success is better than total failure. If 4 of 5 tasks succeed, Foreman creates a partial PR with the completed work. If a provider is down, the pipeline pauses and retries on the next poll cycle instead of failing the ticket.
 
+### 6. Request-Level Tracing
+Every ticket and LLM call receives a `trace_id` at pickup time, propagated through all goroutines via `context.Context`. Trace IDs appear in structured log fields and are stored in `tickets.trace_id` and `llm_calls.trace_id` for cross-service correlation.
+
 ---
 
 ## Package Structure
@@ -66,15 +69,15 @@ internal/
 ├── config/         TOML config loading, validation, env-var substitution, round-trip TOML editing
 ├── daemon/         Event loop, scheduler, DAG executor (coordinator/worker-pool), merge checker, file reservations, crash recovery, channel command handler
 ├── db/             Database interface + SQLite and PostgreSQL implementations
-├── pipeline/       State machine orchestrator — all pipeline stages
-├── context/        Context assembly: file selection, token budgets, secrets scanning; AGENTS.md generator
-├── llm/            LLM provider interface + Anthropic, OpenAI, OpenRouter, local
+├── pipeline/       State machine orchestrator — all pipeline stages; error_classifier.go, plan_confidence.go
+├── context/        Context assembly: file selection, token budgets, secrets scanning; AGENTS.md generator; token_counter.go (tiktoken-go); cache.go (pipeline-scoped ContextCache)
+├── llm/            LLM provider interface + Anthropic, OpenAI, OpenRouter, local; circuit_breaker.go
 ├── tracker/        Issue tracker interface + Jira, GitHub, Linear, local file
 ├── git/            Git operations interface + native CLI and go-git fallback
 ├── runner/         Command runner interface + local and Docker implementations
-├── agent/          AgentRunner interface + builtin, claudecode, copilot runners
-│   ├── tools/      Typed tool registry (14 tools) with parallel execution
-│   └── mcp/        MCP Manager, stdio client (JSON-RPC 2.0), tool name normalization
+├── agent/          AgentRunner interface + builtin, claudecode, copilot runners; compaction.go (context window compaction)
+│   ├── tools/      Typed tool registry with parallel execution: Read, Write, Edit, MultiEdit, ListDir, Glob, Grep, GetDiff, GetCommitLog, TreeSummary, GetSymbol, GetErrors, Bash, RunTest, Subagent, ReadRange, ApplyPatch, ListMCPTools, ReadMCPResource
+│   └── mcp/        MCP Manager, stdio client (JSON-RPC 2.0), tool name normalization, health monitoring
 ├── skills/         YAML skill engine, loader, hook executor
 ├── dashboard/      HTTP server, REST API, WebSocket, bearer token auth
 ├── telemetry/      Cost controller, Prometheus metrics (incl. DAG metrics), structured events
@@ -205,11 +208,13 @@ Implementations: `builtin.go`, `claudecode.go`, `copilot.go`.
 ### 3. Context Assembly
 For each LLM call, the context assembler:
 1. Builds a repo file tree using `GitProvider.FileTree`
-2. Scores and selects relevant files using import graph analysis, path proximity, and explicit `files_to_read` lists
+2. Scores and selects relevant files using import graph analysis, path proximity, and explicit `files_to_read` lists; boosts scores using `context_feedback` (files touched in similar past tasks)
 3. Scans selected files for secrets and redacts or excludes matches
-4. Loads directory-specific rules (`.foreman-rules.md` files walked from the target path)
+4. Loads directory-specific rules (`.foreman-rules.md` files walked from the target path); served from the pipeline-scoped `ContextCache` to avoid re-reading on every task
 5. Loads progress patterns from the database for the current ticket
-6. Assembles everything into a prompt within the configured token budget, honoring priority tiers
+6. Assembles everything into a prompt within the configured token budget (scaled by estimated task complexity), honoring priority tiers
+
+Token counting uses `tiktoken-go` for byte-pair encoding (BPE) accuracy matching the model's actual tokenizer.
 
 ### 4. Per-Task Execution
 See [Pipeline](pipeline.md) for the detailed state machine.

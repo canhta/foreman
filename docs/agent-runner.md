@@ -17,13 +17,28 @@ type AgentRunner interface {
 }
 
 type AgentRequest struct {
-    Prompt       string          // Task description
-    SystemPrompt string          // Prepended to the agent's system prompt
-    WorkDir      string          // Working directory for file operations
-    AllowedTools []string        // Restrict tools (empty = runner default)
-    MaxTurns     int             // 0 = runner default
-    TimeoutSecs  int             // 0 = runner default
-    OutputSchema json.RawMessage // JSON Schema for structured output (optional)
+    Prompt          string           // Task description
+    SystemPrompt    string           // Prepended to the agent's system prompt
+    WorkDir         string           // Working directory for file operations
+    FallbackModel   string           // Override model for this agent task (per-model router)
+    AllowedTools    []string         // Restrict tools (empty = runner default)
+    MCPServers      []MCPServerConfig // MCP servers to attach for this session
+    OutputSchema    json.RawMessage  // JSON Schema for structured output (optional)
+    OnProgress      func(AgentEvent) // Optional real-time progress callback
+    MaxTurns        int              // 0 = runner default
+    TimeoutSecs     int              // 0 = runner default
+    RemainingBudget int              // Remaining turn budget from parent (0 = unlimited)
+    AgentDepth      int              // Current nesting depth; enforced against MaxAgentDepth
+}
+
+// AgentEvent is emitted by the builtin runner for real-time progress visibility.
+type AgentEvent struct {
+    Type      AgentEventType // turn_start | tool_start | tool_end | turn_end
+    ToolName  string
+    Turn      int
+    TokensIn  int
+    TokensOut int
+    CostUSD   float64
 }
 
 type AgentResult struct {
@@ -48,6 +63,12 @@ type AgentUsage struct {
 ```toml
 [agent_runner]
 type = "builtin"   # builtin | claudecode | copilot
+
+[agent_runner.builtin]
+max_turns          = 20
+timeout_secs       = 300
+reflection_interval = 5    # Self-reflection every N turns (0 = disabled)
+model              = ""    # Override model for agent tasks (empty = use implementer model)
 ```
 
 ---
@@ -74,24 +95,28 @@ sequenceDiagram
     Runner->>Runner: inject AGENTS.md + context into SystemPrompt
 
     loop Until text response or max_turns reached
+        Runner->>Runner: check reflection interval (every N turns inject ReflectionPrompt)
         Runner->>LLM: Complete(messages + tool definitions)
         LLM-->>Runner: response
 
         alt tool_use blocks returned
-            Note over Runner,Tools: all tool calls execute in parallel (errgroup)
-            Runner->>Tools: execute tool calls concurrently
+            Runner->>Runner: check tool call fingerprints (dedup detector)
+            Note over Runner,Tools: file-aware grouping serializes same-file calls
+            Runner->>Tools: execute disjoint-file tool calls concurrently
             Tools-->>Runner: tool results
+            Runner->>Runner: compact messages if near context window limit
             Runner->>Runner: inject reactive context if file-touching tools ran
             Runner->>Runner: append tool results to messages
+            Runner->>Runner: emit OnProgress events (tool_start, tool_end)
         else text response
-            Runner-->>Skill: AgentResult{Output, Usage}
+            Runner-->>Skill: AgentResult{Output, Structured, Usage}
         end
     end
 ```
 
-### Parallel Tool Execution
+### File-Aware Parallel Tool Execution
 
-All tool calls within a single turn execute in parallel using `errgroup`. This matches the behaviour of the Anthropic SDK's `BetaToolRunner` and is typically 3× faster than sequential execution on multi-tool turns.
+Before executing a batch of tool calls, the runner groups them by the file paths in their arguments. Tool calls operating on disjoint file sets run in parallel via `errgroup`. Tool calls sharing any file path execute sequentially in LLM-return order. Non-filesystem tools always run in parallel. This prevents edit-edit conflicts without sacrificing parallel speed for independent operations.
 
 ### Two-Layer Context Injection
 
@@ -121,7 +146,7 @@ flowchart LR
 
 This is prepended to `AgentRequest.SystemPrompt` for all three runner implementations.
 
-**Layer 2 — Reactive injection (builtin only):** After each file-touching tool call (Read, Edit, Write, GetDiff), the builtin runner queries the database for:
+**Layer 2 — Reactive injection (builtin only):** After each file-touching tool call (Read, ReadRange, Edit, Write, ApplyPatch, GetDiff), the builtin runner queries the database for:
 - Progress patterns relevant to the accessed directories (coding conventions discovered during earlier tasks)
 - Directory-specific rules for the newly accessed paths
 
@@ -131,26 +156,76 @@ These are injected as a context message before the next LLM turn. The runner tra
 
 ```toml
 [agent_runner.builtin]
-max_turns    = 20
-timeout_secs = 300
+max_turns           = 20
+timeout_secs        = 300
+reflection_interval = 5     # 0 = disable self-reflection turns
+model               = ""     # Override model (empty = implementer model)
 ```
 
-The builtin runner uses the same LLM provider and model routing as the core pipeline. To use a different model for agent tasks, configure a dedicated model in `[models]` (this feature is pending — currently uses the implementer model as default).
+Set `model` to use a cheaper model for agent (skill) tasks without changing the core pipeline model routing.
+
+### Context Window Management
+
+After each turn the runner measures the total message history in tokens (via tiktoken-go). Actions taken by threshold:
+
+| Threshold | Action |
+|---|---|
+| 70% of context window | Old tool outputs truncated to 200-char summaries |
+| 85% of context window | Structured summary (Goal → Accomplished → Remaining → Files) replaces all messages older than the last 3 turns |
+
+### Self-Reflection Turns
+
+Every `reflection_interval` turns (default: 5) the runner injects a structured message before the next LLM call:
+
+> *"Before continuing, briefly summarise: (1) what you have accomplished, (2) which files you have changed, and (3) what remains. If the task is already complete, reply with exactly: TASK_COMPLETE"*
+
+If the reply contains `TASK_COMPLETE`, the loop exits early. Reflection turns are logged as a distinct `reflection` turn type in `llm_calls`.
+
+### Tool Call Deduplication
+
+The runner maintains an in-memory fingerprint map keyed by `(tool_name, canonical_args_hash)`. When the same fingerprint appears ≥ 2 times in a session, the following warning is injected before the next LLM turn:
+
+> *"You have already called [tool] with these arguments. Either the previous result was insufficient — explain why and what is different this time — or proceed using the information you already have."*
+
+This does not hard-block execution; it is a guidance injection only.
+
+### Agent Progress Events
+
+When `AgentRequest.OnProgress` is set, the builtin runner emits events at these checkpoints:
+
+| Event | When |
+|---|---|
+| `turn_start` | Before each LLM call |
+| `tool_start` | Before each individual tool execution |
+| `tool_end` | After each tool execution |
+| `turn_end` | After tool results are appended (includes token counts and cost) |
+
+The orchestrator wires `OnProgress` to the `EventEmitter` for real-time dashboard updates and to the cost controller for mid-execution budget enforcement.
+
+### Subagent Budget Inheritance
+
+When the `Subagent` tool is called, the subagent's `MaxTurns` is set to:
+```
+min(subagent_max_turns_default, parent.RemainingBudget - currentTurn)
+```
+If the result is ≤ 0, the call fails immediately with `"parent budget exhausted"`. A global `MaxAgentDepth` constant (default: 3) prevents infinite recursion — the `Subagent` call fails with `"max agent depth exceeded"` at the limit.
 
 ---
 
 ## Built-in Tools
 
-The builtin runner provides 14 typed tools via a `tools.Registry`. All tool schemas are hand-written JSON Schema — no reflection dependency.
+The builtin runner provides typed tools via a `tools.Registry`. All tool schemas are hand-written JSON Schema — no reflection dependency.
 
 ### Filesystem
 
 | Tool | Description |
 |---|---|
-| `Read` | Read a file's contents. Enforces path guard (no traversal, no absolute paths). |
+| `Read` | Read a file's full contents. Enforces path guard (no traversal, no absolute paths). |
+| `ReadRange` | Read a line range from a file (`start_line`, `end_line`; 1-based). Avoids consuming the full token budget for large files. |
 | `Write` | Write a file. Checks secrets patterns on both the path and content before writing. |
 | `Edit` | Apply a SEARCH/REPLACE block to a file. Fuzzy matching at the configured threshold. |
 | `MultiEdit` | Apply multiple SEARCH/REPLACE blocks to a file in a single call. |
+| `ApplyPatch` | Apply a unified diff format patch to a file. Fails with the specific rejection reason on a bad hunk rather than leaving partial state. |
 | `ListDir` | List directory contents with file sizes. |
 | `Glob` | Find files matching a glob pattern relative to the working directory. |
 
@@ -181,7 +256,9 @@ The builtin runner provides 14 typed tools via a `tools.Registry`. All tool sche
 
 | Tool | Description |
 |---|---|
-| `Subagent` | Spawn a sub-agent with a fresh prompt. Used for decomposing complex tasks inside a skill. |
+| `Subagent` | Spawn a sub-agent with a fresh prompt. Budget is capped to parent's remaining turns. |
+| `ListMCPTools` | Return all registered MCP tools from the in-memory registry (read-only). |
+| `ReadMCPResource` | Read a resource from a named MCP server (`server`, `uri`). Subject to secrets scanning. |
 
 ### Path Guards
 
@@ -291,14 +368,21 @@ The `doctor` command runs `AgentRunner.HealthCheck()` for the configured runner:
 |---|---|---|---|
 | External binary required | No | Yes (`claude`) | Yes (Copilot CLI) |
 | Works with any LLM provider | Yes | No (Anthropic only) | No (GitHub Copilot) |
-| Parallel tool execution | Yes | Handled by claude | Handled by Copilot |
+| File-aware parallel tool execution | Yes | Handled by claude | Handled by Copilot |
+| Context window management | Yes (auto-compaction) | Handled by claude | Handled by Copilot |
+| Self-reflection turns | Yes (configurable) | No | No |
+| Tool call deduplication | Yes | No | No |
+| Agent progress events (`OnProgress`) | Yes | No | No |
+| Subagent budget inheritance | Yes | No | No |
 | Reactive context injection | Yes | No | No |
+| MCP tools + resources | Yes | No | No |
+| Per-task model override | Yes (`model` config) | Fixed to claude | Fixed to Copilot |
 | Structured output (schema) | Full support | Partial (flag) | Prompt-based |
 | Extended thinking | Via `LlmRequest` | Via `claude` flags | No |
 | Custom tool restrictions | Yes (per step) | Limited | Limited |
 | Cost attribution | Full (tracked in DB) | Approximate (from JSON) | Not exposed |
 
-**Recommendation:** Use `builtin` for most cases. Use `claudecode` if you specifically need Claude Code's file editing capabilities or its native tool implementations. Use `copilot` in environments where GitHub Copilot is already the standard AI tool.
+**Recommendation:** Use `builtin` for most cases. Use `claudecode` if you specifically need Claude Code's native file editing capabilities. Use `copilot` in environments where GitHub Copilot is already the standard AI tool.
 
 ---
 
@@ -365,15 +449,24 @@ Configure stdio MCP servers in `foreman.toml`:
 name    = "my-server"
 command = "npx"
 args    = ["-y", "@company/my-mcp-server"]
-allowed_tools      = ["query", "schema"]   # optional whitelist
-restart_policy     = "on-failure"          # always | never | on-failure
-max_restarts       = 3
-restart_delay_secs = 2
+allowed_tools               = ["query", "schema"]  # optional whitelist
+restart_policy              = "on-failure"         # always | never | on-failure
+max_restarts                = 3
+restart_delay_secs          = 2
+health_check_interval_secs  = 30                   # ping interval (0 = disable)
 [mcp.servers.env]
 DB_URL = "${DATABASE_URL}"
 ```
 
-**Scope boundaries (v1):** tools only — `resources` and `prompts` are not supported. HTTP/SSE transport is not implemented.
+### MCP Resources
+
+The `StdioClient` supports `resources/list` and `resources/read` in addition to `tools`. The `Manager` exposes `ReadResource(ctx, serverName, uri string) (string, error)`. The `ReadMCPResource` agent tool surfaces this to the LLM. Resource content is subject to secrets scanning. Maximum response size is controlled by `mcp_resource_max_bytes` (default: 512 KB).
+
+### MCP Health Monitoring
+
+Each `StdioClient` sends periodic `ping` requests at the configured interval. If a ping does not respond within 5 s, the server is marked `unhealthy`. After 3 consecutive failures, the configured `restart_policy` is applied. Server health is exposed on the dashboard REST API (`GET /api/mcp/servers`) and WebSocket feed.
+
+**Scope boundaries:** HTTP/SSE transport is not implemented (Wave 4). `prompts` endpoint is not supported.
 
 ---
 

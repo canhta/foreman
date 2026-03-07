@@ -250,6 +250,9 @@ The following variables are available in all template fields:
 | `.WorkDir` | string | Absolute path to the working repo directory |
 | `.BranchName` | string | The current feature branch name |
 | `.PRUrl` | string | The PR URL (available at `post_pr` only) |
+| `.PipelineContext.Handoffs` | map | All handoff values written by pipeline stages (e.g., `.PipelineContext.Handoffs.plan_confidence`) |
+| `.PipelineContext.TaskResults` | list | Outcomes of all completed tasks (id, status, commit SHA) |
+| `.PipelineContext.TraceID` | string | The request-level trace ID for correlation with logs and metrics |
 
 ---
 

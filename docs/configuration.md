@@ -250,12 +250,21 @@ max_spec_review_cycles      = 2
 max_quality_review_cycles   = 1
 max_task_duration_secs      = 600    # 10 minutes per task before timeout
 max_total_duration_secs     = 7200   # 2 hours per ticket before timeout
-context_token_budget        = 80000  # Max tokens per LLM call context window
+context_token_budget        = 80000  # Base token budget per LLM call (scaled by task complexity)
 enable_partial_pr           = true   # Create PR with completed tasks on partial failure
 enable_clarification        = true   # Ask for clarification on ambiguous tickets
 enable_tdd_verification     = true   # Mechanical RED/GREEN TDD verification
 search_replace_similarity   = 0.92   # Fuzzy match threshold for SEARCH blocks (0.0–1.0)
 search_replace_min_context_lines = 3 # Minimum surrounding lines in each SEARCH block
+
+# Plan quality gate (Wave 1+)
+plan_confidence_threshold    = 0.60  # Confidence score below which clarification is triggered (0.0–1.0)
+
+# Cross-task consistency review (Wave 2+)
+intermediate_review_interval = 3     # Run consistency review every N completed tasks (0 = disabled)
+
+# Rebase conflict resolution (Wave 2+)
+conflict_resolution_token_budget = 40000  # Token budget for LLM-assisted conflict resolution
 ```
 
 ---
@@ -438,6 +447,50 @@ Any non-command message from an allowed sender is classified (via LLM) and can c
 
 ## Agent Runner
 
+The agent runner is used both by the core pipeline (for implementation tasks) and by YAML skills (for `agentsdk` steps).
+
+```toml
+[agent_runner]
+provider = "builtin"   # builtin | claudecode | copilot
+```
+
+### Builtin Runner
+
+```toml
+[agent_runner.builtin]
+max_turns             = 15
+max_context_tokens    = 100000
+reflection_interval   = 5      # Run a self-reflection turn every N tool rounds (0 = disabled)
+model                 = ""     # Override model; empty = use [models].implementer
+                               # e.g. "anthropic:claude-haiku-4-5-20251001" for cheaper agent tasks
+```
+
+### Claude Code (pipeline agent)
+
+```toml
+[agent_runner.claudecode]
+bin                  = "claude"
+max_turns_default    = 15
+timeout_secs_default = 300
+# model = "sonnet"   # optional override
+```
+
+### Copilot (pipeline agent)
+
+```toml
+[agent_runner.copilot]
+cli_path             = "copilot"
+github_token         = "${GITHUB_TOKEN}"
+model                = "gpt-4o"
+timeout_secs_default = 300
+```
+
+---
+
+## Skills Agent Runner
+
+A separate agent runner configuration for YAML skill `agentsdk` steps. Does **not** draw from the core pipeline LLM budget.
+
 ```toml
 [skills.agent_runner]
 provider = "builtin"   # builtin | claudecode | copilot
@@ -448,11 +501,13 @@ max_turns_default       = 10
 timeout_secs_default    = 120
 ```
 
-### Builtin Runner
+### Builtin Runner (skills)
 
 ```toml
 [skills.agent_runner.builtin]
 default_allowed_tools = ["Read", "Glob", "Grep"]
+reflection_interval   = 5
+model                 = ""   # empty = use [models].implementer
 ```
 
 ### Claude Code
@@ -489,12 +544,14 @@ Connect Foreman's builtin agent runner to external MCP servers via stdin/stdout 
 name    = "internal-db"
 command = "npx"
 args    = ["-y", "@company/db-mcp-server"]
-allowed_tools      = ["query", "schema"]   # optional whitelist
-restart_policy     = "on-failure"          # always | never | on-failure (default: on-failure)
-max_restarts       = 3                     # default: 3
-restart_delay_secs = 2                     # default: 2
+allowed_tools          = ["query", "schema"]   # optional whitelist
+restart_policy         = "on-failure"           # always | never | on-failure (default: on-failure)
+max_restarts           = 3                      # default: 3
+restart_delay_secs     = 2                      # default: 2
+health_check_interval_secs = 30                 # Ping interval; 0 = disabled (default: 30)
+mcp_resource_max_bytes = 524288                 # Max bytes per MCP resource read (default: 512KB)
 [mcp.servers.env]
-DB_URL = "${DATABASE_URL}"                 # explicit env passthrough only
+DB_URL = "${DATABASE_URL}"                      # explicit env passthrough only
 ```
 
 Multiple servers can be configured by repeating `[[mcp.servers]]` blocks. Tools from all registered servers are automatically added to the builtin agent's tool registry with normalized names (`mcp_{server}_{tool}`, max 64 chars).

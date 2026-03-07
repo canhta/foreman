@@ -10,17 +10,30 @@ Foreman is an autonomous software development daemon that turns labelled issue t
 | **TDD-driven implementation** | Enforces RED → GREEN cycle with mechanical test verification |
 | **Parallel DAG execution** | Tasks within a ticket run in parallel, respecting dependencies |
 | **Tiered review gates** | Spec review, quality review, and final review at each stage |
-| **Tiered retry feedback** | Targeted error context is fed back on lint, test, and review failures |
+| **Typed retry feedback** | Error classifier selects a dedicated prompt template per failure mode |
+| **Plan confidence scoring** | LLM evaluates plan quality; low-confidence plans trigger clarification |
+| **Context window management** | Automatic compaction keeps message history within the model's context window |
+| **Self-reflection turns** | Agent pauses every N turns to assess progress; implicit stop on completion |
+| **Tool call deduplication** | Warns the agent on repeated tool calls to prevent doom loops |
+| **Accurate token counting** | tiktoken-go replaces the `len/4` heuristic for precise budget control |
+| **Dynamic context budget** | Token budget scales with task complexity (low / medium / high) |
+| **Pipeline context cache** | File tree, rules, and secret scan are cached per pipeline run |
+| **PR update detection** | Detects mid-review pushes to open PRs and flags them for re-labelling |
+| **Cross-task consistency review** | Lightweight mid-flight check catches naming and pattern inconsistencies |
+| **Provider circuit breaker** | Automatically bypasses failing providers and falls back to secondary |
+| **Agent progress events** | Real-time turn/tool events for dashboard visibility and cost enforcement |
+| **Subagent budget inheritance** | Subagents receive turn budgets derived from the parent's remaining turns |
 | **Ticket decomposition** | Oversized tickets auto-split into focused child tickets |
 | **Clarification requests** | Asks for detail on vague tickets; waits for author response |
 | **Partial PRs** | Creates a PR with completed work even when some tasks fail |
-| **Crash recovery** | Resumes from last committed task after a daemon restart |
+| **Crash recovery** | Resumes from last committed task after a daemon restart (DAG-aware) |
 | **Cost control** | Per-ticket, per-day, and per-month LLM spend limits |
 | **Secrets scanner** | Redacts secret patterns from every LLM context assembly |
 | **YAML skills engine** | Extend the pipeline at four hook points without modifying Go code |
 | **Multi-provider LLM** | Anthropic, OpenAI, OpenRouter, local models; per-role routing |
+| **Anthropic prompt caching** | `cache_control: ephemeral` on system + context blocks; cache tokens tracked |
 | **Multiple issue trackers** | Jira, GitHub Issues, Linear, local file |
-| **Built-in dashboard** | HTTP/WebSocket UI with REST API and Prometheus metrics |
+| **Built-in dashboard** | HTTP/WebSocket UI with REST API, Prometheus metrics, and real-time events |
 
 ---
 
@@ -60,6 +73,9 @@ After planning, a deterministic validator checks the plan before any code is wri
 - Token-aware cost estimation (not a flat average) — warns if the plan will exceed 50% or 80% of the per-ticket budget
 - Task count within the configured limit
 
+### Plan Confidence Scoring
+After deterministic validation passes, a second LLM call evaluates plan quality and returns a `confidence_score` (0.0–1.0) and a list of concerns. If the score falls below `plan_confidence_threshold` (default: 0.6), Foreman triggers a clarification request rather than proceeding to implementation. The score is stored in the handoffs table under key `plan_confidence` and is visible in the dashboard.
+
 ### TDD-Driven Implementation
 Each task is implemented using a strict TDD workflow:
 1. The implementer writes failing tests first
@@ -69,12 +85,27 @@ Each task is implemented using a strict TDD workflow:
 
 Failure-type discrimination distinguishes assertion failures (valid RED) from compile/import errors (invalid RED), providing precise feedback for retries.
 
+### Error Classification and Typed Retry Prompts
+Before every retry, Foreman runs a deterministic error classifier over the feedback string to assign one of seven error types:
+
+| Error type | Example trigger |
+|---|---|
+| `compile_error` | Build failure, undefined symbol |
+| `type_error` | "cannot use", "does not implement" |
+| `lint_style` | gofmt diff, golangci-lint warnings |
+| `test_assertion` | Expected vs got mismatches |
+| `test_runtime` | Panic, nil pointer, build tag error |
+| `spec_violation` | Spec reviewer rejection |
+| `quality_concern` | Quality reviewer rejection |
+
+Each error type maps to a dedicated retry prompt template (e.g., `implementer_retry_compile.md.j2`). The error type is stored in `tasks.last_error_type` and reported as a Prometheus label `{error_type}` on retry metrics.
+
 ### Tiered Feedback Loops
 Failures at each gate trigger targeted retries with specific error context:
-- **Lint failure** → retry implementer with lint errors (max 2 retries)
-- **Test failure** → retry implementer with test output (max 2 retries)
-- **Spec review rejection** → retry implementer with reviewer comments (max 2 cycles)
-- **Quality review rejection** → retry implementer with quality feedback (max 1 cycle)
+- **Lint failure** → classify error type, select typed retry prompt, retry implementer (max 2 retries)
+- **Test failure** → classify error type, select typed retry prompt, retry implementer (max 2 retries)
+- **Spec review rejection** → `spec_violation` prompt, retry implementer (max 2 cycles)
+- **Quality review rejection** → `quality_concern` prompt, retry implementer (max 1 cycle)
 
 ### Spec Review
 After lint and tests pass, a spec reviewer LLM call checks whether the implementation satisfies the task's acceptance criteria. The reviewer has access to the original ticket, the task description, and the full diff.
@@ -106,6 +137,12 @@ When enabled, Foreman automatically detects oversized tickets using deterministi
 
 ### PR Merge Lifecycle
 After a PR is created, a dedicated `MergeChecker` goroutine polls PR status at a configurable interval. When a PR is merged, `post_merge` skill hooks fire (e.g., deployment triggers). For decomposed tickets, parent completion is checked automatically — when all child PRs merge, the parent ticket is marked `done` and closed in the tracker.
+
+### PR Update Detection
+Foreman stores the PR HEAD SHA at creation time. During merge polls, if the HEAD SHA changes (indicating someone pushed to the branch), the ticket transitions to `pr_updated` and an event is emitted. The ticket requires manual re-labelling with `foreman-ready` to re-enter the pipeline. This prevents stale review decisions on revised code.
+
+### Cross-Task Consistency Review
+After every `intermediate_review_interval` completed tasks (default: 3), a lightweight LLM consistency check runs on the cumulative diff. It checks only naming conventions, error handling patterns, and import style — not spec compliance. Violations are injected as `progress_patterns` so subsequent tasks are aware. This review does not block execution.
 
 ### Crash Recovery
 Task completions are checkpointed by `last_completed_task_seq` in the database. If the daemon crashes mid-pipeline, it resumes from the last committed task on the next start — no work is lost.
@@ -147,7 +184,7 @@ A file-based tracker for local development and testing. No external API required
 ## LLM Provider Support
 
 ### Anthropic (Claude)
-Primary provider. Supports Claude Haiku, Sonnet, and Opus. Native structured output via `tool_choice: {type: "tool"}` pattern. Extended thinking via `thinking` parameter. Prompt caching support. Used for all roles by default.
+Primary provider. Supports Claude Haiku, Sonnet, and Opus. Native structured output via `tool_choice: {type: "tool"}` pattern. Extended thinking via `thinking` parameter. Prompt caching via `cache_control: {type: "ephemeral"}` on system prompt and large context blocks — `cache_read_input_tokens` and `cache_creation_input_tokens` are tracked in `llm_calls` and reported via Prometheus. Used for all roles by default.
 
 ### OpenAI (GPT-4o, o1, o3)
 Structured output via `response_format.json_schema`. Function calling / tool-use support for the builtin agent runner. Compatible with all pipeline roles.
@@ -158,8 +195,8 @@ OpenAI-compatible API that routes to any model. Inherits OpenAI tool-use support
 ### Local Models (Ollama and OpenAI-compatible servers)
 Any server implementing the OpenAI Chat Completions API is supported. Tool-use degrades gracefully — if the model does not support tools, the builtin runner falls back to single-turn text responses.
 
-### Cross-Provider Fallback
-When a provider is fully down (not just rate-limited), Foreman can fall back to a configured secondary provider. If all retries are exhausted and no fallback is available, the pipeline is paused and retried on the next poll cycle — the ticket is not failed.
+### Cross-Provider Fallback and Circuit Breaker
+A circuit breaker wraps each provider. After a configurable number of consecutive failures, the circuit opens and the provider is bypassed. Foreman then falls back to the configured secondary provider. If all providers are unavailable, the pipeline is paused and retried on the next poll cycle — the ticket is not failed. The circuit resets automatically after a cool-down period.
 
 ### Per-Role Model Routing
 Each pipeline role (planner, implementer, spec reviewer, quality reviewer, final reviewer, clarifier) can be routed to a different model and provider. Use expensive models for critical judgment roles and cheaper models for simpler review tasks.
@@ -171,7 +208,7 @@ Anthropic's extended thinking parameter is supported in LLM requests. This can b
 All providers support `OutputSchema` in LLM requests. Anthropic uses the `tool_choice` forced-tool mechanism. OpenAI uses `response_format.json_schema`. This allows skills and pipeline steps to request validated JSON responses.
 
 ### Prompt Caching
-Anthropic prompt caching (`cache_control: {type: "ephemeral"}`) is supported to reduce costs on repeated context assembly. The system prompt and large static context blocks are cacheable.
+Anthropic prompt caching (`cache_control: {type: "ephemeral"}`) is applied to system prompt blocks and context blocks exceeding 1024 tokens. `cache_read_input_tokens` and `cache_creation_input_tokens` are tracked per call in `llm_calls` and aggregated as `foreman_anthropic_cache_savings_tokens_total` in Prometheus.
 
 ---
 
@@ -190,7 +227,7 @@ A pure Go git implementation (`go-git/v5`) is used automatically when the `git` 
 Foreman creates branches with a configurable prefix (`foreman/PROJ-123-add-auth`). Branches are rebased onto the default branch before PR creation.
 
 ### LLM-Assisted Rebase Conflict Resolution
-When a rebase produces merge conflicts, Foreman attempts to resolve them automatically using an LLM call with the conflict diff as context. If LLM resolution fails, Foreman creates the PR anyway with a conflict warning note.
+When a rebase produces merge conflicts, Foreman attempts to resolve them automatically using an LLM call. The LLM receives the full file content from both the base and head, plus the task descriptions and conflict markers, for richer context. Content is truncated in reverse priority order if it exceeds `conflict_resolution_token_budget` (default: 40 000 tokens). If LLM resolution fails, Foreman creates the PR anyway with a conflict warning note.
 
 ### Draft PRs
 PRs are created as drafts by default. Configurable reviewers are automatically assigned.
@@ -204,7 +241,7 @@ Runs commands directly on the host machine. An allowlist of permitted commands (
 
 ### Docker Runner
 Runs each ticket's commands in a dedicated Docker container (one container per ticket, reused across tasks). Features:
-- Network isolation (`network = "none"` by default)
+- **Network isolation**: `--network none` is passed by default. Set `docker.allow_network = true` to permit outbound access. `foreman doctor` warns if Docker mode is configured without reviewing the network setting.
 - CPU and memory limits
 - Automatic dep reinstall when package files change between tasks (detects `package.json`, `go.mod`, `Cargo.toml`, etc.)
 - Configurable base image per repo via `.foreman-context.md`
@@ -241,8 +278,22 @@ Prevents a single task from consuming unbounded tokens through repeated retries.
 ### Real-Time Cost Tracking
 Every LLM call records input tokens, output tokens, cost, duration, and model. Costs are aggregated per ticket, per day, and per month. The `foreman cost` CLI and dashboard show current spend at all granularities.
 
+### Accurate Token Counting
+All token budget calculations use `tiktoken-go` (`github.com/pkoukk/tiktoken-go`) with the model's actual encoding (`cl100k_base` for Claude/GPT-4, `o200k_base` for o-series). The previous `len(text)/4` heuristic has been fully removed. This makes context budgets accurate to within 5% of the provider's own counts.
+
 ### Token-Aware Cost Estimation at Plan Validation
-Before executing a plan, Foreman estimates the total cost using actual token budgets and model pricing (not a flat per-call estimate). Plans that are projected to use 80%+ of the budget are rejected before any implementation begins.
+Before executing a plan, Foreman estimates the total cost using actual token budgets (via tiktoken) and model pricing. Plans projected to use 80%+ of the budget are rejected before any implementation begins.
+
+### Dynamic Context Budget by Task Complexity
+Each task's context token budget is scaled by its `estimated_complexity`:
+- `low` → `context_token_budget × 0.5`
+- `medium` → `context_token_budget × 1.0` (default)
+- `high` → `context_token_budget × 1.5`, capped at model context minus `max_output_tokens`
+
+The budget allocation is logged as a `context_assembly` event for observability.
+
+### Pipeline-Scoped Context Cache
+A `ContextCache` is created once per pipeline run and shared across all stages. It pre-computes the file tree, `.foreman-rules.md` content, and secret scan patterns at pipeline start. The cache is invalidated only after git operations (commit, checkout, rebase). This eliminates redundant I/O and reduces context assembly time by 80%+ for warm runs.
 
 ### Configurable Per-Model Pricing
 Model pricing (input/output per 1M tokens) is configurable in `foreman.toml` so cost estimates stay accurate as provider pricing changes.
@@ -252,7 +303,16 @@ Model pricing (input/output per 1M tokens) is configurable in `foreman.toml` so 
 ## Observability
 
 ### Structured Logging
-All log output uses `zerolog` for structured JSON logging with contextual fields (ticket ID, task ID, role, model, step). Supports `json` and `pretty` formats. Log level is configurable (`trace`, `debug`, `info`, `warn`, `error`).
+All log output uses `zerolog` for structured JSON logging with contextual fields (ticket ID, task ID, role, model, step, trace ID). Supports `json` and `pretty` formats. Log level is configurable (`trace`, `debug`, `info`, `warn`, `error`).
+
+### Request-Level Tracing
+Each pipeline run is assigned a `TraceID` that propagates through all LLM calls, events, and database records. This enables end-to-end correlation of all activity for a single ticket in structured log queries.
+
+### LLM Prompt and Response Storage
+Full prompts and responses are stored in a `llm_call_details` table linked by `llm_calls.id`. This provides complete auditability for debugging unexpected model behaviour.
+
+### Prompt Version Hashing
+At startup, Foreman computes a SHA-256 hash of every `.md.j2` template and stores it as a `prompt_snapshot` row. Each `llm_calls` record captures the `prompt_version` active at call time. A `GET /api/prompts/versions` endpoint exposes a diff between the current hashes and the stored snapshots.
 
 ### Prometheus Metrics
 A Prometheus-compatible metrics endpoint is available on the dashboard server. Metrics include:
@@ -260,13 +320,16 @@ A Prometheus-compatible metrics endpoint is available on the dashboard server. M
 - LLM call counters, token usage, cost, and duration histograms — all labelled by role and model
 - DAG execution metrics: `foreman_dag_tasks_completed_total`, `foreman_dag_tasks_failed_total`, `foreman_dag_tasks_skipped_total`, `foreman_dag_execution_duration_seconds`
 - Test run results
-- Retry counts by role
+- Retry counts by role and error type (`foreman_retry_triggered_total{stage, error_type}`)
 - Rate limit hits by provider
 - TDD verification results
 - Partial PR counts
 - Clarification request counts
 - Secrets detection counts
 - Hook and skill execution counts
+- Anthropic cache savings (`foreman_anthropic_cache_savings_tokens_total`)
+- Context cache hit ratio
+- MCP tool calls by server, tool, and status (`foreman_mcp_tool_calls_total{server, tool, status}`)
 
 ### Event Log
 Every significant pipeline event is recorded to the database events table with type, severity, ticket/task context, and a details blob. Events are viewable via the dashboard and the `foreman logs` CLI.
@@ -336,19 +399,39 @@ Skills can delegate tasks to any agent runner implementation:
 - **claudecode** — delegates to the `claude` CLI binary (Claude Code)
 - **copilot** — delegates to the GitHub Copilot CLI via JSON-RPC
 
-### Builtin Runner — 14 Built-in Tools
-The builtin runner provides a typed tool registry covering four categories:
-- **Filesystem**: `Read`, `Write`, `Edit`, `MultiEdit`, `ListDir`, `Glob`
+### Builtin Runner — Built-in Tools
+The builtin runner provides a typed tool registry covering five categories:
+- **Filesystem**: `Read`, `ReadRange`, `Write`, `Edit`, `MultiEdit`, `ListDir`, `Glob`, `ApplyPatch`
 - **Code intelligence**: `Grep`, `GetSymbol`, `GetErrors`, `TreeSummary`
 - **Git**: `GetDiff`, `GetCommitLog`
 - **Execution**: `Bash`, `RunTest`
-- **Agent composition**: `Subagent`
+- **Agent composition**: `Subagent`, `ListMCPTools`, `ReadMCPResource`
 
-### Parallel Tool Execution
-All tool calls within a single agent turn execute in parallel using `errgroup`. This matches the performance of the Anthropic SDK's `BetaToolRunner` and is typically 3× faster than sequential execution on multi-tool turns.
+`ReadRange(file, start_line, end_line)` reads a slice of a file without consuming the full token budget for large files. `ApplyPatch(file, patch)` applies a unified diff format patch as an alternative to `Edit` for multi-hunk edits.
+
+### File-Aware Parallel Tool Execution
+Before executing tool calls in parallel, the runner groups them by the file paths appearing in their arguments. Tool calls operating on disjoint file sets execute in parallel; calls sharing any file path execute sequentially in the order returned by the LLM. Non-filesystem tools are always parallel. This prevents edit-edit conflicts on the same file while preserving parallel speed for independent operations.
+
+### Context Window Management
+After each agent turn, the runner measures the total token count of the message history. At 70% of the model's context window, old tool outputs are truncated to 200-character summaries. At 85%, the runner generates a structured summary (Goal → Accomplished → Remaining → Relevant Files) and replaces all messages older than the last 3 turns with it. This keeps sessions alive through long tasks without hitting context limits.
+
+### Self-Reflection Turns
+Every N turns (configurable via `reflection_interval`, default: 5), the runner injects a structured reflection prompt asking the agent to summarise what it has accomplished, which files it has changed, and what remains. If the reply signals task completion (`TASK_COMPLETE`), the agent loop exits early. Reflection turns are logged as a distinct `reflection` turn type in `llm_calls`.
+
+### Tool Call Deduplication
+The runner maintains an in-memory fingerprint map keyed by `(tool_name, canonical_args_hash)`. When the same fingerprint appears ≥ 2 times in a session, a warning message is injected before the next LLM turn advising the agent to use the result it already has or explain what is different this time. This detects and interrupts doom loops without hard-blocking execution.
+
+### Agent Progress Events
+`AgentRequest` accepts an optional `OnProgress func(AgentEvent)` callback. The builtin runner emits `turn_start`, `tool_start`, `tool_end`, and `turn_end` events with token counts and cost. The orchestrator wires these to the `EventEmitter` for dashboard live updates and to the cost controller for mid-execution budget enforcement.
+
+### Subagent Budget Inheritance and Depth Enforcement
+When a `Subagent` tool call is made, the subagent's `MaxTurns` is set to `min(subagent_max_turns_default, parent.RemainingTurns − currentTurn)`. If the computed value is ≤ 0, the call fails immediately with `"parent budget exhausted"`. A global `MaxAgentDepth` (default: 3) prevents infinite subagent recursion.
+
+### Per-Model Router for Agent Tasks
+The builtin runner can be configured with a dedicated model for all agent (skill) tasks via `[agent_runner.builtin] model = "..."`. When set, this model is used instead of falling through to the implementer model, allowing cheap models for exploration tasks and expensive models for core pipeline coding.
 
 ### Reactive Context Injection
-After each file-touching tool call (Read, Edit, Write, GetDiff), the builtin runner queries the database for progress patterns and scoped rules relevant to the accessed paths, then injects them as a context message before the next LLM turn. This eliminates stale context issues without reinserting the full context on every turn.
+After each file-touching tool call (Read, ReadRange, Edit, Write, GetDiff), the builtin runner queries the database for progress patterns and scoped rules relevant to the accessed paths, then injects them as a context message before the next LLM turn. This eliminates stale context issues without reinserting the full context on every turn.
 
 ### Two-Layer Context System
 1. **Pre-assembly** (all three runners): the skills engine always reads `AGENTS.md` or `.foreman/context.md`, adds path-scoped rules and ticket metadata, and prepends it to `AgentRequest.SystemPrompt`.
@@ -366,6 +449,15 @@ Foreman's builtin agent runner supports MCP servers via stdio subprocess transpo
 Restart policy (`always` / `never` / `on-failure`) with configurable `max_restarts` and `restart_delay_secs` provides graceful degradation — if a server exhausts its restart budget, its tools are marked unavailable and the agent continues with built-in tools only.
 
 For Anthropic API-side MCP, set `URL` and `AuthToken` in `MCPServerConfig` — Anthropic's infrastructure handles the connection without a local subprocess.
+
+### MCP Resources
+The `StdioClient` supports `resources/list` and `resources/read`. The `Manager` exposes `ReadResource(ctx, serverName, uri string) (string, error)`, and an agent tool `ReadMCPResource(server, uri string)` exposes this to the LLM. Resource content is subject to secrets scanning. Maximum response size is configurable via `mcp_resource_max_bytes` (default: 512 KB).
+
+### MCP Health Monitoring
+Each `StdioClient` sends periodic `ping` requests (interval configurable via `health_check_interval_secs`, default: 30 s). If a ping does not respond within 5 s, the server is marked `unhealthy`. After 3 consecutive failures, the configured `restart_policy` is applied. Server health status is exposed on the dashboard REST API and WebSocket feed.
+
+### `ListMCPTools` Agent Tool
+A read-only `ListMCPTools` tool is available to the agent inside a session. It returns all registered MCP tools from the in-memory registry: `{normalized_name, original_name, server_name, description}`. This gives the LLM runtime visibility into which MCP tools are available without requiring a call to an external server.
 
 ---
 
@@ -430,17 +522,20 @@ WhatsApp sessions are stored in a local SQLite database (default `~/.foreman/wha
 
 ---
 
-## Known Limitations and Gaps
+## Known Limitations and Pending Work (Wave 4)
 
-> These are areas identified in design documents where behaviour may differ from the descriptions above or where features are partially implemented.
+> These items are planned improvements not yet shipped. Everything described above is implemented.
 
-- **GitLab and Bitbucket PR creation** is defined in the interface but may not be fully tested. GitHub is the primary tested backend.
-- **go-git fallback** implements the `GitProvider` interface but may have gaps for complex rebase scenarios.
-- **Extended thinking** (Anthropic) and **prompt caching** are defined in the LLM request model but may not be surfaced in the standard pipeline steps — they are primarily available via skill YAML.
-- **Cross-provider fallback** (`fallback_provider`) is defined in config but the circuit-breaker logic between primary and fallback is not fully detailed in the implementation plans.
-- **MCP HTTP/SSE transport** is not implemented. Only stdio subprocess transport is supported.
-- **MCP resources and prompts** are not supported. Tools only.
-- **Community skills** (`skills/community/`) are defined but the submission and review process for community contributions is not yet documented.
+- **SemanticSearch tool** — embedding-based semantic code search (`REQ-TOOLS-003`) requires the embedding index store (`REQ-INFRA-002`) which is a Wave 4 item.
+- **GetTypeDefinition tool** — cross-file type resolution using `go/types` or tree-sitter (`REQ-TOOLS-004`) is Wave 4.
+- **MCP HTTP/SSE transport** — only stdio subprocess transport is implemented. HTTP+SSE client is Wave 4 (`REQ-MCP-003`).
+- **LLM-assisted decomposition check** — secondary LLM check when heuristics don't trigger (`REQ-PIPE-004`) is Wave 4.
+- **Token budget dashboard panel** — `GET /api/tasks/{id}/context` endpoint showing budget utilisation, files selected, and cache hits (`REQ-OBS-004`) is Wave 4.
+- **Structured error classification metrics** — `foreman_task_failures_total{error_type, runner}` and related counters (`REQ-OBS-003`) are Wave 4.
+- **Distributed locking** — cross-process file reservation coordination for multi-instance deployments (`BUG-M15`) is Wave 4.
+- **GitLab and Bitbucket PR creation** — defined in the interface but GitHub is the primary tested backend.
+- **go-git fallback** — implements the `GitProvider` interface but may have gaps for complex rebase scenarios.
+- **Community skills** — `skills/community/` is defined but the contribution review process is not yet documented.
 
 ---
 
