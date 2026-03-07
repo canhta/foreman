@@ -196,6 +196,7 @@ func (d *Daemon) Start(ctx context.Context) {
 	prChecker := d.prChecker
 	hookRunner := d.hookRunner
 	tr := d.tracker
+	daemonChannel := d.channel
 	d.mu.Unlock()
 
 	if database != nil && runnerMode == "docker" {
@@ -224,6 +225,16 @@ func (d *Daemon) Start(ctx context.Context) {
 	// Start merge checker goroutine
 	if prChecker != nil && database != nil {
 		mc := NewMergeChecker(database, prChecker, hookRunner, tr, log.Logger)
+		if daemonChannel != nil {
+			mc.SetNotify(func(ctx context.Context, ticket *models.Ticket, msg string) {
+				if ticket.ChannelSenderID == "" {
+					return
+				}
+				if err := daemonChannel.Send(ctx, ticket.ChannelSenderID, msg); err != nil {
+					log.Warn().Err(err).Str("ticket", ticket.ID).Msg("merge checker channel notify failed")
+				}
+			})
+		}
 		interval := time.Duration(d.config.MergeCheckIntervalSecs) * time.Second
 		d.wg.Add(1)
 		go func() {

@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/canhta/foreman/internal/git"
@@ -15,6 +16,8 @@ import (
 type MergeCheckerDB interface {
 	ListTickets(ctx context.Context, filter models.TicketFilter) ([]models.Ticket, error)
 	UpdateTicketStatus(ctx context.Context, id string, status models.TicketStatus) error
+	SetTicketPRHeadSHA(ctx context.Context, ticketID, sha string) error
+	RecordEvent(ctx context.Context, e *models.EventRecord) error
 	GetTicketByExternalID(ctx context.Context, externalID string) (*models.Ticket, error)
 	GetChildTickets(ctx context.Context, parentExternalID string) ([]models.Ticket, error)
 }
@@ -25,6 +28,7 @@ type MergeChecker struct {
 	prChecker  git.PRChecker
 	hookRunner *skills.HookRunner
 	tracker    tracker.IssueTracker
+	notify     func(ctx context.Context, ticket *models.Ticket, msg string)
 	log        zerolog.Logger
 }
 
@@ -37,6 +41,12 @@ func NewMergeChecker(db MergeCheckerDB, prChecker git.PRChecker, hookRunner *ski
 		tracker:    tr,
 		log:        log,
 	}
+}
+
+// SetNotify attaches a notification callback invoked when the pr_updated status is set.
+// The callback receives the affected ticket and a human-readable message.
+func (m *MergeChecker) SetNotify(fn func(ctx context.Context, ticket *models.Ticket, msg string)) {
+	m.notify = fn
 }
 
 // Start begins the merge check poll loop. Blocks until ctx is cancelled.
@@ -79,6 +89,8 @@ func (m *MergeChecker) checkAll(ctx context.Context) {
 			m.handleMerged(ctx, ticket)
 		case git.PRStateClosed:
 			m.handleClosed(ctx, ticket)
+		case git.PRStateOpen:
+			m.handleOpen(ctx, ticket, status.HeadSHA)
 		}
 	}
 }
@@ -109,6 +121,65 @@ func (m *MergeChecker) handleMerged(ctx context.Context, ticket *models.Ticket) 
 func (m *MergeChecker) handleClosed(ctx context.Context, ticket *models.Ticket) {
 	if err := m.db.UpdateTicketStatus(ctx, ticket.ID, models.TicketStatusPRClosed); err != nil {
 		m.log.Error().Err(err).Str("ticket", ticket.ID).Msg("failed to update ticket to pr_closed")
+	}
+}
+
+// handleOpen compares the stored PR HEAD SHA to the current one.
+// If they differ and a stored SHA exists, the ticket is marked pr_updated.
+// If no SHA is stored yet (first poll), the SHA is initialized without changing status.
+func (m *MergeChecker) handleOpen(ctx context.Context, ticket *models.Ticket, currentHeadSHA string) {
+	if currentHeadSHA == "" {
+		return
+	}
+
+	storedSHA := ticket.PRHeadSHA
+
+	if storedSHA == "" {
+		// First time we see this ticket's HEAD SHA — store it as baseline.
+		if err := m.db.SetTicketPRHeadSHA(ctx, ticket.ID, currentHeadSHA); err != nil {
+			m.log.Error().Err(err).Str("ticket", ticket.ID).Msg("failed to store initial pr_head_sha")
+		}
+		return
+	}
+
+	if storedSHA == currentHeadSHA {
+		// No external push detected.
+		return
+	}
+
+	// HEAD SHA changed — external push detected.
+	m.log.Info().
+		Str("ticket", ticket.ID).
+		Str("old_sha", storedSHA).
+		Str("new_sha", currentHeadSHA).
+		Msg("PR branch updated externally; marking ticket as pr_updated")
+
+	if err := m.db.UpdateTicketStatus(ctx, ticket.ID, models.TicketStatusPRUpdated); err != nil {
+		m.log.Error().Err(err).Str("ticket", ticket.ID).Msg("failed to update ticket to pr_updated")
+		return
+	}
+
+	if err := m.db.SetTicketPRHeadSHA(ctx, ticket.ID, currentHeadSHA); err != nil {
+		m.log.Error().Err(err).Str("ticket", ticket.ID).Msg("failed to update pr_head_sha after pr_updated")
+	}
+
+	if err := m.db.RecordEvent(ctx, &models.EventRecord{
+		ID:        fmt.Sprintf("evt-%s-pr_updated-%d", ticket.ID, time.Now().UnixNano()),
+		TicketID:  ticket.ID,
+		EventType: "pr_updated",
+		Message:   fmt.Sprintf("PR branch updated: %s -> %s", storedSHA, currentHeadSHA),
+		Details:   fmt.Sprintf("old_sha=%s new_sha=%s", storedSHA, currentHeadSHA),
+		CreatedAt: time.Now(),
+	}); err != nil {
+		m.log.Error().Err(err).Str("ticket", ticket.ID).Msg("failed to record pr_updated event")
+	}
+
+	if m.notify != nil {
+		msg := fmt.Sprintf(
+			"PR for ticket %s was updated externally (new SHA: %s). Manual re-labeling required to re-enter pipeline.",
+			ticket.ExternalID, currentHeadSHA,
+		)
+		m.notify(ctx, ticket, msg)
 	}
 }
 

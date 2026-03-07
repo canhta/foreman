@@ -13,14 +13,18 @@ import (
 
 // mockMergeDB implements MergeCheckerDB for testing.
 type mockMergeDB struct {
-	tickets       map[string]*models.Ticket
-	statusUpdates map[string]models.TicketStatus
+	tickets          map[string]*models.Ticket
+	statusUpdates    map[string]models.TicketStatus
+	prHeadSHAUpdates map[string]string
+	events           []*models.EventRecord
 }
 
 func newMockMergeDB() *mockMergeDB {
 	return &mockMergeDB{
-		tickets:       make(map[string]*models.Ticket),
-		statusUpdates: make(map[string]models.TicketStatus),
+		tickets:          make(map[string]*models.Ticket),
+		statusUpdates:    make(map[string]models.TicketStatus),
+		prHeadSHAUpdates: make(map[string]string),
+		events:           nil,
 	}
 }
 
@@ -45,6 +49,19 @@ func (m *mockMergeDB) UpdateTicketStatus(_ context.Context, id string, status mo
 	if t, ok := m.tickets[id]; ok {
 		t.Status = status
 	}
+	return nil
+}
+
+func (m *mockMergeDB) SetTicketPRHeadSHA(_ context.Context, ticketID, sha string) error {
+	m.prHeadSHAUpdates[ticketID] = sha
+	if t, ok := m.tickets[ticketID]; ok {
+		t.PRHeadSHA = sha
+	}
+	return nil
+}
+
+func (m *mockMergeDB) RecordEvent(_ context.Context, e *models.EventRecord) error {
+	m.events = append(m.events, e)
 	return nil
 }
 
@@ -111,6 +128,138 @@ func TestMergeChecker_HandleClosed(t *testing.T) {
 	mc.checkAll(context.Background())
 
 	assert.Equal(t, models.TicketStatusPRClosed, db.statusUpdates["T1"])
+}
+
+func TestMergeChecker_DetectsPRUpdate(t *testing.T) {
+	db := newMockMergeDB()
+	db.tickets["T1"] = &models.Ticket{
+		ID:         "T1",
+		ExternalID: "EXT-1",
+		Status:     models.TicketStatusAwaitingMerge,
+		PRNumber:   42,
+		PRHeadSHA:  "abc123",
+	}
+
+	// PR is still open but HEAD SHA changed (someone pushed to branch externally)
+	prChecker := &mockPRChecker{statuses: map[int]git.PRMergeStatus{
+		42: {State: git.PRStateOpen, HeadSHA: "def456"},
+	}}
+
+	mc := NewMergeChecker(db, prChecker, nil, nil, zerolog.Nop())
+	mc.checkAll(context.Background())
+
+	// Status should be updated to pr_updated
+	assert.Equal(t, models.TicketStatusPRUpdated, db.statusUpdates["T1"])
+	// New SHA should be stored
+	assert.Equal(t, "def456", db.prHeadSHAUpdates["T1"])
+	// An event should have been recorded
+	assert.Len(t, db.events, 1)
+	assert.Equal(t, "pr_updated", db.events[0].EventType)
+	assert.Equal(t, "T1", db.events[0].TicketID)
+}
+
+func TestMergeChecker_NoUpdateWhenSHAUnchanged(t *testing.T) {
+	db := newMockMergeDB()
+	db.tickets["T1"] = &models.Ticket{
+		ID:         "T1",
+		ExternalID: "EXT-1",
+		Status:     models.TicketStatusAwaitingMerge,
+		PRNumber:   42,
+		PRHeadSHA:  "abc123",
+	}
+
+	// Same SHA — no external push
+	prChecker := &mockPRChecker{statuses: map[int]git.PRMergeStatus{
+		42: {State: git.PRStateOpen, HeadSHA: "abc123"},
+	}}
+
+	mc := NewMergeChecker(db, prChecker, nil, nil, zerolog.Nop())
+	mc.checkAll(context.Background())
+
+	// No status update should have been recorded
+	assert.Empty(t, db.statusUpdates)
+	assert.Empty(t, db.prHeadSHAUpdates)
+}
+
+func TestMergeChecker_NoUpdateWhenStoredSHAEmpty(t *testing.T) {
+	db := newMockMergeDB()
+	db.tickets["T1"] = &models.Ticket{
+		ID:         "T1",
+		ExternalID: "EXT-1",
+		Status:     models.TicketStatusAwaitingMerge,
+		PRNumber:   42,
+		PRHeadSHA:  "", // not yet stored (legacy ticket)
+	}
+
+	prChecker := &mockPRChecker{statuses: map[int]git.PRMergeStatus{
+		42: {State: git.PRStateOpen, HeadSHA: "abc123"},
+	}}
+
+	mc := NewMergeChecker(db, prChecker, nil, nil, zerolog.Nop())
+	mc.checkAll(context.Background())
+
+	// Should store the SHA but NOT mark as pr_updated (first time initialization)
+	assert.NotContains(t, db.statusUpdates, "T1")
+	assert.Equal(t, "abc123", db.prHeadSHAUpdates["T1"])
+}
+
+func TestMergeChecker_SendsNotificationOnPRUpdate(t *testing.T) {
+	db := newMockMergeDB()
+	db.tickets["T1"] = &models.Ticket{
+		ID:              "T1",
+		ExternalID:      "EXT-1",
+		Status:          models.TicketStatusAwaitingMerge,
+		PRNumber:        42,
+		PRHeadSHA:       "abc123",
+		ChannelSenderID: "user-456",
+	}
+
+	prChecker := &mockPRChecker{statuses: map[int]git.PRMergeStatus{
+		42: {State: git.PRStateOpen, HeadSHA: "def456"},
+	}}
+
+	var notifiedTicketID string
+	var notifiedMsg string
+
+	mc := NewMergeChecker(db, prChecker, nil, nil, zerolog.Nop())
+	mc.SetNotify(func(_ context.Context, ticket *models.Ticket, msg string) {
+		notifiedTicketID = ticket.ID
+		notifiedMsg = msg
+	})
+	mc.checkAll(context.Background())
+
+	// Status should be updated to pr_updated
+	assert.Equal(t, models.TicketStatusPRUpdated, db.statusUpdates["T1"])
+	// Notification should have been sent
+	assert.Equal(t, "T1", notifiedTicketID)
+	assert.Contains(t, notifiedMsg, "EXT-1")
+	assert.Contains(t, notifiedMsg, "def456")
+	assert.Contains(t, notifiedMsg, "Manual re-labeling")
+}
+
+func TestMergeChecker_NoNotificationWhenNoSHAChange(t *testing.T) {
+	db := newMockMergeDB()
+	db.tickets["T1"] = &models.Ticket{
+		ID:              "T1",
+		ExternalID:      "EXT-1",
+		Status:          models.TicketStatusAwaitingMerge,
+		PRNumber:        42,
+		PRHeadSHA:       "abc123",
+		ChannelSenderID: "user-456",
+	}
+
+	prChecker := &mockPRChecker{statuses: map[int]git.PRMergeStatus{
+		42: {State: git.PRStateOpen, HeadSHA: "abc123"},
+	}}
+
+	notifyCalled := false
+	mc := NewMergeChecker(db, prChecker, nil, nil, zerolog.Nop())
+	mc.SetNotify(func(_ context.Context, _ *models.Ticket, _ string) {
+		notifyCalled = true
+	})
+	mc.checkAll(context.Background())
+
+	assert.False(t, notifyCalled, "notify should not be called when SHA is unchanged")
 }
 
 func TestMergeChecker_ParentCompletion(t *testing.T) {
