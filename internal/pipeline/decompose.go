@@ -5,13 +5,20 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/canhta/foreman/internal/models"
 	"github.com/canhta/foreman/internal/tracker"
+	"github.com/rs/zerolog/log"
 )
 
 // scopeKeywords are words that suggest a ticket covers multiple features.
 var scopeKeywords = []string{"and", "also", "plus", "additionally"}
+
+// DecompEventRecorder is the subset of db.Database needed to record decomposition events.
+type DecompEventRecorder interface {
+	RecordEvent(ctx context.Context, e *models.EventRecord) error
+}
 
 // NeedsDecomposition returns true if the ticket is too large for a single PR.
 func NeedsDecomposition(ticket *models.Ticket, cfg *models.DecomposeConfig) bool {
@@ -49,11 +56,131 @@ type Decomposer struct {
 	llm     LLMProvider
 	tracker tracker.IssueTracker
 	cfg     *models.DecomposeConfig
+	db      DecompEventRecorder
 }
 
 // NewDecomposer creates a new Decomposer.
 func NewDecomposer(llm LLMProvider, tr tracker.IssueTracker, cfg *models.DecomposeConfig) *Decomposer {
 	return &Decomposer{llm: llm, tracker: tr, cfg: cfg}
+}
+
+// NewDecomposerWithDB creates a Decomposer that records events to a database.
+func NewDecomposerWithDB(llm LLMProvider, tr tracker.IssueTracker, cfg *models.DecomposeConfig, db DecompEventRecorder) *Decomposer {
+	return &Decomposer{llm: llm, tracker: tr, cfg: cfg, db: db}
+}
+
+// NeedsDecomposition checks whether the ticket needs decomposition using heuristics
+// first, then optionally an LLM check when heuristics return false and
+// cfg.LLMAssist is enabled. The heuristic result always takes precedence for
+// safety: if heuristics say decompose we decompose regardless.
+func (d *Decomposer) NeedsDecomposition(ctx context.Context, ticket *models.Ticket) (bool, error) {
+	heuristicResult := NeedsDecomposition(ticket, d.cfg)
+
+	if heuristicResult {
+		d.recordDecompEvent(ctx, ticket.ID, heuristicResult, "skipped", "heuristics triggered")
+		return true, nil
+	}
+
+	if d.cfg.LLMAssist {
+		llmResult, reason, err := d.llmAssistCheck(ctx, ticket)
+		if err != nil {
+			log.Warn().Err(err).Str("ticket_id", ticket.ID).Msg("LLM decomposition check failed, using heuristic result")
+			d.recordDecompEvent(ctx, ticket.ID, heuristicResult, "error", err.Error())
+			return heuristicResult, nil
+		}
+		d.recordDecompEvent(ctx, ticket.ID, heuristicResult, boolToYesNo(llmResult), reason)
+		return llmResult, nil
+	}
+
+	d.recordDecompEvent(ctx, ticket.ID, heuristicResult, "skipped", "llm_assist disabled")
+	return heuristicResult, nil
+}
+
+// llmAssistCheck calls the LLM to evaluate whether the ticket needs decomposition.
+// Returns (needsDecomp, reason, error).
+func (d *Decomposer) llmAssistCheck(ctx context.Context, ticket *models.Ticket) (bool, string, error) {
+	prompt := fmt.Sprintf(`You are evaluating whether a software ticket is too large to implement in a single PR.
+
+Ticket title: %s
+Ticket description:
+%s
+
+Is this ticket too large for a single PR (more than 5 files, more than 400 lines of changes, or touches multiple unrelated systems)?
+
+Answer with exactly one of:
+YES: <one sentence reason>
+NO: <one sentence reason>`, ticket.Title, ticket.Description)
+
+	model := d.cfg.LLMAssistModel
+	req := models.LlmRequest{
+		SystemPrompt: "You are a technical project manager evaluating ticket scope.",
+		UserPrompt:   prompt,
+		MaxTokens:    256,
+		Temperature:  0.0,
+	}
+	if model != "" {
+		req.Model = model
+	}
+
+	resp, err := d.llm.Complete(ctx, req)
+	if err != nil {
+		return false, "", fmt.Errorf("llm decomposition check: %w", err)
+	}
+
+	content := strings.TrimSpace(resp.Content)
+	upper := strings.ToUpper(content)
+	if strings.HasPrefix(upper, "YES") {
+		reason := extractReason(content)
+		return true, reason, nil
+	}
+	reason := extractReason(content)
+	return false, reason, nil
+}
+
+// extractReason pulls the text after the YES:/NO: prefix.
+func extractReason(content string) string {
+	if idx := strings.Index(content, ":"); idx >= 0 && idx < len(content)-1 {
+		return strings.TrimSpace(content[idx+1:])
+	}
+	return content
+}
+
+// recordDecompEvent writes a decomposition_check event to the db (if configured).
+func (d *Decomposer) recordDecompEvent(ctx context.Context, ticketID string, heuristic bool, llmResult, reason string) {
+	if d.db == nil {
+		return
+	}
+	type eventPayload struct {
+		Type            string `json:"type"`
+		LLMResult       string `json:"llm_result"`
+		Reason          string `json:"reason"`
+		HeuristicResult bool   `json:"heuristic_result"`
+	}
+	payload := eventPayload{
+		Type:            "decomposition_check",
+		HeuristicResult: heuristic,
+		LLMResult:       llmResult,
+		Reason:          reason,
+	}
+	details, _ := json.Marshal(payload)
+	err := d.db.RecordEvent(ctx, &models.EventRecord{
+		ID:        fmt.Sprintf("evt-%s-%d", ticketID, time.Now().UnixNano()),
+		TicketID:  ticketID,
+		EventType: "decomposition_check",
+		Details:   string(details),
+		CreatedAt: time.Now(),
+	})
+	if err != nil {
+		log.Warn().Err(err).Str("ticket_id", ticketID).Msg("failed to record decomposition_check event")
+	}
+}
+
+// boolToYesNo converts a bool to "yes" or "no".
+func boolToYesNo(b bool) string {
+	if b {
+		return "yes"
+	}
+	return "no"
 }
 
 // Execute decomposes a ticket into child issues and creates them in the tracker.

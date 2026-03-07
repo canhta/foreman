@@ -111,6 +111,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("decompose.max_scope_keywords", 2)
 	v.SetDefault("decompose.approval_label", "foreman-ready")
 	v.SetDefault("decompose.parent_label", "foreman-decomposed")
+	v.SetDefault("decompose.llm_assist", false)
+	v.SetDefault("decompose.llm_assist_model", "")
 
 	v.SetDefault("runner.mode", "local")
 	v.SetDefault("runner.local.allowed_commands", []string{"npm", "yarn", "pnpm", "cargo", "go", "pytest", "make", "bun"})

@@ -166,9 +166,11 @@ type RateLimitConfig struct {
 type DecomposeConfig struct {
 	ApprovalLabel    string `mapstructure:"approval_label"`
 	ParentLabel      string `mapstructure:"parent_label"`
+	LLMAssistModel   string `mapstructure:"llm_assist_model"`
 	MaxTicketWords   int    `mapstructure:"max_ticket_words"`
 	MaxScopeKeywords int    `mapstructure:"max_scope_keywords"`
 	Enabled          bool   `mapstructure:"enabled"`
+	LLMAssist        bool   `mapstructure:"llm_assist"`
 }
 
 type RunnerConfig struct {
