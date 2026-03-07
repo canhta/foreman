@@ -405,6 +405,9 @@ func buildMCPManager(ctx context.Context, cfg *models.Config) *mcp.Manager {
 		log.Info().Str("server", entry.Name).Msg("mcp: registered stdio server")
 	}
 	mgr.CacheToolSummaries(ctx)
+	if cfg.MCP.ResourceMaxBytes > 0 {
+		mgr.SetResourceMaxBytes(cfg.MCP.ResourceMaxBytes)
+	}
 	return mgr
 }
 
