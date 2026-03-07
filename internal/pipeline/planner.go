@@ -9,6 +9,7 @@ import (
 
 	appcontext "github.com/canhta/foreman/internal/context"
 	"github.com/canhta/foreman/internal/models"
+	"github.com/canhta/foreman/internal/telemetry"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 )
@@ -35,6 +36,7 @@ const (
 type Planner struct {
 	llm          LLMProvider
 	handoffStore HandoffStorer
+	metrics      *telemetry.Metrics
 	limits       *models.LimitsConfig
 	model        string
 	// planConfidenceThreshold triggers clarification when confidence < threshold.
@@ -64,6 +66,13 @@ func (p *Planner) WithConfidenceScoring(threshold float64) *Planner {
 // as a handoff record after scoring (REQ-PIPE-002).
 func (p *Planner) WithHandoffStore(store HandoffStorer) *Planner {
 	p.handoffStore = store
+	return p
+}
+
+// WithMetrics attaches a Metrics instance so the planner can emit
+// PlanConfidenceScore observations (REQ-TELE-001).
+func (p *Planner) WithMetrics(m *telemetry.Metrics) *Planner {
+	p.metrics = m
 	return p
 }
 
@@ -126,6 +135,11 @@ func (p *Planner) Plan(ctx context.Context, workDir string, ticket *models.Ticke
 		} else {
 			result.ConfidenceScore = confidence.Score
 			result.ConfidenceConcerns = confidence.Concerns
+
+			// Emit Prometheus metric for the confidence score (REQ-TELE-001).
+			if p.metrics != nil {
+				p.metrics.PlanConfidenceScore.Observe(confidence.Score)
+			}
 
 			// Store confidence score as a handoff for downstream consumers.
 			if p.handoffStore != nil {

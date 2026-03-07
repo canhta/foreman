@@ -80,6 +80,7 @@ type taskRunnerFactory struct {
 	db        fullTaskRunnerDB
 	gitProv   git.GitProvider
 	cmdRunner runner.CommandRunner
+	metrics   *telemetry.Metrics
 }
 
 // fullTaskRunnerDB is the combined interface required by taskRunnerFactory.
@@ -109,6 +110,9 @@ func (f *taskRunnerFactory) Create(input daemon.TaskRunnerFactoryInput) daemon.T
 		DiscoveryBoard:             input.DiscoveryBoard,
 	}
 	tr := pipeline.NewPipelineTaskRunner(f.llm, f.db, f.gitProv, f.cmdRunner, cfg)
+	if f.metrics != nil {
+		tr.SetMetrics(f.metrics)
+	}
 	return pipeline.NewDAGTaskAdapterWithConsistency(tr, f.db, input.TicketID, f.llm, f.db, f.gitProv, cfg)
 }
 
@@ -193,10 +197,16 @@ func newStartCmd() *cobra.Command {
 			// 7. Initialize scheduler.
 			scheduler := daemon.NewScheduler(database)
 
-			// 8. Build orchestrator adapters.
+			// 8. Build Prometheus registry and metrics (needed by planner and task runner).
+			// Created here so metrics are available for all pipeline components.
+			promReg := prometheus.NewRegistry()
+			appMetrics := telemetry.NewMetrics(promReg)
+
+			// 8b. Build orchestrator adapters.
 			planner := pipeline.NewPlannerWithModel(llmProv, &cfg.Limits, cfg.Models.Planner).
 				WithConfidenceScoring(cfg.Limits.PlanConfidenceThreshold).
-				WithHandoffStore(database)
+				WithHandoffStore(database).
+				WithMetrics(appMetrics)
 			pipelineObj := pipeline.NewPipeline(pipeline.PipelineConfig{
 				EnableClarification: cfg.Limits.EnableClarification,
 			})
@@ -215,6 +225,7 @@ func newStartCmd() *cobra.Command {
 					db:        database,
 					gitProv:   gitProv,
 					cmdRunner: cmdRunner,
+					metrics:   appMetrics,
 				},
 				log.Logger,
 				daemon.OrchestratorConfig{
@@ -289,10 +300,7 @@ func newStartCmd() *cobra.Command {
 			}
 
 			// 9c. Wire event emitter to orchestrator (always, even without dashboard).
-			// Create the Prometheus registry and metrics unconditionally so the
-			// EventsDroppedTotal counter is always wired into the emitter (ARCH-O03).
-			promReg := prometheus.NewRegistry()
-			appMetrics := telemetry.NewMetrics(promReg)
+			// appMetrics and promReg were created in step 8 above.
 			emitter := telemetry.NewEventEmitter(database)
 			emitter.SetDroppedCounter(appMetrics.EventsDroppedTotal)
 			orch.SetEventEmitter(emitter)

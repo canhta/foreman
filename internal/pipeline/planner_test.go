@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/canhta/foreman/internal/models"
+	"github.com/canhta/foreman/internal/telemetry"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -230,6 +232,51 @@ func TestPlanner_ConfidenceScoring_HighScoreProceeds(t *testing.T) {
 	assert.Equal(t, "ticket-456", store.records[0].TicketID)
 	assert.Equal(t, "plan_confidence", store.records[0].Key)
 	assert.Equal(t, "0.90", store.records[0].Value)
+}
+
+// TestPlanner_WithMetrics_ObservesCalled verifies that when WithMetrics is set,
+// PlanConfidenceScore.Observe() is called during confidence scoring (REQ-TELE-001).
+func TestPlanner_WithMetrics_ObservesCalled(t *testing.T) {
+	workDir := plannerWorkDir(t)
+
+	llm := &stageLLM{
+		planResponse:       singleTaskPlanYAML,
+		confidenceResponse: "CONFIDENCE_SCORE: 0.8\nCONCERNS:\n- none",
+	}
+
+	reg := prometheus.NewRegistry()
+	m := telemetry.NewMetrics(reg)
+
+	ticket := &models.Ticket{
+		ID:          "ticket-metrics",
+		Title:       "Add users endpoint",
+		Description: "Create a REST endpoint for user management that returns a list of users.",
+	}
+
+	planner := NewPlanner(llm, &models.LimitsConfig{
+		MaxTasksPerTicket:  20,
+		ContextTokenBudget: 30000,
+	}).WithConfidenceScoring(DefaultPlanConfidenceThreshold).WithMetrics(m)
+
+	result, err := planner.Plan(context.Background(), workDir, ticket)
+	require.NoError(t, err)
+	assert.Equal(t, "OK", result.Status)
+
+	// Gather metrics and verify histogram has an observation.
+	mfs, err := reg.Gather()
+	require.NoError(t, err)
+
+	var found bool
+	for _, mf := range mfs {
+		if mf.GetName() == "foreman_plan_confidence_score" {
+			for _, m := range mf.GetMetric() {
+				if m.GetHistogram().GetSampleCount() > 0 {
+					found = true
+				}
+			}
+		}
+	}
+	assert.True(t, found, "expected at least one observation in foreman_plan_confidence_score histogram")
 }
 
 // TestPlanner_ConfidenceScoring_LLMErrorIsNonFatal verifies that an LLM error

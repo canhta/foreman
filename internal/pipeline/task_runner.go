@@ -490,6 +490,12 @@ func (r *PipelineTaskRunner) selectContextFiles(ctx context.Context, task *model
 		files[sf.Path] = content
 		realFilesAdded++
 	}
+
+	// Emit cache hit ratio metric (REQ-TELE-001).
+	if r.config.Cache != nil && r.metrics != nil {
+		r.metrics.ContextCacheHitRatio.Set(r.config.Cache.HitRatio())
+	}
+
 	return files
 }
 

@@ -4,6 +4,7 @@ package context
 import (
 	goctx "context"
 	"sync"
+	"sync/atomic"
 )
 
 type contextKeyType struct{}
@@ -23,6 +24,10 @@ type ContextCache struct {
 	repoInfo    *RepoInfo
 	sourceFiles []string
 	mu          sync.RWMutex
+	// hits and total are lifetime counters for computing the cache hit ratio.
+	// They are NOT reset by Invalidate — they track the lifetime ratio.
+	hits  atomic.Int64
+	total atomic.Int64
 }
 
 // NewContextCache creates an empty ContextCache.
@@ -60,11 +65,23 @@ func (c *ContextCache) SetSourceFiles(files []string) {
 
 // Invalidate clears all cached data.
 // Call after git operations that change HEAD (commit, checkout, rebase).
+// Note: the hit/miss counters are intentionally NOT cleared — they track the
+// lifetime hit ratio across the entire pipeline run.
 func (c *ContextCache) Invalidate() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.repoInfo = nil
 	c.sourceFiles = nil
+}
+
+// HitRatio returns the fraction of cache lookups that were served from the
+// cache (hits / total). Returns 0.0 if no lookups have been made yet.
+func (c *ContextCache) HitRatio() float64 {
+	total := c.total.Load()
+	if total == 0 {
+		return 0.0
+	}
+	return float64(c.hits.Load()) / float64(total)
 }
 
 // WithCache returns a new context.Context carrying the given ContextCache.
@@ -83,7 +100,9 @@ func CacheFromContext(ctx goctx.Context) *ContextCache {
 // AnalyzeRepo, caches the result, and returns it. cache may be nil (disables caching).
 func GetOrAnalyzeRepo(cache *ContextCache, workDir string) (*RepoInfo, error) {
 	if cache != nil {
+		cache.total.Add(1)
 		if info := cache.GetRepoInfo(); info != nil {
+			cache.hits.Add(1)
 			return info, nil
 		}
 	}
@@ -101,7 +120,9 @@ func GetOrAnalyzeRepo(cache *ContextCache, workDir string) (*RepoInfo, error) {
 // it scans workDir, caches the result, and returns it. cache may be nil.
 func GetOrListSourceFiles(cache *ContextCache, workDir string) []string {
 	if cache != nil {
+		cache.total.Add(1)
 		if files := cache.GetSourceFiles(); files != nil {
+			cache.hits.Add(1)
 			return files
 		}
 	}
