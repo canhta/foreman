@@ -34,7 +34,8 @@ type AgentRoleConfig struct {
 
 // MCPConfig holds configuration for MCP (Model Context Protocol) servers.
 type MCPConfig struct {
-	Servers []MCPServerEntry `mapstructure:"servers"`
+	Servers          []MCPServerEntry `mapstructure:"servers"`
+	ResourceMaxBytes int              `mapstructure:"resource_max_bytes"` // default 512 KB
 }
 
 // MCPServerEntry defines a single MCP server to connect to.

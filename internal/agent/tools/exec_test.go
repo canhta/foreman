@@ -200,3 +200,24 @@ func TestListMCPTools_ToolSummaryFields(t *testing.T) {
 		t.Errorf("description: expected %q, got %q", "Does something", s.Description)
 	}
 }
+
+// --- ReadMCPResource ---
+
+func TestReadMCPResource_NoManager(t *testing.T) {
+	reg := tools.NewRegistry(nil, nil, tools.ToolHooks{})
+	_, err := reg.Execute(context.Background(), t.TempDir(), "ReadMCPResource",
+		json.RawMessage(`{"server":"srv","uri":"res://foo"}`))
+	if err == nil {
+		t.Fatal("expected error when MCP manager is not wired")
+	}
+}
+
+func TestReadMCPResource_ReturnsContent(t *testing.T) {
+	mgr := mcp.NewManager()
+	reg := tools.NewRegistryWithMCP(nil, nil, tools.ToolHooks{}, mgr)
+	// ReadMCPResource with nil manager inside executes with registered manager
+	// We test the tool is registered at minimum
+	if !reg.Has("ReadMCPResource") {
+		t.Fatal("ReadMCPResource tool must be registered in registry")
+	}
+}

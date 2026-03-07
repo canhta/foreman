@@ -133,3 +133,157 @@ func TestManager_CallTool_UnknownServer(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "no MCP server")
 }
+
+func TestManager_ListResources(t *testing.T) {
+	mt := newMockTransport()
+	c := mcp.NewStdioClientWithTransport(mt, "myserver")
+
+	// Initialize
+	mt.queueResponse(1, map[string]interface{}{
+		"protocolVersion": "2024-11-05",
+		"capabilities":    map[string]interface{}{"resources": map[string]interface{}{}},
+		"serverInfo":      map[string]interface{}{"name": "myserver", "version": "1.0"},
+	})
+	require.NoError(t, c.Initialize(context.Background()))
+
+	// Drain init requests
+	time.Sleep(10 * time.Millisecond)
+	for len(mt.requests) > 0 {
+		<-mt.requests
+	}
+
+	mgr := mcp.NewManager()
+	mgr.RegisterClient("myserver", c)
+
+	respondAfterRequest(mt, map[string]interface{}{
+		"resources": []map[string]interface{}{
+			{"uri": "res://foo", "name": "foo", "description": "Foo resource", "mimeType": "text/plain"},
+		},
+	})
+
+	resources, err := mgr.ListResources(context.Background(), "myserver")
+	require.NoError(t, err)
+	require.Len(t, resources, 1)
+	assert.Equal(t, "res://foo", resources[0].URI)
+	assert.Equal(t, "foo", resources[0].Name)
+
+	require.NoError(t, mgr.Close())
+}
+
+func TestManager_ListResources_UnknownServer(t *testing.T) {
+	mgr := mcp.NewManager()
+	_, err := mgr.ListResources(context.Background(), "nonexistent")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "no MCP server")
+}
+
+func TestManager_ReadResource(t *testing.T) {
+	mt := newMockTransport()
+	c := mcp.NewStdioClientWithTransport(mt, "myserver")
+
+	// Initialize
+	mt.queueResponse(1, map[string]interface{}{
+		"protocolVersion": "2024-11-05",
+		"capabilities":    map[string]interface{}{"resources": map[string]interface{}{}},
+		"serverInfo":      map[string]interface{}{"name": "myserver", "version": "1.0"},
+	})
+	require.NoError(t, c.Initialize(context.Background()))
+
+	// Drain init requests
+	time.Sleep(10 * time.Millisecond)
+	for len(mt.requests) > 0 {
+		<-mt.requests
+	}
+
+	mgr := mcp.NewManager()
+	mgr.RegisterClient("myserver", c)
+
+	respondAfterRequest(mt, map[string]interface{}{
+		"contents": []map[string]interface{}{
+			{"uri": "res://foo", "text": "resource content here"},
+		},
+	})
+
+	content, err := mgr.ReadResource(context.Background(), "myserver", "res://foo")
+	require.NoError(t, err)
+	assert.Equal(t, "resource content here", content)
+
+	require.NoError(t, mgr.Close())
+}
+
+func TestManager_ReadResource_UnknownServer(t *testing.T) {
+	mgr := mcp.NewManager()
+	_, err := mgr.ReadResource(context.Background(), "nonexistent", "res://foo")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "no MCP server")
+}
+
+func TestManager_ReadResource_SecretContent(t *testing.T) {
+	mt := newMockTransport()
+	c := mcp.NewStdioClientWithTransport(mt, "myserver")
+
+	// Initialize
+	mt.queueResponse(1, map[string]interface{}{
+		"protocolVersion": "2024-11-05",
+		"capabilities":    map[string]interface{}{"resources": map[string]interface{}{}},
+		"serverInfo":      map[string]interface{}{"name": "myserver", "version": "1.0"},
+	})
+	require.NoError(t, c.Initialize(context.Background()))
+
+	// Drain init requests
+	time.Sleep(10 * time.Millisecond)
+	for len(mt.requests) > 0 {
+		<-mt.requests
+	}
+
+	mgr := mcp.NewManager()
+	mgr.RegisterClient("myserver", c)
+
+	respondAfterRequest(mt, map[string]interface{}{
+		"contents": []map[string]interface{}{
+			{"uri": "res://secret.key", "text": "-----BEGIN RSA PRIVATE KEY-----\nsecret"},
+		},
+	})
+
+	_, err := mgr.ReadResource(context.Background(), "myserver", "res://secret.key")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "sensitive")
+
+	require.NoError(t, mgr.Close())
+}
+
+func TestManager_ReadResource_MaxBytes(t *testing.T) {
+	mt := newMockTransport()
+	c := mcp.NewStdioClientWithTransport(mt, "myserver")
+
+	// Initialize
+	mt.queueResponse(1, map[string]interface{}{
+		"protocolVersion": "2024-11-05",
+		"capabilities":    map[string]interface{}{"resources": map[string]interface{}{}},
+		"serverInfo":      map[string]interface{}{"name": "myserver", "version": "1.0"},
+	})
+	require.NoError(t, c.Initialize(context.Background()))
+
+	// Drain init requests
+	time.Sleep(10 * time.Millisecond)
+	for len(mt.requests) > 0 {
+		<-mt.requests
+	}
+
+	mgr := mcp.NewManager()
+	mgr.RegisterClient("myserver", c)
+	// Set a tiny max bytes limit for testing
+	mgr.SetResourceMaxBytes(10)
+
+	respondAfterRequest(mt, map[string]interface{}{
+		"contents": []map[string]interface{}{
+			{"uri": "res://big", "text": "this is more than ten bytes of content"},
+		},
+	})
+
+	_, err := mgr.ReadResource(context.Background(), "myserver", "res://big")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "exceeds")
+
+	require.NoError(t, mgr.Close())
+}

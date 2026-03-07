@@ -130,6 +130,158 @@ func TestStdioClient_ListTools(t *testing.T) {
 	require.NoError(t, client.Close())
 }
 
+func TestStdioClient_ListResources_ReturnsResources(t *testing.T) {
+	mt := newMockTransport()
+	client := mcp.NewStdioClientWithTransport(mt, "test-server")
+
+	// Queue initialize response
+	mt.queueResponse(1, map[string]interface{}{
+		"protocolVersion": "2024-11-05",
+		"capabilities": map[string]interface{}{
+			"resources": map[string]interface{}{},
+		},
+		"serverInfo": map[string]interface{}{"name": "test", "version": "1.0"},
+	})
+	require.NoError(t, client.Initialize(context.Background()))
+
+	// Queue resources/list response
+	mt.queueResponse(2, map[string]interface{}{
+		"resources": []map[string]interface{}{
+			{
+				"uri":         "file:///data/config.yaml",
+				"name":        "config",
+				"description": "App configuration",
+				"mimeType":    "application/yaml",
+			},
+		},
+	})
+
+	resources, err := client.ListResources(context.Background())
+	require.NoError(t, err)
+	require.Len(t, resources, 1)
+	assert.Equal(t, "file:///data/config.yaml", resources[0].URI)
+	assert.Equal(t, "config", resources[0].Name)
+	assert.Equal(t, "App configuration", resources[0].Description)
+	assert.Equal(t, "application/yaml", resources[0].MimeType)
+
+	require.NoError(t, client.Close())
+}
+
+func TestStdioClient_ListResources_Empty(t *testing.T) {
+	mt := newMockTransport()
+	client := mcp.NewStdioClientWithTransport(mt, "test-server")
+
+	mt.queueResponse(1, map[string]interface{}{
+		"protocolVersion": "2024-11-05",
+		"capabilities":    map[string]interface{}{},
+		"serverInfo":      map[string]interface{}{"name": "test", "version": "1.0"},
+	})
+	require.NoError(t, client.Initialize(context.Background()))
+
+	// Server returns empty resources list
+	mt.queueResponse(2, map[string]interface{}{
+		"resources": []interface{}{},
+	})
+
+	resources, err := client.ListResources(context.Background())
+	require.NoError(t, err)
+	assert.Empty(t, resources)
+
+	require.NoError(t, client.Close())
+}
+
+func TestStdioClient_ListResources_MethodNotFound(t *testing.T) {
+	mt := newMockTransport()
+	client := mcp.NewStdioClientWithTransport(mt, "test-server")
+
+	mt.queueResponse(1, map[string]interface{}{
+		"protocolVersion": "2024-11-05",
+		"capabilities":    map[string]interface{}{},
+		"serverInfo":      map[string]interface{}{"name": "test", "version": "1.0"},
+	})
+	require.NoError(t, client.Initialize(context.Background()))
+
+	// Drain the initialize request + notification from the requests channel
+	// so the responder goroutine only sees the ListResources request.
+	for len(mt.requests) > 0 {
+		<-mt.requests
+	}
+
+	// Server returns -32601 method not found — respond AFTER the request arrives
+	// to avoid a race between readLoop and ListResources registering its pending request.
+	go func() {
+		req := <-mt.requests
+		var parsed struct {
+			ID int64 `json:"id"`
+		}
+		json.Unmarshal(req, &parsed)
+		errResp := fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"error":{"code":-32601,"message":"Method not found"}}`, parsed.ID)
+		mt.responses <- json.RawMessage(errResp)
+	}()
+
+	resources, err := client.ListResources(context.Background())
+	require.NoError(t, err) // method not found = empty list, not error
+	assert.Empty(t, resources)
+
+	require.NoError(t, client.Close())
+}
+
+func TestStdioClient_ReadResource_TextContent(t *testing.T) {
+	mt := newMockTransport()
+	client := mcp.NewStdioClientWithTransport(mt, "test-server")
+
+	mt.queueResponse(1, map[string]interface{}{
+		"protocolVersion": "2024-11-05",
+		"capabilities":    map[string]interface{}{"resources": map[string]interface{}{}},
+		"serverInfo":      map[string]interface{}{"name": "test", "version": "1.0"},
+	})
+	require.NoError(t, client.Initialize(context.Background()))
+
+	// Queue resources/read response with text content
+	mt.queueResponse(2, map[string]interface{}{
+		"contents": []map[string]interface{}{
+			{
+				"uri":  "file:///data/config.yaml",
+				"text": "key: value\nfoo: bar",
+			},
+		},
+	})
+
+	content, err := client.ReadResource(context.Background(), "file:///data/config.yaml")
+	require.NoError(t, err)
+	assert.Equal(t, "key: value\nfoo: bar", content)
+
+	require.NoError(t, client.Close())
+}
+
+func TestStdioClient_ReadResource_BlobContent(t *testing.T) {
+	mt := newMockTransport()
+	client := mcp.NewStdioClientWithTransport(mt, "test-server")
+
+	mt.queueResponse(1, map[string]interface{}{
+		"protocolVersion": "2024-11-05",
+		"capabilities":    map[string]interface{}{"resources": map[string]interface{}{}},
+		"serverInfo":      map[string]interface{}{"name": "test", "version": "1.0"},
+	})
+	require.NoError(t, client.Initialize(context.Background()))
+
+	// Blob content is base64-encoded "hello blob" — queue AFTER Initialize to avoid race
+	mt.queueResponse(2, map[string]interface{}{
+		"contents": []map[string]interface{}{
+			{
+				"uri":  "file:///data/image.png",
+				"blob": "aGVsbG8gYmxvYg==",
+			},
+		},
+	})
+
+	content, err := client.ReadResource(context.Background(), "file:///data/image.png")
+	require.NoError(t, err)
+	assert.Equal(t, "hello blob", content)
+
+	require.NoError(t, client.Close())
+}
+
 func TestStdioClient_ConcurrentCalls(t *testing.T) {
 	mt := newMockTransport()
 	client := mcp.NewStdioClientWithTransport(mt, "srv")

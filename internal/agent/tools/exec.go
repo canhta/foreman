@@ -19,6 +19,7 @@ func registerExec(r *Registry, cmd runner.CommandRunner, mcpMgr *mcp.Manager) {
 	r.Register(&runTestTool{cmd: cmd, registry: r})
 	r.Register(&subagentTool{registry: r})
 	r.Register(&listMCPToolsTool{mcpMgr: mcpMgr})
+	r.Register(&readMCPResourceTool{mcpMgr: mcpMgr})
 }
 
 // --- Bash ---
@@ -201,7 +202,39 @@ func (t *subagentTool) Execute(ctx context.Context, workDir string, input json.R
 	return result, nil
 }
 
-// --- ListMCPTools ---
+// --- ReadMCPResource ---
+
+// readMCPResourceTool reads a resource from an MCP server by URI.
+type readMCPResourceTool struct {
+	mcpMgr *mcp.Manager
+}
+
+func (t *readMCPResourceTool) Name() string { return "ReadMCPResource" }
+func (t *readMCPResourceTool) Description() string {
+	return "Read a resource from an MCP server by URI. Returns the resource content (text or decoded blob). Content is subject to secrets scanning and max size limits."
+}
+func (t *readMCPResourceTool) Schema() json.RawMessage {
+	return json.RawMessage(`{"type":"object","properties":{"server":{"type":"string","description":"MCP server name"},"uri":{"type":"string","description":"Resource URI to read"}},"required":["server","uri"]}`)
+}
+func (t *readMCPResourceTool) Execute(ctx context.Context, _ string, input json.RawMessage) (string, error) {
+	if t.mcpMgr == nil {
+		return "", fmt.Errorf("ReadMCPResource: MCP manager not available")
+	}
+	var args struct {
+		Server string `json:"server"`
+		URI    string `json:"uri"`
+	}
+	if err := json.Unmarshal(input, &args); err != nil {
+		return "", fmt.Errorf("ReadMCPResource: %w", err)
+	}
+	if args.Server == "" {
+		return "", fmt.Errorf("ReadMCPResource: server is required")
+	}
+	if args.URI == "" {
+		return "", fmt.Errorf("ReadMCPResource: uri is required")
+	}
+	return t.mcpMgr.ReadResource(ctx, args.Server, args.URI)
+}
 
 // listMCPToolsTool returns the in-memory MCP tool summaries from the Manager.
 // It makes no network calls — results come from the cache populated during init.

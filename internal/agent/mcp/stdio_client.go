@@ -2,8 +2,10 @@ package mcp
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -258,4 +260,78 @@ func (c *StdioClient) Close() error {
 	err := c.transport.Close()
 	<-c.readerDone
 	return err
+}
+
+// MCPResourceDef describes a single resource exposed by an MCP server.
+type MCPResourceDef struct {
+	URI         string `json:"uri"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	MimeType    string `json:"mimeType"`
+}
+
+// ListResources calls resources/list and returns all available resources.
+// If the server doesn't implement resources (-32601), an empty list is returned.
+func (c *StdioClient) ListResources(ctx context.Context) ([]MCPResourceDef, error) {
+	result, err := c.sendRequest(ctx, "resources/list", nil)
+	if err != nil {
+		// -32601 = method not found: server doesn't support resources
+		if strings.Contains(err.Error(), "-32601") {
+			return []MCPResourceDef{}, nil
+		}
+		return nil, err
+	}
+
+	var listResult struct {
+		Resources []MCPResourceDef `json:"resources"`
+	}
+	if err := json.Unmarshal(result, &listResult); err != nil {
+		return nil, fmt.Errorf("parse resources/list: %w", err)
+	}
+	if listResult.Resources == nil {
+		return []MCPResourceDef{}, nil
+	}
+	return listResult.Resources, nil
+}
+
+// ReadResource calls resources/read for the given URI and returns the text content.
+// If the content is base64-encoded blob, it is decoded to a string.
+func (c *StdioClient) ReadResource(ctx context.Context, uri string) (string, error) {
+	params := map[string]interface{}{
+		"uri": uri,
+	}
+
+	result, err := c.sendRequest(ctx, "resources/read", params)
+	if err != nil {
+		return "", err
+	}
+
+	var readResult struct {
+		Contents []struct {
+			URI  string `json:"uri"`
+			Text string `json:"text"`
+			Blob string `json:"blob"`
+		} `json:"contents"`
+	}
+	if err := json.Unmarshal(result, &readResult); err != nil {
+		return "", fmt.Errorf("parse resources/read: %w", err)
+	}
+
+	if len(readResult.Contents) == 0 {
+		return "", fmt.Errorf("resources/read: no content returned for %q", uri)
+	}
+
+	item := readResult.Contents[0]
+	if item.Text != "" {
+		return item.Text, nil
+	}
+	if item.Blob != "" {
+		decoded, err := base64.StdEncoding.DecodeString(item.Blob)
+		if err != nil {
+			return "", fmt.Errorf("resources/read: base64 decode blob: %w", err)
+		}
+		return string(decoded), nil
+	}
+
+	return "", nil
 }

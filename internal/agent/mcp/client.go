@@ -62,6 +62,8 @@ func (c MCPServerConfig) EffectiveRestartDelaySecs() int {
 type Client interface {
 	ListTools(ctx context.Context) ([]models.ToolDef, error)
 	Call(ctx context.Context, name string, input json.RawMessage) (string, error)
+	ListResources(ctx context.Context) ([]MCPResourceDef, error)
+	ReadResource(ctx context.Context, uri string) (string, error)
 	Close() error
 }
 
@@ -72,5 +74,11 @@ type NoopClient struct{}
 func (n *NoopClient) ListTools(_ context.Context) ([]models.ToolDef, error) { return nil, nil }
 func (n *NoopClient) Call(_ context.Context, name string, _ json.RawMessage) (string, error) {
 	return "", fmt.Errorf("MCP tool %q: client-side MCP not yet implemented", name)
+}
+func (n *NoopClient) ListResources(_ context.Context) ([]MCPResourceDef, error) {
+	return []MCPResourceDef{}, nil
+}
+func (n *NoopClient) ReadResource(_ context.Context, uri string) (string, error) {
+	return "", fmt.Errorf("MCP resource %q: client-side MCP not yet implemented", uri)
 }
 func (n *NoopClient) Close() error { return nil }

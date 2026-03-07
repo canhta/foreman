@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -11,6 +12,27 @@ import (
 	"github.com/canhta/foreman/internal/telemetry"
 	"github.com/rs/zerolog/log"
 )
+
+// secretContentPatterns are the same patterns used by the tools package guard.
+// We replicate them here to avoid a circular import (mcp ↔ tools).
+var secretContentPatterns = []string{"BEGIN RSA PRIVATE KEY", "BEGIN EC PRIVATE KEY", "BEGIN OPENSSH PRIVATE KEY"}
+var secretPathSuffixes = []string{".env", ".key", ".pem", ".p12", ".pfx", "id_rsa", "id_ed25519", ".secret"}
+
+// checkResourceSecrets applies the same secrets-detection logic as tools.CheckSecrets.
+func checkResourceSecrets(uri, content string) error {
+	base := strings.ToLower(filepath.Base(uri))
+	for _, pat := range secretPathSuffixes {
+		if strings.HasSuffix(base, pat) || base == strings.TrimPrefix(pat, ".") {
+			return fmt.Errorf("resource %q is not allowed (sensitive file pattern)", uri)
+		}
+	}
+	for _, pat := range secretContentPatterns {
+		if strings.Contains(content, pat) {
+			return fmt.Errorf("resource content contains sensitive pattern %q — read blocked", pat)
+		}
+	}
+	return nil
+}
 
 // MCPToolSummary holds the essential metadata for a single MCP tool.
 // It includes both the normalized name (used for LLM calls) and the original
@@ -30,10 +52,11 @@ type MCPToolSummary struct {
 //   - toolCache is populated after init (CacheToolSummaries / SetToolCache) and
 //     may be read concurrently; all accesses are protected by mu.
 type Manager struct {
-	clients   map[string]Client
-	metrics   *telemetry.Metrics
-	toolCache []MCPToolSummary
-	mu        sync.RWMutex
+	clients          map[string]Client
+	metrics          *telemetry.Metrics
+	toolCache        []MCPToolSummary
+	mu               sync.RWMutex
+	resourceMaxBytes int // 0 = use default (512 KB)
 }
 
 // NewManager creates a new MCP Manager.
@@ -197,4 +220,59 @@ func (m *Manager) CacheToolSummaries(ctx context.Context) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.toolCache = summaries
+}
+
+// defaultResourceMaxBytes is the default maximum resource response size (512 KB).
+const defaultResourceMaxBytes = 512 * 1024
+
+// SetResourceMaxBytes configures the maximum resource response size in bytes.
+// A value of 0 resets to the default (512 KB). Used in tests and via config.
+func (m *Manager) SetResourceMaxBytes(n int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.resourceMaxBytes = n
+}
+
+// effectiveMaxBytes returns the configured limit or the default.
+func (m *Manager) effectiveMaxBytes() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if m.resourceMaxBytes > 0 {
+		return m.resourceMaxBytes
+	}
+	return defaultResourceMaxBytes
+}
+
+// ListResources lists all resources available on the named MCP server.
+func (m *Manager) ListResources(ctx context.Context, serverName string) ([]MCPResourceDef, error) {
+	c, ok := m.clients[serverName]
+	if !ok {
+		return nil, fmt.Errorf("no MCP server registered with name %q", serverName)
+	}
+	return c.ListResources(ctx)
+}
+
+// ReadResource reads the content of a resource identified by URI from the named server.
+// The content is subject to secrets scanning and max size enforcement.
+func (m *Manager) ReadResource(ctx context.Context, serverName, uri string) (string, error) {
+	c, ok := m.clients[serverName]
+	if !ok {
+		return "", fmt.Errorf("no MCP server registered with name %q", serverName)
+	}
+
+	content, err := c.ReadResource(ctx, uri)
+	if err != nil {
+		return "", err
+	}
+
+	maxBytes := m.effectiveMaxBytes()
+	if len(content) > maxBytes {
+		return "", fmt.Errorf("resource %q response exceeds max size (%d > %d bytes)", uri, len(content), maxBytes)
+	}
+
+	if err := checkResourceSecrets(uri, content); err != nil {
+		return "", err
+	}
+
+	return content, nil
 }

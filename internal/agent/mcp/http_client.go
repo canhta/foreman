@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -415,4 +416,68 @@ func (c *HTTPClient) Close() error {
 	c.sseCancel()
 	<-c.sseDone
 	return nil
+}
+
+// ListResources calls resources/list and returns all available resources.
+// If the server doesn't implement resources (-32601), an empty list is returned.
+func (c *HTTPClient) ListResources(ctx context.Context) ([]MCPResourceDef, error) {
+	result, err := c.sendRequest(ctx, "resources/list", nil)
+	if err != nil {
+		if strings.Contains(err.Error(), "-32601") {
+			return []MCPResourceDef{}, nil
+		}
+		return nil, fmt.Errorf("resources/list: %w", err)
+	}
+
+	var listResult struct {
+		Resources []MCPResourceDef `json:"resources"`
+	}
+	if err := json.Unmarshal(result, &listResult); err != nil {
+		return nil, fmt.Errorf("parse resources/list: %w", err)
+	}
+	if listResult.Resources == nil {
+		return []MCPResourceDef{}, nil
+	}
+	return listResult.Resources, nil
+}
+
+// ReadResource calls resources/read for the given URI and returns the text content.
+func (c *HTTPClient) ReadResource(ctx context.Context, uri string) (string, error) {
+	params := map[string]interface{}{
+		"uri": uri,
+	}
+
+	result, err := c.sendRequest(ctx, "resources/read", params)
+	if err != nil {
+		return "", fmt.Errorf("resources/read: %w", err)
+	}
+
+	var readResult struct {
+		Contents []struct {
+			URI  string `json:"uri"`
+			Text string `json:"text"`
+			Blob string `json:"blob"`
+		} `json:"contents"`
+	}
+	if err := json.Unmarshal(result, &readResult); err != nil {
+		return "", fmt.Errorf("parse resources/read: %w", err)
+	}
+
+	if len(readResult.Contents) == 0 {
+		return "", fmt.Errorf("resources/read: no content returned for %q", uri)
+	}
+
+	item := readResult.Contents[0]
+	if item.Text != "" {
+		return item.Text, nil
+	}
+	if item.Blob != "" {
+		decoded, err := base64.StdEncoding.DecodeString(item.Blob)
+		if err != nil {
+			return "", fmt.Errorf("resources/read: base64 decode blob: %w", err)
+		}
+		return string(decoded), nil
+	}
+
+	return "", nil
 }

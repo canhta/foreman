@@ -117,6 +117,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("runner.mode", "local")
 	v.SetDefault("runner.local.allowed_commands", []string{"npm", "yarn", "pnpm", "cargo", "go", "pytest", "make", "bun"})
 
+	// MCP defaults
+	v.SetDefault("mcp.resource_max_bytes", 512*1024) // 512 KB
+
 	// Skills agent runner defaults
 	v.SetDefault("skills.agent_runner.provider", "builtin")
 	v.SetDefault("skills.agent_runner.max_cost_per_ticket_usd", 2.0)
