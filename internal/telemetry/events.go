@@ -41,8 +41,8 @@ func newID() string {
 	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
 
-// DroppedCount returns the total number of events dropped due to slow subscribers
-// since this emitter was created (ARCH-O03).
+// DroppedCount returns the total number of individual event deliveries dropped
+// due to slow subscribers since this emitter was created (ARCH-O03).
 func (e *EventEmitter) DroppedCount() int64 {
 	return atomic.LoadInt64(&e.droppedCount)
 }
@@ -75,18 +75,19 @@ func (e *EventEmitter) Emit(ctx context.Context, ticketID, taskID, eventType, se
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
-	var dropped bool
+	var localDrops int64
 	for ch := range e.subscribers {
 		select {
 		case ch <- evt:
 		default:
 			// Drop if subscriber is slow — backpressure is caller's responsibility.
-			dropped = true
+			atomic.AddInt64(&e.droppedCount, 1)
+			localDrops++
 		}
 	}
 
-	if dropped {
-		total := atomic.AddInt64(&e.droppedCount, 1)
+	if localDrops > 0 {
+		total := atomic.LoadInt64(&e.droppedCount)
 		// Emit a meta-event to all subscribers (best-effort, non-blocking) so the
 		// dashboard can detect event loss (ARCH-O03).
 		metaEvt := &models.EventRecord{
@@ -104,6 +105,10 @@ func (e *EventEmitter) Emit(ctx context.Context, ticketID, taskID, eventType, se
 				// Best-effort — do not recurse.
 			}
 		}
+		// Persist the meta-event to the store so it survives dashboard reconnects (ARCH-O03).
+		go func() {
+			_ = e.store.RecordEvent(context.Background(), metaEvt)
+		}()
 	}
 }
 

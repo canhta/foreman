@@ -53,7 +53,7 @@ func TestRecordingProvider_StoresDetailsOnSuccess(t *testing.T) {
 		},
 	}
 	db := &mockDatabase{}
-	rp := NewRecordingProvider(inner, db)
+	rp := NewRecordingProvider(inner, db, nil)
 
 	req := models.LlmRequest{Model: "gpt-4", UserPrompt: "say hello"}
 	resp, err := rp.Complete(context.Background(), req)
@@ -84,7 +84,7 @@ func TestRecordingProvider_DoesNotStoreOnError(t *testing.T) {
 		completeErr: errors.New("LLM unavailable"),
 	}
 	db := &mockDatabase{}
-	rp := NewRecordingProvider(inner, db)
+	rp := NewRecordingProvider(inner, db, nil)
 
 	req := models.LlmRequest{Model: "gpt-4", UserPrompt: "say hello"}
 	_, err := rp.Complete(context.Background(), req)
@@ -106,7 +106,7 @@ func TestRecordingProvider_DBErrorDoesNotPropagateToCallers(t *testing.T) {
 		},
 	}
 	db := &mockDatabase{storeErr: errors.New("db write failed")}
-	rp := NewRecordingProvider(inner, db)
+	rp := NewRecordingProvider(inner, db, nil)
 
 	req := models.LlmRequest{Model: "gpt-4", UserPrompt: "say hello"}
 	resp, err := rp.Complete(context.Background(), req)
@@ -126,7 +126,7 @@ func TestRecordingProvider_TraceIDIncludedInStoredResponse(t *testing.T) {
 		},
 	}
 	db := &mockDatabase{}
-	rp := NewRecordingProvider(inner, db)
+	rp := NewRecordingProvider(inner, db, nil)
 
 	ctx := telemetry.WithTrace(context.Background(), telemetry.TraceContext{
 		TraceID:  "abc123trace",
@@ -159,7 +159,7 @@ func TestRecordingProvider_NoTraceIDSkipsAnnotation(t *testing.T) {
 		},
 	}
 	db := &mockDatabase{}
-	rp := NewRecordingProvider(inner, db)
+	rp := NewRecordingProvider(inner, db, nil)
 
 	// No trace in context.
 	req := models.LlmRequest{Model: "gpt-4", UserPrompt: "say hello"}
@@ -179,7 +179,7 @@ func TestRecordingProvider_NoTraceIDSkipsAnnotation(t *testing.T) {
 func TestRecordingProvider_ProviderNameDelegatesToInner(t *testing.T) {
 	inner := &mockLlmProvider{name: "anthropic"}
 	db := &mockDatabase{}
-	rp := NewRecordingProvider(inner, db)
+	rp := NewRecordingProvider(inner, db, nil)
 
 	if rp.ProviderName() != "anthropic" {
 		t.Errorf("ProviderName() = %q, want %q", rp.ProviderName(), "anthropic")
@@ -189,7 +189,7 @@ func TestRecordingProvider_ProviderNameDelegatesToInner(t *testing.T) {
 func TestRecordingProvider_HealthCheckDelegatesToInner(t *testing.T) {
 	inner := &mockLlmProvider{name: "anthropic"}
 	db := &mockDatabase{}
-	rp := NewRecordingProvider(inner, db)
+	rp := NewRecordingProvider(inner, db, nil)
 
 	if err := rp.HealthCheck(context.Background()); err != nil {
 		t.Errorf("unexpected HealthCheck error: %v", err)
@@ -208,7 +208,7 @@ func TestRecordingProvider_PromptVersionSerializedIntoStoredPrompt(t *testing.T)
 		},
 	}
 	db := &mockDatabase{}
-	rp := NewRecordingProvider(inner, db)
+	rp := NewRecordingProvider(inner, db, nil)
 
 	req := models.LlmRequest{
 		Model:         "gpt-4",

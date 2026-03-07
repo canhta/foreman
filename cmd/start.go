@@ -162,9 +162,10 @@ func newStartCmd() *cobra.Command {
 				return fmt.Errorf("LLM provider: %w", err)
 			}
 			var llmProv llm.LlmProvider = llm.NewCircuitBreakerProvider(baseProv, llm.DefaultCircuitBreakerConfig())
-			// Wrap with RecordingProvider before assigning to the interface so we can
-			// later attach the cost calculator for per-stage cost attribution (ARCH-O04).
-			recordingProv := llm.NewRecordingProvider(llmProv, database)
+			// Build cost controller before the recording provider so it is available
+			// from the first LLM call (no post-construction mutation window) (ARCH-O04).
+			costCtrl := telemetry.NewCostController(cfg.Cost)
+			recordingProv := llm.NewRecordingProvider(llmProv, database, costCtrl)
 			llmProv = recordingProv
 
 			// 3. Initialize tracker.
@@ -189,11 +190,7 @@ func newStartCmd() *cobra.Command {
 				defer mcpMgr.Close()
 			}
 
-			// 7. Initialize cost controller and scheduler.
-			costCtrl := telemetry.NewCostController(cfg.Cost)
-			// Wire cost calculator into the recording provider so each LlmCallRecord
-			// is populated with cost_usd for per-stage cost attribution (ARCH-O04).
-			recordingProv.WithCostCalculator(costCtrl)
+			// 7. Initialize scheduler.
 			scheduler := daemon.NewScheduler(database)
 
 			// 8. Build orchestrator adapters.

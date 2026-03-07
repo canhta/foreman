@@ -46,8 +46,9 @@ type CostCalculator interface {
 // NewRecordingProvider wraps provider with a RecordingProvider that stores call details.
 // If db also implements LlmCallRecorder, structured LlmCallRecord rows are written
 // for per-stage cost attribution (ARCH-O04).
-func NewRecordingProvider(provider LlmProvider, db CallDetailsStore) *RecordingProvider {
-	rp := &RecordingProvider{inner: provider, db: db}
+// costCtrl may be nil; if provided, each LlmCallRecord is populated with a cost_usd value.
+func NewRecordingProvider(provider LlmProvider, db CallDetailsStore, costCtrl CostCalculator) *RecordingProvider {
+	rp := &RecordingProvider{inner: provider, db: db, costCtrl: costCtrl}
 	if rec, ok := db.(LlmCallRecorder); ok {
 		rp.recorder = rec
 	}
@@ -129,7 +130,7 @@ func (r *RecordingProvider) recordCall(ctx context.Context, callID string, req m
 	call := &models.LlmCallRecord{
 		ID:                  callID,
 		TicketID:            tc.TicketID,
-		Role:                r.inner.ProviderName(),
+		Role:                req.Stage, // pipeline actor (e.g. "planning", "implementing"); not the provider name
 		Provider:            r.inner.ProviderName(),
 		Model:               resp.Model,
 		Stage:               req.Stage,

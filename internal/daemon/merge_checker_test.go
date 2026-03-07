@@ -16,6 +16,7 @@ import (
 
 // mockMergeDB implements MergeCheckerDB for testing.
 type mockMergeDB struct {
+	mu               sync.Mutex
 	tickets          map[string]*models.Ticket
 	statusUpdates    map[string]models.TicketStatus
 	prHeadSHAUpdates map[string]string
@@ -32,6 +33,8 @@ func newMockMergeDB() *mockMergeDB {
 }
 
 func (m *mockMergeDB) ListTickets(_ context.Context, filter models.TicketFilter) ([]models.Ticket, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	var result []models.Ticket
 	for _, t := range m.tickets {
 		if filter.Status != "" && string(t.Status) == filter.Status {
@@ -48,6 +51,8 @@ func (m *mockMergeDB) ListTickets(_ context.Context, filter models.TicketFilter)
 }
 
 func (m *mockMergeDB) UpdateTicketStatus(_ context.Context, id string, status models.TicketStatus) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.statusUpdates[id] = status
 	if t, ok := m.tickets[id]; ok {
 		t.Status = status
@@ -56,6 +61,8 @@ func (m *mockMergeDB) UpdateTicketStatus(_ context.Context, id string, status mo
 }
 
 func (m *mockMergeDB) UpdateTicketStatusIfEquals(_ context.Context, id string, newStatus models.TicketStatus, requiredCurrentStatus models.TicketStatus) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	t, ok := m.tickets[id]
 	if !ok || t.Status != requiredCurrentStatus {
 		return false, nil
@@ -66,6 +73,8 @@ func (m *mockMergeDB) UpdateTicketStatusIfEquals(_ context.Context, id string, n
 }
 
 func (m *mockMergeDB) SetTicketPRHeadSHA(_ context.Context, ticketID, sha string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.prHeadSHAUpdates[ticketID] = sha
 	if t, ok := m.tickets[ticketID]; ok {
 		t.PRHeadSHA = sha
@@ -74,11 +83,15 @@ func (m *mockMergeDB) SetTicketPRHeadSHA(_ context.Context, ticketID, sha string
 }
 
 func (m *mockMergeDB) RecordEvent(_ context.Context, e *models.EventRecord) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.events = append(m.events, e)
 	return nil
 }
 
 func (m *mockMergeDB) GetTicketByExternalID(_ context.Context, extID string) (*models.Ticket, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	for _, t := range m.tickets {
 		if t.ExternalID == extID {
 			return t, nil
@@ -88,6 +101,8 @@ func (m *mockMergeDB) GetTicketByExternalID(_ context.Context, extID string) (*m
 }
 
 func (m *mockMergeDB) GetChildTickets(_ context.Context, parentExtID string) ([]models.Ticket, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	var children []models.Ticket
 	for _, t := range m.tickets {
 		if t.ParentTicketID == parentExtID {

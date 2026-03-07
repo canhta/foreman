@@ -121,6 +121,8 @@ func runSQLiteMigrations(db *sql.DB) error {
 		)`)
 
 	// Add stage column to llm_calls for cost-per-stage breakdown (ARCH-O04).
+	// Idempotent: SQLite does not support IF NOT EXISTS on ALTER TABLE;
+	// "duplicate column name" is expected and safe to ignore on re-migration.
 	_, _ = db.ExecContext(ctx,
 		`ALTER TABLE llm_calls ADD COLUMN stage TEXT NOT NULL DEFAULT ''`)
 
