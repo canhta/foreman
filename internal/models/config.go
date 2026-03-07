@@ -89,12 +89,14 @@ type GitConfig struct {
 }
 
 type LLMConfig struct {
-	DefaultProvider string            `mapstructure:"default_provider"`
-	Anthropic       LLMProviderConfig `mapstructure:"anthropic"`
-	OpenAI          LLMProviderConfig `mapstructure:"openai"`
-	OpenRouter      LLMProviderConfig `mapstructure:"openrouter"`
-	Local           LLMProviderConfig `mapstructure:"local"`
-	Outage          LLMOutageConfig   `mapstructure:"outage"`
+	DefaultProvider   string            `mapstructure:"default_provider"`
+	EmbeddingProvider string            `mapstructure:"embedding_provider"` // "openai" or "anthropic"
+	EmbeddingModel    string            `mapstructure:"embedding_model"`    // e.g. "text-embedding-3-small" or "voyage-code-3"
+	Anthropic         LLMProviderConfig `mapstructure:"anthropic"`
+	OpenAI            LLMProviderConfig `mapstructure:"openai"`
+	OpenRouter        LLMProviderConfig `mapstructure:"openrouter"`
+	Local             LLMProviderConfig `mapstructure:"local"`
+	Outage            LLMOutageConfig   `mapstructure:"outage"`
 }
 
 type LLMProviderConfig struct {

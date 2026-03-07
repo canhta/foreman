@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/canhta/foreman/internal/db"
 	"github.com/canhta/foreman/internal/git"
+	"github.com/canhta/foreman/internal/llm"
 	"github.com/canhta/foreman/internal/models"
 	"github.com/canhta/foreman/internal/runner"
 )
@@ -131,3 +133,12 @@ func (r *Registry) GetParentBudgetAndDepth() (remaining, depth int) {
 // registerGit  → git.go
 // registerCode → code.go
 // registerExec → exec.go
+
+// WithSemanticSearch registers the SemanticSearchTool if embedder is non-nil.
+// Returns the registry for chaining.
+func (r *Registry) WithSemanticSearch(embedder llm.Embedder, database db.Database) *Registry {
+	if embedder != nil {
+		r.Register(&SemanticSearchTool{db: database, embedder: embedder})
+	}
+	return r
+}
