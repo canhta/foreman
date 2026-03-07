@@ -47,6 +47,7 @@ type ChildTicketSpec struct {
 	Title               string   `json:"title"`
 	Description         string   `json:"description"`
 	AcceptanceCriteria  []string `json:"acceptance_criteria"`
+	FilesToModify       []string `json:"files_to_modify"`
 	EstimatedComplexity string   `json:"estimated_complexity"`
 	DependsOn           []string `json:"depends_on"`
 }
@@ -189,6 +190,25 @@ func (d *Decomposer) Execute(ctx context.Context, ticket *models.Ticket) ([]stri
 	result, err := d.generateChildSpecs(ctx, ticket)
 	if err != nil {
 		return nil, fmt.Errorf("generating child specs: %w", err)
+	}
+
+	if conflicts := DetectDecompositionConflicts(result.Children); len(conflicts) > 0 {
+		log.Warn().
+			Str("ticket_id", ticket.ID).
+			Int("conflict_count", len(conflicts)).
+			Interface("conflicts", conflicts).
+			Msg("decomposition conflict: multiple children modify the same file")
+
+		var sb strings.Builder
+		sb.WriteString("## Decomposition File Conflicts Detected\n\n")
+		sb.WriteString("The following files are claimed by multiple child tickets. This may cause merge conflicts:\n\n")
+		for _, c := range conflicts {
+			fmt.Fprintf(&sb, "- **%s** — claimed by: %s\n", c.File, strings.Join(c.Children, ", "))
+		}
+		sb.WriteString("\nConsider adding dependency edges between the affected children before approving them.\n")
+		if err := d.tracker.AddComment(ctx, ticket.ExternalID, sb.String()); err != nil {
+			log.Warn().Err(err).Str("ticket_id", ticket.ID).Msg("failed to post conflict warning comment")
+		}
 	}
 
 	var childIDs []string
