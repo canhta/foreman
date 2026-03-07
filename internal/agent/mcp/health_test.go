@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -126,6 +127,73 @@ func TestStdioClient_MCPServerConfig_HealthCheckIntervalDefault(t *testing.T) {
 func TestStdioClient_MCPServerConfig_HealthCheckIntervalOverride(t *testing.T) {
 	cfg := mcp.MCPServerConfig{Name: "test", HealthCheckIntervalSecs: 60}
 	assert.Equal(t, 60, cfg.EffectiveHealthCheckIntervalSecs())
+}
+
+// TestMCPServerConfig_EffectiveRestartPolicy_DefaultIsNone verifies that the
+// default restart policy is "none" per the spec (not "on-failure").
+func TestMCPServerConfig_EffectiveRestartPolicy_DefaultIsNone(t *testing.T) {
+	cfg := mcp.MCPServerConfig{Name: "test"}
+	assert.Equal(t, "none", cfg.EffectiveRestartPolicy())
+}
+
+// TestMCPServerConfig_EffectiveRestartPolicy_RestartOverride verifies that
+// setting restart_policy="restart" is returned correctly.
+func TestMCPServerConfig_EffectiveRestartPolicy_RestartOverride(t *testing.T) {
+	cfg := mcp.MCPServerConfig{Name: "test", RestartPolicy: "restart"}
+	assert.Equal(t, "restart", cfg.EffectiveRestartPolicy())
+}
+
+// TestStdioClient_RestartPolicy_RestartTriggeredAfter3Failures verifies that when
+// restart_policy="restart", after 3 consecutive ping failures the client calls
+// Restart() (Stop+Start cycle) and resets health state to healthy.
+//
+// Detection strategy: wrap the mock transport to count Close() invocations.
+// A Restart() always calls Stop() → transport.Close(), so observing a Close()
+// after the pings start proves Restart was triggered.
+func TestStdioClient_RestartPolicy_RestartTriggeredAfter3Failures(t *testing.T) {
+	mt := newMockTransport()
+
+	// closedCh is closed the first time transport.Close() is called (during Restart).
+	closedCh := make(chan struct{})
+	var closeOnce sync.Once
+	mt.onClose = func() {
+		closeOnce.Do(func() { close(closedCh) })
+	}
+
+	client := mcp.NewStdioClientWithTransportAndOptions(mt, "test-server", mcp.StdioClientOptions{
+		HealthCheckIntervalSecs: 1,
+		PingTimeoutSecs:         1,
+		RestartPolicy:           "restart",
+	})
+
+	// Wait for the transport to be closed (signals that Restart() was invoked).
+	// Timeline: 3 × (1s interval + 1s ping timeout) ≈ 6s; 15s deadline is generous.
+	select {
+	case <-closedCh:
+		// Restart was triggered — success.
+	case <-time.After(15 * time.Second):
+		client.Close()
+		t.Fatal("Restart() was not triggered within 15s (transport.Close never called)")
+	}
+
+	// After Restart(), the client should be healthy again (Start resets state).
+	// Give it a moment to complete the Start() call.
+	healthyDeadline := time.After(3 * time.Second)
+	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			if client.IsHealthy() {
+				// Restart fully completed and health was reset.
+				client.Close()
+				return
+			}
+		case <-healthyDeadline:
+			client.Close()
+			t.Fatal("client did not recover to healthy after Restart() within 3s")
+		}
+	}
 }
 
 // TestManager_HealthStatus_ExposesAllServers verifies that Manager.HealthStatus

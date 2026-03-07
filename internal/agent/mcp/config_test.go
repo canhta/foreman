@@ -9,7 +9,7 @@ import (
 
 func TestMCPServerConfig_EffectiveDefaults(t *testing.T) {
 	cfg := mcp.MCPServerConfig{Name: "test"}
-	assert.Equal(t, "on-failure", cfg.EffectiveRestartPolicy())
+	assert.Equal(t, "none", cfg.EffectiveRestartPolicy())
 	assert.Equal(t, 3, cfg.EffectiveMaxRestarts())
 	assert.Equal(t, 2, cfg.EffectiveRestartDelaySecs())
 }

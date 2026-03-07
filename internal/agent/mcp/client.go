@@ -36,12 +36,13 @@ type MCPServerConfig struct {
 	HealthCheckIntervalSecs int `json:"health_check_interval_secs,omitempty"`
 }
 
-// EffectiveRestartPolicy returns the restart policy, defaulting to "on-failure".
+// EffectiveRestartPolicy returns the restart policy, defaulting to "none".
+// Valid values are "none" (default) and "restart".
 func (c MCPServerConfig) EffectiveRestartPolicy() string {
 	if c.RestartPolicy != "" {
 		return c.RestartPolicy
 	}
-	return "on-failure"
+	return "none"
 }
 
 // EffectiveHealthCheckIntervalSecs returns the health check interval in seconds,

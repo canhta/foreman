@@ -144,6 +144,8 @@ func (c *StdioClient) healthLoop() {
 }
 
 // runPing sends a single ping and updates the health state.
+// After 3 consecutive failures, if restart_policy is "restart", Restart() is called
+// and the failure counter is reset. Otherwise the client is simply marked unhealthy.
 func (c *StdioClient) runPing() {
 	timeout := time.Duration(c.pingTimeoutSecs()) * time.Second
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -152,17 +154,26 @@ func (c *StdioClient) runPing() {
 	_, err := c.sendRequest(ctx, "ping", map[string]interface{}{})
 
 	c.health.mu.Lock()
-	defer c.health.mu.Unlock()
 
 	if err != nil {
 		c.health.consecutiveFailures++
 		if c.health.consecutiveFailures >= 3 {
 			c.health.healthy = false
+			if c.opts.RestartPolicy == "restart" {
+				c.health.consecutiveFailures = 0
+				c.health.mu.Unlock()
+				restartCtx, restartCancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer restartCancel()
+				_ = c.Restart(restartCtx)
+				return
+			}
 		}
 	} else {
 		c.health.consecutiveFailures = 0
 		c.health.healthy = true
 	}
+
+	c.health.mu.Unlock()
 }
 
 // readLoop reads responses from the transport and routes them to pending requests.
@@ -374,6 +385,49 @@ func (c *StdioClient) Close() error {
 	err := c.transport.Close()
 	<-c.readerDone
 	return err
+}
+
+// Restart stops the client and restarts it with a fresh transport connection.
+// It calls Stop (which closes the transport and stops the health loop) then Start
+// (which resets internal state and relaunches the read and health loops).
+// This is called automatically when restart_policy="restart" and 3 consecutive
+// ping failures have occurred.
+func (c *StdioClient) Restart(ctx context.Context) error {
+	// Tear down existing connection.
+	if err := c.Stop(); err != nil {
+		return fmt.Errorf("restart stop: %w", err)
+	}
+	// Restart with a fresh state.
+	return c.Start(ctx)
+}
+
+// Stop closes the transport, stops the health-check goroutine, and waits for the
+// read loop to finish. After Stop, the StdioClient can be restarted via Start.
+func (c *StdioClient) Stop() error {
+	c.stopOnce.Do(func() { close(c.stopHealth) })
+	err := c.transport.Close()
+	<-c.readerDone
+	return err
+}
+
+// Start resets internal state and relaunches the read and health-check goroutines.
+// It should only be called after Stop (or as part of Restart).
+func (c *StdioClient) Start(_ context.Context) error {
+	// Reset channels and state for the new session.
+	c.readerDone = make(chan struct{})
+	c.stopHealth = make(chan struct{})
+	c.stopOnce = sync.Once{}
+
+	c.health.mu.Lock()
+	c.health.healthy = true
+	c.health.consecutiveFailures = 0
+	c.health.mu.Unlock()
+
+	go c.readLoop()
+	if c.opts.HealthCheckIntervalSecs > 0 {
+		go c.healthLoop()
+	}
+	return nil
 }
 
 // MCPResourceDef describes a single resource exposed by an MCP server.

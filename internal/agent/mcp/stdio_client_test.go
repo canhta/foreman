@@ -18,8 +18,10 @@ type mockTransport struct {
 	requests chan json.RawMessage
 	// responses to be returned by Receive
 	responses chan json.RawMessage
-	closed    bool
-	mu        sync.Mutex
+	// onClose is an optional hook called each time Close() is invoked.
+	onClose func()
+	closed  bool
+	mu      sync.Mutex
 }
 
 func newMockTransport() *mockTransport {
@@ -62,6 +64,9 @@ func (m *mockTransport) Close() error {
 	if !m.closed {
 		m.closed = true
 		close(m.responses)
+	}
+	if m.onClose != nil {
+		m.onClose()
 	}
 	return nil
 }
