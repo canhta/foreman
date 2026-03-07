@@ -61,9 +61,6 @@ func SelectFilesForTask(task *models.Task, workDir string, tokenBudget int, cach
 	taskDirs := extractDirectories(task.FilesToModify)
 	allFiles := GetOrListSourceFiles(cache, workDir)
 	for _, f := range allFiles {
-		if _, exists := candidates[f]; exists {
-			continue
-		}
 		if inAnyDirectory(f, taskDirs) {
 			addCandidate(candidates, workDir, f, 30, "proximity")
 		}
