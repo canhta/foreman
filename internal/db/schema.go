@@ -157,7 +157,6 @@ CREATE TABLE IF NOT EXISTS distributed_locks (
 );
 
 CREATE TABLE IF NOT EXISTS embeddings (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
     repo_path   TEXT NOT NULL,
     head_sha    TEXT NOT NULL,
     file_path   TEXT NOT NULL,
@@ -165,11 +164,10 @@ CREATE TABLE IF NOT EXISTS embeddings (
     end_line    INTEGER NOT NULL,
     chunk_text  TEXT NOT NULL,
     vector      BLOB NOT NULL,
-    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (repo_path, head_sha, file_path, start_line)
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_embeddings_repo_sha_file_line
-    ON embeddings(repo_path, head_sha, file_path, start_line);
 CREATE INDEX IF NOT EXISTS idx_embeddings_repo_sha
     ON embeddings(repo_path, head_sha);
 

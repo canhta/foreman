@@ -848,6 +848,36 @@ func TestCosineSimilarity_Identical(t *testing.T) {
 	assert.InDelta(t, float32(1.0), CosineSimilarity(v, v), 1e-6)
 }
 
+func TestEmbeddingStore_UpsertIdempotency(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	base := EmbeddingRecord{
+		RepoPath:  "/repo/myproject",
+		HeadSHA:   "abc123",
+		FilePath:  "main.go",
+		StartLine: 1,
+		EndLine:   10,
+		ChunkText: "func main() {}",
+		Vector:    []float32{1, 2, 3},
+	}
+	require.NoError(t, db.UpsertEmbedding(ctx, base))
+
+	// Upsert with the same natural key but a different vector.
+	updated := base
+	updated.Vector = []float32{4, 5, 6}
+	require.NoError(t, db.UpsertEmbedding(ctx, updated))
+
+	results, err := db.GetEmbeddingsByRepoSHA(ctx, base.RepoPath, base.HeadSHA)
+	require.NoError(t, err)
+	require.Len(t, results, 1, "upsert must not create a duplicate row")
+	require.Len(t, results[0].Vector, 3)
+	assert.InDelta(t, float32(4), results[0].Vector[0], 1e-6, "vector must reflect the updated values")
+	assert.InDelta(t, float32(5), results[0].Vector[1], 1e-6)
+	assert.InDelta(t, float32(6), results[0].Vector[2], 1e-6)
+}
+
 func TestEmbeddingStore_DeleteByRepoSHA(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()

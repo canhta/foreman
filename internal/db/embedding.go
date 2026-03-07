@@ -12,7 +12,6 @@ type EmbeddingRecord struct {
 	FilePath  string
 	ChunkText string
 	Vector    []float32
-	ID        int64
 	StartLine int
 	EndLine   int
 }
@@ -27,7 +26,11 @@ func SerializeVector(v []float32) []byte {
 }
 
 // DeserializeVector converts little-endian bytes back to []float32.
+// Returns nil if b is nil or has a length that is not a multiple of 4.
 func DeserializeVector(b []byte) []float32 {
+	if len(b)%4 != 0 {
+		return nil
+	}
 	v := make([]float32, len(b)/4)
 	for i := range v {
 		v[i] = math.Float32frombits(binary.LittleEndian.Uint32(b[i*4:]))

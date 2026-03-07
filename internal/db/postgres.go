@@ -973,7 +973,7 @@ func (p *PostgresDB) UpsertEmbedding(ctx context.Context, e EmbeddingRecord) err
 // GetEmbeddingsByRepoSHA retrieves all embedding records for a given repo and commit SHA.
 func (p *PostgresDB) GetEmbeddingsByRepoSHA(ctx context.Context, repoPath, headSHA string) ([]EmbeddingRecord, error) {
 	rows, err := p.db.QueryContext(ctx,
-		`SELECT id, repo_path, head_sha, file_path, start_line, end_line, chunk_text, vector
+		`SELECT repo_path, head_sha, file_path, start_line, end_line, chunk_text, vector
 		 FROM embeddings WHERE repo_path = $1 AND head_sha = $2`,
 		repoPath, headSHA,
 	)
@@ -986,7 +986,7 @@ func (p *PostgresDB) GetEmbeddingsByRepoSHA(ctx context.Context, repoPath, headS
 	for rows.Next() {
 		var rec EmbeddingRecord
 		var blob []byte
-		if err := rows.Scan(&rec.ID, &rec.RepoPath, &rec.HeadSHA, &rec.FilePath,
+		if err := rows.Scan(&rec.RepoPath, &rec.HeadSHA, &rec.FilePath,
 			&rec.StartLine, &rec.EndLine, &rec.ChunkText, &blob); err != nil {
 			return nil, fmt.Errorf("scan embedding row: %w", err)
 		}

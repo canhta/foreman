@@ -1024,11 +1024,15 @@ func (s *SQLiteDB) ReleaseLock(ctx context.Context, lockName string) error {
 
 // --- Embedding Store (REQ-INFRA-002) ---
 
-// UpsertEmbedding inserts or replaces an embedding record, serializing the vector as BLOB.
+// UpsertEmbedding inserts or updates an embedding record, serializing the vector as BLOB.
 func (s *SQLiteDB) UpsertEmbedding(ctx context.Context, e EmbeddingRecord) error {
 	_, err := s.db.ExecContext(ctx,
-		`INSERT OR REPLACE INTO embeddings (repo_path, head_sha, file_path, start_line, end_line, chunk_text, vector)
-		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO embeddings (repo_path, head_sha, file_path, start_line, end_line, chunk_text, vector)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)
+		 ON CONFLICT(repo_path, head_sha, file_path, start_line) DO UPDATE SET
+		     end_line = excluded.end_line,
+		     chunk_text = excluded.chunk_text,
+		     vector = excluded.vector`,
 		e.RepoPath, e.HeadSHA, e.FilePath, e.StartLine, e.EndLine, e.ChunkText, SerializeVector(e.Vector),
 	)
 	if err != nil {
@@ -1040,7 +1044,7 @@ func (s *SQLiteDB) UpsertEmbedding(ctx context.Context, e EmbeddingRecord) error
 // GetEmbeddingsByRepoSHA retrieves all embedding records for a given repo and commit SHA.
 func (s *SQLiteDB) GetEmbeddingsByRepoSHA(ctx context.Context, repoPath, headSHA string) ([]EmbeddingRecord, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, repo_path, head_sha, file_path, start_line, end_line, chunk_text, vector
+		`SELECT repo_path, head_sha, file_path, start_line, end_line, chunk_text, vector
 		 FROM embeddings WHERE repo_path = ? AND head_sha = ?`,
 		repoPath, headSHA,
 	)
@@ -1053,7 +1057,7 @@ func (s *SQLiteDB) GetEmbeddingsByRepoSHA(ctx context.Context, repoPath, headSHA
 	for rows.Next() {
 		var rec EmbeddingRecord
 		var blob []byte
-		if err := rows.Scan(&rec.ID, &rec.RepoPath, &rec.HeadSHA, &rec.FilePath,
+		if err := rows.Scan(&rec.RepoPath, &rec.HeadSHA, &rec.FilePath,
 			&rec.StartLine, &rec.EndLine, &rec.ChunkText, &blob); err != nil {
 			return nil, fmt.Errorf("scan embedding row: %w", err)
 		}
