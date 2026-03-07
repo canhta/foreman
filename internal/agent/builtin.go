@@ -24,8 +24,12 @@ const (
 	// contextWindowBudget is the token budget for the message history.
 	// Claude's context window is 200K tokens; we reserve headroom for system prompt and response.
 	contextWindowBudget = 150_000
-	// compactionThreshold is the fraction of budget at which compaction is triggered.
+	// compactionThreshold is the fraction of budget at which Phase 1 compaction is triggered
+	// (truncate old tool outputs).
 	compactionThreshold = 0.70
+	// summarizationThreshold is the fraction of budget at which Phase 2 LLM summarization
+	// is triggered (replace old messages with a structured summary).
+	summarizationThreshold = 0.85
 )
 
 // defaultReflectionInterval is the number of turns between self-reflection injections.
@@ -274,6 +278,21 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 						Role:    "user",
 						Content: compactionSummary(dropped / 2), // pairs
 					})
+				}
+			}
+
+			// Phase 2: at 85% threshold, LLM summarization replaces old messages with a
+			// structured summary (REQ-LOOP-006).
+			summarizationThresh := int(float64(budget) * summarizationThreshold)
+			if countAllTokens(messages) > summarizationThresh {
+				oldMessages, recentMessages := splitForSummarization(messages)
+				if len(oldMessages) > 0 {
+					summaryMsg := SummarizeHistory(ctx, r.provider, r.model, oldMessages)
+					messages = append([]models.Message{summaryMsg}, recentMessages...)
+					log.Info().
+						Int("old_messages", len(oldMessages)).
+						Int("remaining", len(messages)).
+						Msg("builtin: context summarized via LLM")
 				}
 			}
 

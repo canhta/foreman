@@ -1,13 +1,29 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
 
+	"github.com/canhta/foreman/internal/llm"
 	"github.com/canhta/foreman/internal/models"
 )
+
+// mockLlmProvider is a test double for llm.LlmProvider.
+type mockLlmProvider struct {
+	response *models.LlmResponse
+	err      error
+}
+
+func (m *mockLlmProvider) Complete(_ context.Context, _ models.LlmRequest) (*models.LlmResponse, error) {
+	return m.response, m.err
+}
+func (m *mockLlmProvider) ProviderName() string                { return "mock" }
+func (m *mockLlmProvider) HealthCheck(_ context.Context) error { return nil }
+
+var _ llm.LlmProvider = (*mockLlmProvider)(nil)
 
 // generateLargeConversation creates N turns of user+assistant+tool_use+tool_result messages.
 func generateLargeConversation(turns int) []models.Message {
@@ -120,4 +136,91 @@ func TestCompactMessages_EmptyInput(t *testing.T) {
 	if len(compacted) != 0 {
 		t.Errorf("expected empty result for nil input, got %d messages", len(compacted))
 	}
+}
+
+// TestSummarizeHistory_Success verifies that a successful LLM response is returned
+// as a user message containing the summary content.
+func TestSummarizeHistory_Success(t *testing.T) {
+	summaryText := "## Goal\nDo something\n## Accomplished\n- step 1\n## Remaining\n- nothing\n## Relevant Files\nfoo.go"
+	provider := &mockLlmProvider{
+		response: &models.LlmResponse{
+			Content:    summaryText,
+			StopReason: models.StopReasonEndTurn,
+		},
+	}
+
+	msgs := generateLargeConversation(5)
+	msg := SummarizeHistory(context.Background(), provider, "test-model", msgs)
+
+	if msg.Role != "user" {
+		t.Errorf("expected Role 'user', got %q", msg.Role)
+	}
+	if !strings.Contains(msg.Content, summaryText) {
+		t.Errorf("expected content to contain summary, got: %q", msg.Content)
+	}
+}
+
+// TestSummarizeHistory_LLMFailure verifies that when the LLM errors, a fallback
+// message is returned (not an error propagated to the caller).
+func TestSummarizeHistory_LLMFailure(t *testing.T) {
+	provider := &mockLlmProvider{
+		err: fmt.Errorf("LLM unavailable"),
+	}
+
+	msgs := generateLargeConversation(5)
+	msg := SummarizeHistory(context.Background(), provider, "test-model", msgs)
+
+	if msg.Role != "user" {
+		t.Errorf("expected Role 'user', got %q", msg.Role)
+	}
+	if msg.Content == "" {
+		t.Error("expected non-empty fallback content")
+	}
+	// Fallback should mention summarization failure
+	if !strings.Contains(msg.Content, "summarization failed") {
+		t.Errorf("expected fallback message to mention 'summarization failed', got: %q", msg.Content)
+	}
+}
+
+// TestSplitForSummarization_KeepsLastThreeTurns verifies that the split preserves
+// exactly the last 3 turn-pairs in the recent slice.
+func TestSplitForSummarization_KeepsLastThreeTurns(t *testing.T) {
+	msgs := generateLargeConversation(7) // 7 turns → 1 initial + 7*(assistant+result) = 15 messages
+
+	old, recent := splitForSummarization(msgs)
+
+	// Count turn-pairs in recent (assistant with ToolCalls paired with a user ToolResults)
+	recentTurns := 0
+	for _, m := range recent {
+		if m.Role == "assistant" && len(m.ToolCalls) > 0 {
+			recentTurns++
+		}
+	}
+	if recentTurns != 3 {
+		t.Errorf("expected 3 turn-pairs in recent, got %d", recentTurns)
+	}
+
+	// The last turn in recent should be turn 6 (index 6, 0-based)
+	var lastAssistant *models.Message
+	for i := range recent {
+		if recent[i].Role == "assistant" && len(recent[i].ToolCalls) > 0 {
+			lastAssistant = &recent[i]
+		}
+	}
+	if lastAssistant == nil || !strings.Contains(lastAssistant.Content, "Turn 6") {
+		t.Errorf("expected last recent turn to be 'Turn 6', got: %v", lastAssistant)
+	}
+
+	// old should have the remaining turns (turns 0..3) plus the initial message
+	// total old messages = 1 (initial) + 4 * 2 (turns 0-3) = 9
+	if len(old) == 0 {
+		t.Error("expected non-empty old messages")
+	}
+	// The initial task message should appear in old, not in recent
+	for _, m := range recent {
+		if m.Role == "user" && m.Content == "Initial task: do something" {
+			t.Error("initial task message should be in old, not recent")
+		}
+	}
+	_ = old
 }

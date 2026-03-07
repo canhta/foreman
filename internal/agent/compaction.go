@@ -1,10 +1,12 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 
 	fmtctx "github.com/canhta/foreman/internal/context"
+	"github.com/canhta/foreman/internal/llm"
 	"github.com/canhta/foreman/internal/models"
 )
 
@@ -102,6 +104,133 @@ func CompactMessages(messages []models.Message, budgetTokens int) []models.Messa
 		filtered = append(filtered, m)
 	}
 	return filtered
+}
+
+// splitForSummarization splits messages into two groups:
+//   - old: everything except the last 3 turn-pairs (and any trailing non-turn messages).
+//     The original task message (messages[0]) is included here so the summarizer sees the goal.
+//   - recent: the last 3 turn-pairs plus any trailing non-turn messages.
+//
+// If there are fewer than 3 turn-pairs total, recent contains all turn-pairs and old is empty.
+func splitForSummarization(messages []models.Message) (old, recent []models.Message) {
+	if len(messages) == 0 {
+		return nil, nil
+	}
+
+	// Identify turn boundaries: (assistant+toolcall, user+toolresult) pairs.
+	type turnPair struct {
+		assistantIdx int
+		resultIdx    int
+	}
+	var turns []turnPair
+	for i := 0; i < len(messages)-1; i++ {
+		m := messages[i]
+		if m.Role == "assistant" && len(m.ToolCalls) > 0 {
+			next := messages[i+1]
+			if next.Role == "user" && len(next.ToolResults) > 0 {
+				turns = append(turns, turnPair{assistantIdx: i, resultIdx: i + 1})
+			}
+		}
+	}
+
+	// If 3 or fewer turns, everything stays recent; nothing to summarize.
+	if len(turns) <= 3 {
+		return nil, messages
+	}
+
+	// The last 3 turns go to recent; everything older goes to old.
+	keepFromTurn := len(turns) - 3
+
+	// Build a set of indices belonging to recent turns.
+	recentTurnIdx := make(map[int]bool)
+	for i := keepFromTurn; i < len(turns); i++ {
+		recentTurnIdx[turns[i].assistantIdx] = true
+		recentTurnIdx[turns[i].resultIdx] = true
+	}
+
+	// Build old and recent slices.
+	// messages[0] (original task) always goes into old so the summarizer sees the goal.
+	for i, m := range messages {
+		if recentTurnIdx[i] {
+			recent = append(recent, m)
+		} else {
+			old = append(old, m)
+		}
+	}
+	return old, recent
+}
+
+// SummarizeHistory calls the LLM to produce a structured summary of completed work.
+// It renders messagesToSummarize as plain text and asks the model to produce output in:
+//
+//	## Goal
+//	## Accomplished
+//	## Remaining
+//	## Relevant Files
+//
+// The returned message has Role "user" and is prefixed with "[context summary]".
+// If the LLM call fails for any reason, a plain-text fallback is returned instead.
+func SummarizeHistory(ctx context.Context, provider llm.LlmProvider, model string, messagesToSummarize []models.Message) models.Message {
+	// Render messages as plain text for the summarization prompt.
+	var sb strings.Builder
+	sb.WriteString("<conversation history>\n")
+	for _, m := range messagesToSummarize {
+		switch {
+		case m.Content != "":
+			sb.WriteString("[")
+			sb.WriteString(m.Role)
+			sb.WriteString("]: ")
+			sb.WriteString(m.Content)
+			sb.WriteString("\n")
+		case len(m.ToolCalls) > 0:
+			sb.WriteString("[")
+			sb.WriteString(m.Role)
+			sb.WriteString(" tool calls]: ")
+			for _, tc := range m.ToolCalls {
+				sb.WriteString(tc.Name)
+				raw, _ := json.Marshal(tc.Input)
+				sb.WriteString("(")
+				sb.Write(raw)
+				sb.WriteString(") ")
+			}
+			sb.WriteString("\n")
+		case len(m.ToolResults) > 0:
+			sb.WriteString("[tool results]: ")
+			for _, tr := range m.ToolResults {
+				if len(tr.Content) > 300 {
+					sb.WriteString(tr.Content[:300])
+					sb.WriteString("...[truncated]")
+				} else {
+					sb.WriteString(tr.Content)
+				}
+				sb.WriteString(" ")
+			}
+			sb.WriteString("\n")
+		}
+	}
+	sb.WriteString("</conversation history>\n\n")
+	sb.WriteString("Summarize the above conversation following this template:\n")
+	sb.WriteString("## Goal\n## Accomplished\n## Remaining\n## Relevant Files (comma-separated, or \"none\" if not applicable)\n")
+
+	req := models.LlmRequest{
+		Model:       model,
+		UserPrompt:  sb.String(),
+		MaxTokens:   500,
+		Temperature: 0.1,
+	}
+
+	resp, err := provider.Complete(ctx, req)
+	if err != nil || resp == nil {
+		// Fallback: plain text notice.
+		return models.Message{
+			Role:    "user",
+			Content: "[context summary: LLM summarization failed — older turns dropped]\n" + compactionSummary(len(messagesToSummarize)/2),
+		}
+	}
+	return models.Message{
+		Role:    "user",
+		Content: "[context summary]\n" + resp.Content,
+	}
 }
 
 // countAllTokens sums token counts across all messages.
