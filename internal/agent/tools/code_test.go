@@ -239,3 +239,88 @@ type NoHintStruct struct {
 		t.Errorf("expected NoHintStruct without file hint, got %q", out)
 	}
 }
+
+func TestGetTypeDefinition_CrossDirResolution(t *testing.T) {
+	reg, dir := newFSRegistry(t)
+
+	// Symbol defined in the parent directory.
+	parentSrc := `package mypkg
+
+type ParentType struct {
+	Value string
+}
+`
+	// Hint file is in a subdirectory.
+	subDir := filepath.Join(dir, "subpkg")
+	if err := os.MkdirAll(subDir, 0755); err != nil {
+		t.Fatalf("failed to create subpkg dir: %v", err)
+	}
+	subHint := `package subpkg
+
+func useIt() {}
+`
+	os.WriteFile(filepath.Join(dir, "types.go"), []byte(parentSrc), 0644)
+	os.WriteFile(filepath.Join(subDir, "hint.go"), []byte(subHint), 0644)
+
+	out := execTool(t, reg, dir, "get_type_definition", map[string]string{
+		"symbol": "ParentType",
+		"file":   filepath.Join("subpkg", "hint.go"),
+	})
+	if !strings.Contains(out, "ParentType") {
+		t.Errorf("expected ParentType found via cross-dir resolution, got %q", out)
+	}
+	if !strings.Contains(out, "Value string") {
+		t.Errorf("expected struct fields in cross-dir output, got %q", out)
+	}
+}
+
+func TestGetTypeDefinition_GroupedTypeDecl(t *testing.T) {
+	reg, dir := newFSRegistry(t)
+	// Grouped type declaration — only the requested type should be returned.
+	goSrc := `package mypkg
+
+type (
+	// TypeA is the first type.
+	TypeA struct {
+		FieldA string
+	}
+
+	// TypeB is the second type.
+	TypeB struct {
+		FieldB int
+	}
+)
+`
+	os.WriteFile(filepath.Join(dir, "grouped.go"), []byte(goSrc), 0644)
+
+	out := execTool(t, reg, dir, "get_type_definition", map[string]string{
+		"symbol": "TypeA",
+		"file":   "grouped.go",
+	})
+	if !strings.Contains(out, "TypeA") {
+		t.Errorf("expected TypeA in output, got %q", out)
+	}
+	if strings.Contains(out, "TypeB") {
+		t.Errorf("expected TypeB NOT to appear (sibling leak), got %q", out)
+	}
+}
+
+func TestGetTypeDefinition_NoHintRegexFallback(t *testing.T) {
+	// Without a file hint, and no Go files containing the symbol, the regex
+	// fallback should find the type in a non-Go file.
+	reg, dir := newFSRegistry(t)
+	tsSrc := `interface NoHintTSType {
+  id: number;
+  name: string;
+}
+`
+	os.WriteFile(filepath.Join(dir, "models.ts"), []byte(tsSrc), 0644)
+
+	out := execTool(t, reg, dir, "get_type_definition", map[string]string{
+		"symbol": "NoHintTSType",
+		// no "file" field — exercises the "" ext → regex fallback path
+	})
+	if !strings.Contains(out, "NoHintTSType") {
+		t.Errorf("expected NoHintTSType via no-hint regex fallback, got %q", out)
+	}
+}

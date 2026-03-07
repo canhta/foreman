@@ -150,6 +150,9 @@ func (t *getErrorsTool) Execute(ctx context.Context, workDir string, input json.
 // maxTypeSearchFiles caps how many files we walk to avoid runaway searches.
 const maxTypeSearchFiles = 1000
 
+// skipNonGoExts lists file extensions that should be skipped in non-Go regex walks.
+var skipNonGoExts = map[string]bool{".go": true, ".bin": true, ".exe": true, ".so": true, ".a": true}
+
 type getTypeDefinitionTool struct{}
 
 func (t *getTypeDefinitionTool) Name() string { return "get_type_definition" }
@@ -198,7 +201,8 @@ func (t *getTypeDefinitionTool) Execute(_ context.Context, workDir string, input
 	}
 
 	switch ext {
-	case ".go", "": // Go (or unknown — try Go first since it's a Go project)
+	case ".go":
+		// Go file hint — use AST search only.
 		result, err := findGoTypeDefinition(workDir, hintFile, args.Symbol)
 		if err != nil {
 			return "", fmt.Errorf("get_type_definition: %w", err)
@@ -206,13 +210,27 @@ func (t *getTypeDefinitionTool) Execute(_ context.Context, workDir string, input
 		if result != "" {
 			return result, nil
 		}
-		// If hint was a .go file or empty and nothing found, fall through only
-		// for non-.go hint extensions.
-		if ext == ".go" || ext == "" {
-			return fmt.Sprintf("Type %q not found in Go files under %s", args.Symbol, workDir), nil
+		return fmt.Sprintf("Type %q not found in Go files under %s", args.Symbol, workDir), nil
+	case "":
+		// No hint — try Go AST first (common case for Go projects), then regex fallback.
+		result, err := findGoTypeDefinition(workDir, hintFile, args.Symbol)
+		if err != nil {
+			return "", fmt.Errorf("get_type_definition: %w", err)
 		}
-		fallthrough
+		if result != "" {
+			return result, nil
+		}
+		// Fallback to regex for non-Go codebases.
+		result, err = findTypeDefinitionRegex(workDir, hintFile, args.Symbol)
+		if err != nil {
+			return "", fmt.Errorf("get_type_definition: %w", err)
+		}
+		if result != "" {
+			return result, nil
+		}
+		return fmt.Sprintf("Type %q not found", args.Symbol), nil
 	default:
+		// Non-Go hint file — use regex search directly.
 		result, err := findTypeDefinitionRegex(workDir, hintFile, args.Symbol)
 		if err != nil {
 			return "", fmt.Errorf("get_type_definition: %w", err)
@@ -312,14 +330,12 @@ func parseGoFileForType(filePath, symbol string) (string, error) {
 			var buf bytes.Buffer
 			// Include doc comment from the GenDecl (if only one spec) or the TypeSpec.
 			var doc *ast.CommentGroup
-			if len(genDecl.Specs) == 1 {
-				doc = genDecl.Doc
-			}
-			if typeSpec.Comment != nil {
-				doc = typeSpec.Comment
-			}
 			if typeSpec.Doc != nil {
 				doc = typeSpec.Doc
+			} else if typeSpec.Comment != nil {
+				doc = typeSpec.Comment
+			} else {
+				doc = genDecl.Doc
 			}
 			if doc != nil {
 				for _, c := range doc.List {
@@ -327,10 +343,19 @@ func parseGoFileForType(filePath, symbol string) (string, error) {
 					buf.WriteByte('\n')
 				}
 			}
+			// Create a synthetic single-spec decl to avoid leaking sibling types
+			// from grouped declarations like `type ( A ...; B ... )`.
+			singleDecl := &ast.GenDecl{
+				TokPos: genDecl.TokPos,
+				Tok:    token.TYPE,
+				Lparen: token.NoPos,
+				Rparen: token.NoPos,
+				Specs:  []ast.Spec{typeSpec},
+			}
 			// Create a minimal synthetic file to format just the type decl.
 			snippet := &ast.File{
 				Name:  ast.NewIdent("p"),
-				Decls: []ast.Decl{genDecl},
+				Decls: []ast.Decl{singleDecl},
 			}
 			var fmtBuf bytes.Buffer
 			if fmtErr := format.Node(&fmtBuf, fset, snippet); fmtErr == nil {
@@ -347,8 +372,8 @@ func parseGoFileForType(filePath, symbol string) (string, error) {
 				}
 				return formatted, nil
 			}
-			// Fallback: raw source extraction.
-			return extractRawSource(filePath, fset.Position(genDecl.Pos()).Line, fset.Position(genDecl.End()).Line)
+			// Fallback: raw source extraction (use typeSpec bounds to avoid sibling leakage).
+			return extractRawSource(filePath, fset.Position(typeSpec.Pos()).Line, fset.Position(typeSpec.End()).Line)
 		}
 	}
 	return "", nil
@@ -373,6 +398,9 @@ func extractRawSource(filePath string, startLine, endLine int) (string, error) {
 		if lineNum > endLine {
 			break
 		}
+	}
+	if err := scanner.Err(); err != nil {
+		return "", err
 	}
 	return strings.Join(lines, "\n"), nil
 }
@@ -403,7 +431,7 @@ func findTypeDefinitionRegex(workDir, hintFile, symbol string) (string, error) {
 	fileCount := 0
 
 	for _, dir := range searchPaths {
-		result, err := walkNonGoFiles(dir, symbol, startPatterns, seen, &fileCount)
+		result, err := walkNonGoFiles(dir, startPatterns, seen, &fileCount)
 		if err != nil {
 			return "", err
 		}
@@ -417,7 +445,7 @@ func findTypeDefinitionRegex(workDir, hintFile, symbol string) (string, error) {
 	return "", nil
 }
 
-func walkNonGoFiles(root, _ string, startPatterns []*regexp.Regexp, seen map[string]bool, count *int) (string, error) {
+func walkNonGoFiles(root string, startPatterns []*regexp.Regexp, seen map[string]bool, count *int) (string, error) {
 	var found string
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if found != "" || *count >= maxTypeSearchFiles {
@@ -428,8 +456,7 @@ func walkNonGoFiles(root, _ string, startPatterns []*regexp.Regexp, seen map[str
 		}
 		ext := strings.ToLower(filepath.Ext(path))
 		// Skip Go files (handled by Go AST path) and binary-like extensions.
-		skipExts := map[string]bool{".go": true, ".bin": true, ".exe": true, ".so": true, ".a": true}
-		if skipExts[ext] {
+		if skipNonGoExts[ext] {
 			return nil
 		}
 		if seen[path] {
