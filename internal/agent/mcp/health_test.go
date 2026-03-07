@@ -84,10 +84,15 @@ WaitUnhealthy:
 	}
 
 	// Now start responding to pings so the next successful ping resets the counter.
+	done := make(chan struct{})
+	defer close(done)
 	go func() {
 		for {
 			select {
-			case req := <-mt.requests:
+			case req, ok := <-mt.requests:
+				if !ok {
+					return
+				}
 				var parsed struct {
 					Method string          `json:"method"`
 					ID     json.RawMessage `json:"id"`
@@ -98,6 +103,8 @@ WaitUnhealthy:
 				}
 			case <-mt.responses:
 				// drain stray messages
+			case <-done:
+				return
 			}
 		}
 	}()

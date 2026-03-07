@@ -48,6 +48,12 @@ type pendingRequest struct {
 
 // StdioClientOptions configures optional behavior for a StdioClient.
 type StdioClientOptions struct {
+	// RespawnTransport is an optional factory used by Restart() to obtain a
+	// fresh Transport after the previous one has been closed. If nil and
+	// RestartPolicy is "restart", Restart() logs a warning and skips the
+	// reconnect (the existing transport is reused, which is useful in tests
+	// that use mock transports).
+	RespawnTransport func(ctx context.Context) (Transport, error)
 	// RestartPolicy controls what happens after 3 consecutive ping failures.
 	// "restart" calls Restart(); anything else (including "" or "none") just marks unhealthy.
 	RestartPolicy string
@@ -79,6 +85,7 @@ type StdioClient struct {
 	nextID       atomic.Int64
 	stopOnce     sync.Once
 	writeMu      sync.Mutex
+	startMu      sync.Mutex // serializes Start() and Stop()
 	initialized  bool
 }
 
@@ -143,6 +150,29 @@ func (c *StdioClient) healthLoop() {
 	}
 }
 
+// updateHealthOnPingResult updates health state based on a ping result.
+// Returns true if a restart should be triggered (restart policy + threshold reached).
+// The caller must not hold c.health.mu.
+func (c *StdioClient) updateHealthOnPingResult(err error) (shouldRestart bool) {
+	c.health.mu.Lock()
+	defer c.health.mu.Unlock()
+
+	if err != nil {
+		c.health.consecutiveFailures++
+		if c.health.consecutiveFailures >= 3 {
+			c.health.healthy = false
+			if c.opts.RestartPolicy == "restart" {
+				c.health.consecutiveFailures = 0
+				return true
+			}
+		}
+	} else {
+		c.health.consecutiveFailures = 0
+		c.health.healthy = true
+	}
+	return false
+}
+
 // runPing sends a single ping and updates the health state.
 // After 3 consecutive failures, if restart_policy is "restart", Restart() is called
 // and the failure counter is reset. Otherwise the client is simply marked unhealthy.
@@ -151,29 +181,13 @@ func (c *StdioClient) runPing() {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	_, err := c.sendRequest(ctx, "ping", map[string]interface{}{})
+	_, err := c.sendRequest(ctx, "ping", nil)
 
-	c.health.mu.Lock()
-
-	if err != nil {
-		c.health.consecutiveFailures++
-		if c.health.consecutiveFailures >= 3 {
-			c.health.healthy = false
-			if c.opts.RestartPolicy == "restart" {
-				c.health.consecutiveFailures = 0
-				c.health.mu.Unlock()
-				restartCtx, restartCancel := context.WithTimeout(context.Background(), 30*time.Second)
-				defer restartCancel()
-				_ = c.Restart(restartCtx)
-				return
-			}
-		}
-	} else {
-		c.health.consecutiveFailures = 0
-		c.health.healthy = true
+	if c.updateHealthOnPingResult(err) {
+		restartCtx, restartCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		_ = c.Restart(restartCtx)
+		restartCancel()
 	}
-
-	c.health.mu.Unlock()
 }
 
 // readLoop reads responses from the transport and routes them to pending requests.
@@ -388,14 +402,24 @@ func (c *StdioClient) Close() error {
 }
 
 // Restart stops the client and restarts it with a fresh transport connection.
-// It calls Stop (which closes the transport and stops the health loop) then Start
-// (which resets internal state and relaunches the read and health loops).
+// It calls Stop (which closes the transport and stops the health loop) then,
+// if opts.RespawnTransport is set, obtains a new transport before calling Start.
+// If RespawnTransport is not set, a warning is logged and Start is still called
+// (the existing transport object is reused — adequate for mock transports in tests).
 // This is called automatically when restart_policy="restart" and 3 consecutive
 // ping failures have occurred.
 func (c *StdioClient) Restart(ctx context.Context) error {
 	// Tear down existing connection.
 	if err := c.Stop(); err != nil {
 		return fmt.Errorf("restart stop: %w", err)
+	}
+	// Obtain a fresh transport if a factory was provided.
+	if c.opts.RespawnTransport != nil {
+		newTransport, err := c.opts.RespawnTransport(ctx)
+		if err != nil {
+			return fmt.Errorf("restart respawn transport: %w", err)
+		}
+		c.transport = newTransport
 	}
 	// Restart with a fresh state.
 	return c.Start(ctx)
@@ -404,6 +428,9 @@ func (c *StdioClient) Restart(ctx context.Context) error {
 // Stop closes the transport, stops the health-check goroutine, and waits for the
 // read loop to finish. After Stop, the StdioClient can be restarted via Start.
 func (c *StdioClient) Stop() error {
+	c.startMu.Lock()
+	defer c.startMu.Unlock()
+
 	c.stopOnce.Do(func() { close(c.stopHealth) })
 	err := c.transport.Close()
 	<-c.readerDone
@@ -411,8 +438,13 @@ func (c *StdioClient) Stop() error {
 }
 
 // Start resets internal state and relaunches the read and health-check goroutines.
+// The ctx parameter is reserved for future use (e.g., dialing a new transport);
+// it is not used by the current in-process implementation.
 // It should only be called after Stop (or as part of Restart).
-func (c *StdioClient) Start(_ context.Context) error {
+func (c *StdioClient) Start(ctx context.Context) error {
+	c.startMu.Lock()
+	defer c.startMu.Unlock()
+
 	// Reset channels and state for the new session.
 	c.readerDone = make(chan struct{})
 	c.stopHealth = make(chan struct{})
