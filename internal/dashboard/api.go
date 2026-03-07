@@ -3,6 +3,7 @@ package dashboard
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -404,6 +405,7 @@ func (a *API) handleTaskContext(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	path := strings.TrimPrefix(r.URL.Path, "/api/tasks/")
+	// Task IDs are UUIDs and never contain slashes, so TrimSuffix is safe here.
 	id := strings.TrimSuffix(path, "/context")
 	if id == "" || id == path {
 		http.Error(w, "missing task id", http.StatusBadRequest)
@@ -411,6 +413,10 @@ func (a *API) handleTaskContext(w http.ResponseWriter, r *http.Request) {
 	}
 	stats, err := a.db.GetTaskContextStats(r.Context(), id)
 	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			http.Error(w, "task not found", http.StatusNotFound)
+			return
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

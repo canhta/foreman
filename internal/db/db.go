@@ -2,11 +2,24 @@ package db
 
 import (
 	"context"
+	"errors"
 	"io"
 	"time"
 
 	"github.com/canhta/foreman/internal/models"
 )
+
+// ErrNotFound is returned by database methods when a requested record does not exist.
+var ErrNotFound = errors.New("not found")
+
+// TaskContextStats holds token budget utilization data for a task.
+type TaskContextStats struct {
+	Budget        int
+	Used          int
+	FilesSelected int
+	FilesTouched  int
+	CacheHits     int
+}
 
 type Database interface {
 	// Tickets
@@ -24,6 +37,8 @@ type Database interface {
 	SetTaskErrorType(ctx context.Context, id, errorType string) error
 	IncrementTaskLlmCalls(ctx context.Context, id string) (int, error)
 	ListTasks(ctx context.Context, ticketID string) ([]models.Task, error)
+	GetTaskContextStats(ctx context.Context, taskID string) (TaskContextStats, error)
+	UpdateTaskContextStats(ctx context.Context, taskID string, stats TaskContextStats) error
 
 	// LLM calls
 	RecordLlmCall(ctx context.Context, call *models.LlmCallRecord) error
@@ -86,6 +101,9 @@ type Database interface {
 	UpsertEmbedding(ctx context.Context, e EmbeddingRecord) error
 	GetEmbeddingsByRepoSHA(ctx context.Context, repoPath, headSHA string) ([]EmbeddingRecord, error)
 	DeleteEmbeddingsByRepoSHA(ctx context.Context, repoPath, headSHA string) error
+	// DeleteEmbeddingsByRepoExceptSHA deletes all embedding records for a repo_path
+	// whose head_sha does NOT match the given headSHA. Used to evict stale indices.
+	DeleteEmbeddingsByRepoExceptSHA(ctx context.Context, repoPath, headSHA string) error
 
 	io.Closer
 }

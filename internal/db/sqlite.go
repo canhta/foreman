@@ -66,6 +66,13 @@ func runSQLiteMigrations(db *sql.DB) error {
 	_, _ = db.ExecContext(ctx,
 		`ALTER TABLE tasks ADD COLUMN last_error_type TEXT NOT NULL DEFAULT ''`)
 
+	// Add context budget/utilization columns to tasks (ignored if already present).
+	_, _ = db.ExecContext(ctx, `ALTER TABLE tasks ADD COLUMN context_budget INTEGER DEFAULT 0`)
+	_, _ = db.ExecContext(ctx, `ALTER TABLE tasks ADD COLUMN context_used INTEGER DEFAULT 0`)
+	_, _ = db.ExecContext(ctx, `ALTER TABLE tasks ADD COLUMN files_selected INTEGER DEFAULT 0`)
+	_, _ = db.ExecContext(ctx, `ALTER TABLE tasks ADD COLUMN files_touched INTEGER DEFAULT 0`)
+	_, _ = db.ExecContext(ctx, `ALTER TABLE tasks ADD COLUMN context_cache_hits INTEGER DEFAULT 0`)
+
 	// Recreate llm_call_details without the FK constraint on llm_calls(id), but ONLY if
 	// the old FK schema is still present. Once migrated (no REFERENCES clause), skip to
 	// avoid wiping observability data on every restart.
@@ -292,6 +299,32 @@ func (s *SQLiteDB) SetTaskErrorType(ctx context.Context, id, errorType string) e
 	_, err := s.db.ExecContext(ctx, `UPDATE tasks SET last_error_type = ? WHERE id = ?`, errorType, id)
 	if err != nil {
 		return fmt.Errorf("set task error type: %w", err)
+	}
+	return nil
+}
+
+func (s *SQLiteDB) GetTaskContextStats(ctx context.Context, taskID string) (TaskContextStats, error) {
+	var stats TaskContextStats
+	err := s.db.QueryRowContext(ctx,
+		`SELECT context_budget, context_used, files_selected, files_touched, context_cache_hits FROM tasks WHERE id = ?`,
+		taskID,
+	).Scan(&stats.Budget, &stats.Used, &stats.FilesSelected, &stats.FilesTouched, &stats.CacheHits)
+	if err == sql.ErrNoRows {
+		return TaskContextStats{}, fmt.Errorf("get task context stats: %w", ErrNotFound)
+	}
+	if err != nil {
+		return TaskContextStats{}, fmt.Errorf("get task context stats: %w", err)
+	}
+	return stats, nil
+}
+
+func (s *SQLiteDB) UpdateTaskContextStats(ctx context.Context, taskID string, stats TaskContextStats) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE tasks SET context_budget=?, context_used=?, files_selected=?, files_touched=?, context_cache_hits=? WHERE id=?`,
+		stats.Budget, stats.Used, stats.FilesSelected, stats.FilesTouched, stats.CacheHits, taskID,
+	)
+	if err != nil {
+		return fmt.Errorf("update task context stats: %w", err)
 	}
 	return nil
 }
@@ -1078,6 +1111,19 @@ func (s *SQLiteDB) DeleteEmbeddingsByRepoSHA(ctx context.Context, repoPath, head
 	)
 	if err != nil {
 		return fmt.Errorf("delete embeddings: %w", err)
+	}
+	return nil
+}
+
+// DeleteEmbeddingsByRepoExceptSHA deletes all embedding records for the given repo_path
+// whose head_sha does NOT match headSHA (i.e. stale indices from previous commits).
+func (s *SQLiteDB) DeleteEmbeddingsByRepoExceptSHA(ctx context.Context, repoPath, headSHA string) error {
+	_, err := s.db.ExecContext(ctx,
+		`DELETE FROM embeddings WHERE repo_path = ? AND head_sha != ?`,
+		repoPath, headSHA,
+	)
+	if err != nil {
+		return fmt.Errorf("delete stale embeddings: %w", err)
 	}
 	return nil
 }

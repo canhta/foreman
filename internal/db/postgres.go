@@ -234,6 +234,32 @@ func (p *PostgresDB) SetTaskErrorType(ctx context.Context, id, errorType string)
 	return nil
 }
 
+func (p *PostgresDB) GetTaskContextStats(ctx context.Context, taskID string) (TaskContextStats, error) {
+	var stats TaskContextStats
+	err := p.db.QueryRowContext(ctx,
+		`SELECT context_budget, context_used, files_selected, files_touched, context_cache_hits FROM tasks WHERE id = $1`,
+		taskID,
+	).Scan(&stats.Budget, &stats.Used, &stats.FilesSelected, &stats.FilesTouched, &stats.CacheHits)
+	if err == sql.ErrNoRows {
+		return TaskContextStats{}, fmt.Errorf("get task context stats: %w", ErrNotFound)
+	}
+	if err != nil {
+		return TaskContextStats{}, fmt.Errorf("get task context stats: %w", err)
+	}
+	return stats, nil
+}
+
+func (p *PostgresDB) UpdateTaskContextStats(ctx context.Context, taskID string, stats TaskContextStats) error {
+	_, err := p.db.ExecContext(ctx,
+		`UPDATE tasks SET context_budget=$1, context_used=$2, files_selected=$3, files_touched=$4, context_cache_hits=$5 WHERE id=$6`,
+		stats.Budget, stats.Used, stats.FilesSelected, stats.FilesTouched, stats.CacheHits, taskID,
+	)
+	if err != nil {
+		return fmt.Errorf("update task context stats: %w", err)
+	}
+	return nil
+}
+
 func (p *PostgresDB) IncrementTaskLlmCalls(ctx context.Context, id string) (int, error) {
 	var count int
 	err := p.db.QueryRowContext(ctx,
@@ -1007,6 +1033,19 @@ func (p *PostgresDB) DeleteEmbeddingsByRepoSHA(ctx context.Context, repoPath, he
 	)
 	if err != nil {
 		return fmt.Errorf("delete embeddings: %w", err)
+	}
+	return nil
+}
+
+// DeleteEmbeddingsByRepoExceptSHA deletes all embedding records for the given repo_path
+// whose head_sha does NOT match headSHA (i.e. stale indices from previous commits).
+func (p *PostgresDB) DeleteEmbeddingsByRepoExceptSHA(ctx context.Context, repoPath, headSHA string) error {
+	_, err := p.db.ExecContext(ctx,
+		`DELETE FROM embeddings WHERE repo_path = $1 AND head_sha != $2`,
+		repoPath, headSHA,
+	)
+	if err != nil {
+		return fmt.Errorf("delete stale embeddings: %w", err)
 	}
 	return nil
 }

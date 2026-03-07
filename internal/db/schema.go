@@ -52,6 +52,11 @@ CREATE TABLE IF NOT EXISTS tasks (
     commit_sha TEXT,
     last_error_type TEXT NOT NULL DEFAULT '',
     cost_usd REAL DEFAULT 0.0,
+    context_budget      INTEGER DEFAULT 0,
+    context_used        INTEGER DEFAULT 0,
+    files_selected      INTEGER DEFAULT 0,
+    files_touched       INTEGER DEFAULT 0,
+    context_cache_hits  INTEGER DEFAULT 0,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     started_at TIMESTAMP,
     completed_at TIMESTAMP

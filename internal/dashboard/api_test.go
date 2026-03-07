@@ -11,11 +11,15 @@ import (
 	"github.com/canhta/foreman/internal/models"
 )
 
+// TaskContextStatsDB is a local alias for test readability.
+type TaskContextStatsDB = TaskContextStats
+
 type mockDashboardDB struct {
-	tickets   []models.Ticket
-	events    []models.EventRecord
-	teamStats []models.TeamStat
-	summaries []models.TicketSummary
+	tickets      []models.Ticket
+	events       []models.EventRecord
+	teamStats    []models.TeamStat
+	summaries    []models.TicketSummary
+	contextStats map[string]TaskContextStatsDB
 }
 
 func (m *mockDashboardDB) ValidateAuthToken(_ context.Context, _ string) (bool, error) {
@@ -74,6 +78,19 @@ func (m *mockDashboardDB) UpdateTicketStatus(_ context.Context, _ string, _ mode
 }
 
 func (m *mockDashboardDB) DeleteTicket(_ context.Context, _ string) error { return nil }
+
+func (m *mockDashboardDB) GetTaskContextStats(_ context.Context, taskID string) (TaskContextStats, error) {
+	if m.contextStats != nil {
+		if s, ok := m.contextStats[taskID]; ok {
+			return s, nil
+		}
+	}
+	return TaskContextStats{}, nil
+}
+
+func (m *mockDashboardDB) UpdateTaskContextStats(_ context.Context, _ string, _ TaskContextStats) error {
+	return nil
+}
 
 func (m *mockDashboardDB) GetTeamStats(_ context.Context, _ time.Time) ([]models.TeamStat, error) {
 	return m.teamStats, nil
@@ -538,6 +555,76 @@ func TestAPIRetryTask(t *testing.T) {
 	api.handleRetryTask(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestHandleTaskContext_ReturnsUtilization(t *testing.T) {
+	db := &mockDashboardDB{
+		contextStats: map[string]TaskContextStatsDB{
+			"task-123": {Budget: 100000, Used: 75000, FilesSelected: 12, FilesTouched: 8, CacheHits: 3},
+		},
+	}
+	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/tasks/task-123/context", nil)
+	rec := httptest.NewRecorder()
+	api.handleTaskContext(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp TaskContextResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp.Budget != 100000 {
+		t.Errorf("expected budget=100000, got %d", resp.Budget)
+	}
+	if resp.Used != 75000 {
+		t.Errorf("expected used=75000, got %d", resp.Used)
+	}
+	if resp.UtilizationPct != 75.0 {
+		t.Errorf("expected utilization_pct=75.0, got %f", resp.UtilizationPct)
+	}
+	if resp.FilesSelected != 12 {
+		t.Errorf("expected files_selected=12, got %d", resp.FilesSelected)
+	}
+	if resp.FilesTouched != 8 {
+		t.Errorf("expected files_touched=8, got %d", resp.FilesTouched)
+	}
+	if resp.CacheHits != 3 {
+		t.Errorf("expected cache_hits=3, got %d", resp.CacheHits)
+	}
+}
+
+func TestHandleTaskContext_ZeroBudget_NoDiv(t *testing.T) {
+	db := &mockDashboardDB{
+		contextStats: map[string]TaskContextStatsDB{
+			"task-456": {Budget: 0, Used: 0},
+		},
+	}
+	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/tasks/task-456/context", nil)
+	rec := httptest.NewRecorder()
+	api.handleTaskContext(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp TaskContextResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp.UtilizationPct != 0.0 {
+		t.Errorf("expected utilization_pct=0.0 for zero budget, got %f", resp.UtilizationPct)
+	}
+}
+
+func TestHandleTaskContext_MethodNotAllowed(t *testing.T) {
+	db := &mockDashboardDB{}
+	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
+	req := httptest.NewRequestWithContext(t.Context(), "POST", "/api/tasks/task-123/context", nil)
+	rec := httptest.NewRecorder()
+	api.handleTaskContext(rec, req)
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405, got %d", rec.Code)
 	}
 }
 

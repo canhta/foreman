@@ -174,7 +174,7 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 			Help: "Total number of retries triggered by stage and error type.",
 		}, []string{"stage", "error_type"}),
 		PlanConfidenceScore: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Name:    "foreman_plan_confidence_score_histogram",
+			Name:    "foreman_plan_confidence_score",
 			Help:    "Distribution of plan confidence scores.",
 			Buckets: prometheus.LinearBuckets(0.1, 0.1, 10),
 		}),

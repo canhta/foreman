@@ -82,8 +82,8 @@ func TestCountScopeKeywords(t *testing.T) {
 
 // llmAssistMock is a controllable LLM stub for decomp-check tests.
 type llmAssistMock struct {
-	response string
 	err      error
+	response string
 	called   bool
 }
 
