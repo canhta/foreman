@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"golang.org/x/sync/errgroup"
@@ -228,14 +229,14 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 		}
 
 		if resp.StopReason == models.StopReasonEndTurn || resp.StopReason == models.StopReasonMaxTokens {
-			return AgentResult{Output: resp.Content, Usage: usage}, nil
+			return enrichResult(AgentResult{Output: resp.Content, Usage: usage}), nil
 		}
 
 		// Implicit stop from self-reflection: if the agent replied TASK_COMPLETE
 		// to a reflection prompt, treat it as a graceful end-of-turn (REQ-LOOP-001).
 		if strings.Contains(resp.Content, "TASK_COMPLETE") {
 			log.Info().Int("turn", turn+1).Msg("builtin: implicit stop via self-reflection TASK_COMPLETE")
-			return AgentResult{Output: resp.Content, Usage: usage}, nil
+			return enrichResult(AgentResult{Output: resp.Content, Usage: usage}), nil
 		}
 
 		if resp.StopReason == models.StopReasonToolUse && len(resp.ToolCalls) > 0 {
@@ -332,7 +333,7 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 			continue
 		}
 
-		return AgentResult{Output: resp.Content, Usage: usage}, nil
+		return enrichResult(AgentResult{Output: resp.Content, Usage: usage}), nil
 	}
 
 	return AgentResult{}, fmt.Errorf("builtin: exceeded max turns %d without completion", maxTurns)
@@ -492,6 +493,140 @@ func toolCallFingerprint(toolName string, input json.RawMessage) string {
 	h.Write(input)
 done:
 	return fmt.Sprintf("%x", h.Sum(nil))
+}
+
+// builtinStatusRe matches STATUS: APPROVED|REJECTED|CHANGES_REQUESTED patterns
+// in agent output (same grammar as pipeline/review_parser.go).
+var builtinStatusRe = regexp.MustCompile(`(?i)(?:^|\n)STATUS:\s*(APPROVED|REJECTED|CHANGES_REQUESTED)`)
+
+// builtinNewFileRe and builtinModifyFileRe match the structured file-change blocks
+// produced by the implementer prompt (same grammar as pipeline/output_parser.go).
+var (
+	builtinNewFileRe    = regexp.MustCompile(`===\s*NEW FILE:\s*(.+?)\s*===`)
+	builtinModifyFileRe = regexp.MustCompile(`===\s*MODIFY FILE:\s*(.+?)\s*===`)
+	builtinEndFileRe    = regexp.MustCompile(`===\s*END FILE\s*===`)
+	builtinSearchRe     = regexp.MustCompile(`<<<<\s*SEARCH`)
+	builtinReplaceRe    = regexp.MustCompile(`<<<<\s*REPLACE`)
+	// builtinEndBlockRe is intentionally NOT a regex: strings.HasPrefix(line, ">>>>")
+	// is used instead to avoid false-positive matches on code containing ">>>>".
+)
+
+// enrichResult populates FileChanges and ReviewResult on an AgentResult by
+// parsing the Output string for known structured patterns.
+// It is a best-effort enhancement — errors are silently ignored so that the
+// raw Output is always available to callers.
+func enrichResult(r AgentResult) AgentResult {
+	r.FileChanges = parseFileChanges(r.Output)
+	r.ReviewResult = parseReviewResult(r.Output)
+	return r
+}
+
+// parseFileChanges extracts NEW FILE / MODIFY FILE blocks from agent output.
+func parseFileChanges(raw string) []FileChange {
+	lines := strings.Split(raw, "\n")
+	var changes []FileChange
+	i := 0
+
+	for i < len(lines) {
+		line := lines[i]
+
+		if m := builtinNewFileRe.FindStringSubmatch(line); m != nil {
+			path := strings.TrimSpace(m[1])
+			i++
+			var contentLines []string
+			for i < len(lines) && !builtinEndFileRe.MatchString(lines[i]) {
+				contentLines = append(contentLines, lines[i])
+				i++
+			}
+			if i < len(lines) {
+				i++ // skip END FILE
+			}
+			changes = append(changes, FileChange{
+				Path:       path,
+				NewContent: strings.Join(contentLines, "\n"),
+				IsDiff:     false,
+			})
+			continue
+		}
+
+		if m := builtinModifyFileRe.FindStringSubmatch(line); m != nil {
+			path := strings.TrimSpace(m[1])
+			i++
+			for i < len(lines) && !builtinEndFileRe.MatchString(lines[i]) {
+				if builtinSearchRe.MatchString(lines[i]) {
+					i++
+					var searchLines []string
+					for i < len(lines) && !strings.HasPrefix(lines[i], ">>>>") {
+						searchLines = append(searchLines, lines[i])
+						i++
+					}
+					if i < len(lines) {
+						i++ // skip >>>>
+					}
+					if i < len(lines) && builtinReplaceRe.MatchString(lines[i]) {
+						i++
+						var replaceLines []string
+						for i < len(lines) && !strings.HasPrefix(lines[i], ">>>>") {
+							replaceLines = append(replaceLines, lines[i])
+							i++
+						}
+						if i < len(lines) {
+							i++ // skip >>>>
+						}
+						changes = append(changes, FileChange{
+							Path:       path,
+							OldContent: strings.Join(searchLines, "\n"),
+							NewContent: strings.Join(replaceLines, "\n"),
+							IsDiff:     false,
+						})
+					}
+				} else {
+					i++
+				}
+			}
+			if i < len(lines) {
+				i++ // skip END FILE
+			}
+			continue
+		}
+
+		i++
+	}
+	return changes
+}
+
+// parseReviewResult parses a STATUS: APPROVED|REJECTED|CHANGES_REQUESTED line
+// from the agent output and returns a *ReviewResult, or nil if none is found.
+// Note: Issues and Summary fields are not populated; only Approved and Severity are extracted.
+func parseReviewResult(raw string) *ReviewResult {
+	m := builtinStatusRe.FindStringSubmatch(raw)
+	if len(m) < 2 {
+		return nil
+	}
+	status := strings.ToUpper(strings.TrimSpace(m[1]))
+	approved := status == "APPROVED"
+
+	// Derive severity from status and check for [CRITICAL] tags in the output.
+	severity := "none"
+	switch status {
+	case "CHANGES_REQUESTED":
+		severity = "minor"
+		if strings.Contains(strings.ToUpper(raw), "[CRITICAL]") {
+			severity = "critical"
+		} else if strings.Contains(strings.ToUpper(raw), "[MAJOR]") {
+			severity = "major"
+		}
+	case "REJECTED":
+		severity = "major"
+		if strings.Contains(strings.ToUpper(raw), "[CRITICAL]") {
+			severity = "critical"
+		}
+	}
+
+	return &ReviewResult{
+		Approved: approved,
+		Severity: severity,
+	}
 }
 
 // unwrapProvider returns the innermost non-recording provider.
