@@ -97,7 +97,7 @@ func TestRecordingProvider_DoesNotStoreOnError(t *testing.T) {
 	}
 }
 
-func TestRecordingProvider_LogsWarnOnStoreError(t *testing.T) {
+func TestRecordingProvider_DBErrorDoesNotPropagateToCallers(t *testing.T) {
 	// Even when StoreCallDetails returns an error, the LLM response is still returned.
 	inner := &mockLlmProvider{
 		name: "test-provider",

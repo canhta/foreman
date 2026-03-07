@@ -79,7 +79,6 @@ type LlmCallRecord struct {
 	ErrorMessage        string
 	Status              string
 	ID                  string
-	TraceID             string
 	TokensOutput        int
 	DurationMs          int64
 	TokensInput         int

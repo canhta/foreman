@@ -206,13 +206,13 @@ func (e *Engine) executeAgentSDK(ctx context.Context, step SkillStep) (*StepResu
 		MaxTurns:      step.MaxTurns,
 		TimeoutSecs:   step.TimeoutSecs,
 		FallbackModel: step.FallbackModel,
-		OnProgress: func(e agent.AgentEvent) {
+		OnProgress: func(evt agent.AgentEvent) {
 			log.Debug().
-				Str("event", string(e.Type)).
-				Int("turn", e.Turn).
-				Str("tool", e.ToolName).
-				Int("tokens_in", e.TokensIn).
-				Int("tokens_out", e.TokensOut).
+				Str("event", string(evt.Type)).
+				Int("turn", evt.Turn).
+				Str("tool", evt.ToolName).
+				Int("tokens_in", evt.TokensIn).
+				Int("tokens_out", evt.TokensOut).
 				Msg("agent progress")
 		},
 	}

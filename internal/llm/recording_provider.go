@@ -48,7 +48,7 @@ func (r *RecordingProvider) Complete(ctx context.Context, req models.LlmRequest)
 		return nil, err
 	}
 
-	// Store call details asynchronously — best-effort, never fail the caller.
+	// Store call details — best-effort; DB errors are not propagated to the caller.
 	r.storeDetails(ctx, req, resp)
 
 	return resp, nil

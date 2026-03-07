@@ -680,3 +680,26 @@ func TestSQLiteDB_IncrementTaskLlmCalls_Concurrent(t *testing.T) {
 	}
 	assert.Len(t, seen, workers, "expected %d distinct count values", workers)
 }
+
+// TestSQLiteDB_StoreCallDetails_NoFKRequired verifies that StoreCallDetails succeeds
+// with a call ID that has no corresponding row in llm_calls. The table must be a
+// standalone log table without a FK constraint.
+func TestSQLiteDB_StoreCallDetails_NoFKRequired(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	callID := "llm-1234567890"
+	fullPrompt := `{"model":"gpt-4","user_prompt":"hello"}`
+	fullResponse := "world"
+
+	// Must succeed even though "llm-1234567890" does not exist in llm_calls.
+	err := db.StoreCallDetails(ctx, callID, fullPrompt, fullResponse)
+	require.NoError(t, err, "StoreCallDetails must not require a matching llm_calls row")
+
+	// Verify the data was actually persisted.
+	gotPrompt, gotResponse, err := db.GetCallDetails(ctx, callID)
+	require.NoError(t, err)
+	assert.Equal(t, fullPrompt, gotPrompt)
+	assert.Equal(t, fullResponse, gotResponse)
+}

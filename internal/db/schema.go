@@ -79,7 +79,7 @@ CREATE TABLE IF NOT EXISTS llm_calls (
 );
 
 CREATE TABLE IF NOT EXISTS llm_call_details (
-    llm_call_id TEXT PRIMARY KEY REFERENCES llm_calls(id),
+    llm_call_id TEXT PRIMARY KEY,
     full_prompt TEXT NOT NULL DEFAULT '',
     full_response TEXT NOT NULL DEFAULT ''
 );
