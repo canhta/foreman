@@ -1366,3 +1366,13 @@ func (s *SQLiteDB) GetDAGState(ctx context.Context, ticketID string) (*DAGState,
 	}
 	return &state, nil
 }
+
+// DeleteDAGState removes the DAG execution state for a ticket once it has reached a
+// terminal state, preventing unbounded growth of the dag_states table.
+func (s *SQLiteDB) DeleteDAGState(ctx context.Context, ticketID string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM dag_states WHERE ticket_id = ?`, ticketID)
+	if err != nil {
+		return fmt.Errorf("delete dag state: %w", err)
+	}
+	return nil
+}

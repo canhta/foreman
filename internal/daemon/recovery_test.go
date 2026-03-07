@@ -159,7 +159,6 @@ func TestRecovery_SkipsCompletedDAGTasks(t *testing.T) {
 	dagState := &db.DAGState{
 		TicketID:       "ticket-1",
 		CompletedTasks: []string{"task-A"},
-		FailedTasks:    nil,
 	}
 
 	allTasks := []DAGTask{

@@ -125,10 +125,10 @@ func (e *DAGExecutor) Execute(ctx context.Context, tasks []DAGTask) map[string]T
 		close(resultChan)
 	}()
 
-	// stateMu protects the in-progress accounting for DAG state snapshots.
-	var stateMu sync.Mutex
+	// completedIDs accumulates task IDs that finished successfully.
+	// The coordinator loop is the sole reader of resultChan and sole writer of
+	// completedIDs — no mutex is needed.
 	completedIDs := make([]string, 0, len(tasks))
-	failedIDs := make([]string, 0)
 
 	// Coordinator: collect results, propagate failures, push ready tasks.
 	remaining := len(tasks)
@@ -147,10 +147,8 @@ func (e *DAGExecutor) Execute(ctx context.Context, tasks []DAGTask) map[string]T
 			remaining--
 
 			if res.Status == models.TaskStatusDone {
-				stateMu.Lock()
 				completedIDs = append(completedIDs, res.TaskID)
-				stateMu.Unlock()
-				e.persistDAGState(ctx, completedIDs, failedIDs)
+				e.persistDAGState(ctx, completedIDs)
 
 				// Check dependents; push newly ready ones.
 				for _, child := range dependents[res.TaskID] {
@@ -160,12 +158,7 @@ func (e *DAGExecutor) Execute(ctx context.Context, tasks []DAGTask) map[string]T
 					}
 				}
 			} else {
-				stateMu.Lock()
-				if res.Status == models.TaskStatusFailed {
-					failedIDs = append(failedIDs, res.TaskID)
-				}
-				stateMu.Unlock()
-				e.persistDAGState(ctx, completedIDs, failedIDs)
+				e.persistDAGState(ctx, completedIDs)
 
 				// BFS failure propagation: skip all transitive dependents.
 				queue := []string{res.TaskID}
@@ -195,21 +188,17 @@ func (e *DAGExecutor) Execute(ctx context.Context, tasks []DAGTask) map[string]T
 // persistDAGState saves the current execution state to the database so crash
 // recovery can skip already-completed tasks. It is a no-op when no store is
 // configured (e.g. in unit tests).
-func (e *DAGExecutor) persistDAGState(ctx context.Context, completed, failed []string) {
+func (e *DAGExecutor) persistDAGState(ctx context.Context, completed []string) {
 	if e.store == nil || e.ticketID == "" {
 		return
 	}
-	// Copy slices to avoid races with the coordinator's appends.
+	// Copy slice to avoid races with future coordinator appends.
 	c := make([]string, len(completed))
 	copy(c, completed)
-	f := make([]string, len(failed))
-	copy(f, failed)
 
 	state := db.DAGState{
 		TicketID:       e.ticketID,
 		CompletedTasks: c,
-		FailedTasks:    f,
-		SavedAt:        time.Now().UTC(),
 	}
 	if err := e.store.SaveDAGState(ctx, e.ticketID, state); err != nil {
 		log.Warn().Err(err).Str("ticket_id", e.ticketID).Msg("failed to persist DAG state; recovery may re-run completed tasks")

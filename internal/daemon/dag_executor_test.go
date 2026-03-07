@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/canhta/foreman/internal/db"
 	"github.com/canhta/foreman/internal/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -188,4 +189,69 @@ func TestDAGExecutor_ContextCancellation(t *testing.T) {
 		_, ok := results[id]
 		assert.True(t, ok, "task %s should be in results", id)
 	}
+}
+
+// mockDAGStateStore is a test double for dagStateStore that records SaveDAGState calls.
+type mockDAGStateStore struct {
+	mu      sync.Mutex
+	calls   []db.DAGState
+	saveErr error
+}
+
+func (m *mockDAGStateStore) SaveDAGState(_ context.Context, _ string, state db.DAGState) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.calls = append(m.calls, db.DAGState{
+		TicketID:       state.TicketID,
+		CompletedTasks: append([]string(nil), state.CompletedTasks...),
+	})
+	return m.saveErr
+}
+
+func (m *mockDAGStateStore) savedStates() []db.DAGState {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]db.DAGState, len(m.calls))
+	copy(out, m.calls)
+	return out
+}
+
+// TestDAGExecutor_WithDAGStore_PersistsStateAfterEachTask verifies that
+// persistDAGState is called after each completed task and that the saved state
+// contains the correct ticketID and accumulated completedIDs.
+func TestDAGExecutor_WithDAGStore_PersistsStateAfterEachTask(t *testing.T) {
+	runner := newMockRunner(5*time.Millisecond, nil)
+
+	store := &mockDAGStateStore{}
+	const ticketID = "ticket-persist-test"
+
+	// Two independent tasks so both complete.
+	tasks := []DAGTask{
+		{ID: "task-1"},
+		{ID: "task-2"},
+	}
+
+	exec := NewDAGExecutor(runner, 2, 5*time.Second).
+		WithDAGStore(store, ticketID)
+
+	results := exec.Execute(context.Background(), tasks)
+
+	// Both tasks must succeed.
+	require.Len(t, results, 2)
+	assert.Equal(t, models.TaskStatusDone, results["task-1"].Status)
+	assert.Equal(t, models.TaskStatusDone, results["task-2"].Status)
+
+	// SaveDAGState must have been called at least twice (once per completed task).
+	saved := store.savedStates()
+	require.GreaterOrEqual(t, len(saved), 2, "SaveDAGState must be called after each completed task")
+
+	// Every saved snapshot must have the correct ticketID.
+	for i, s := range saved {
+		assert.Equal(t, ticketID, s.TicketID, "snapshot[%d] has wrong ticketID", i)
+	}
+
+	// The final snapshot must contain both task IDs (order-independent).
+	last := saved[len(saved)-1]
+	assert.ElementsMatch(t, []string{"task-1", "task-2"}, last.CompletedTasks,
+		"final snapshot must include all completed task IDs")
 }

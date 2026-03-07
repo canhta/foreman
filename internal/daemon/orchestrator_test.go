@@ -230,6 +230,7 @@ func (m *orchMockDB) SaveDAGState(_ context.Context, _ string, _ db.DAGState) er
 func (m *orchMockDB) GetDAGState(_ context.Context, _ string) (*db.DAGState, error) {
 	return nil, nil
 }
+func (m *orchMockDB) DeleteDAGState(_ context.Context, _ string) error { return nil }
 
 func (m *orchMockDB) lastStatus(id string) models.TicketStatus {
 	for i := len(m.statusUpdates) - 1; i >= 0; i-- {

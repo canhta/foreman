@@ -1235,3 +1235,13 @@ func (p *PostgresDB) GetDAGState(ctx context.Context, ticketID string) (*DAGStat
 	}
 	return &state, nil
 }
+
+// DeleteDAGState removes the DAG execution state for a ticket once it has reached a
+// terminal state, preventing unbounded growth of the dag_states table.
+func (p *PostgresDB) DeleteDAGState(ctx context.Context, ticketID string) error {
+	_, err := p.db.ExecContext(ctx, `DELETE FROM dag_states WHERE ticket_id = $1`, ticketID)
+	if err != nil {
+		return fmt.Errorf("delete dag state: %w", err)
+	}
+	return nil
+}

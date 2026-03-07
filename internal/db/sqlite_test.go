@@ -1052,8 +1052,6 @@ func TestDAGState_SaveAndLoad(t *testing.T) {
 	state := DAGState{
 		TicketID:       "ticket-dag-1",
 		CompletedTasks: []string{"task-A", "task-B"},
-		FailedTasks:    []string{"task-C"},
-		SavedAt:        time.Now().UTC().Truncate(time.Second),
 	}
 	require.NoError(t, db.SaveDAGState(ctx, state.TicketID, state))
 
@@ -1062,8 +1060,6 @@ func TestDAGState_SaveAndLoad(t *testing.T) {
 	require.NotNil(t, got)
 	assert.Equal(t, state.TicketID, got.TicketID)
 	assert.Equal(t, state.CompletedTasks, got.CompletedTasks)
-	assert.Equal(t, state.FailedTasks, got.FailedTasks)
-	assert.Equal(t, state.SavedAt.Unix(), got.SavedAt.Unix())
 }
 
 func TestDAGState_UpdateExistingState(t *testing.T) {
@@ -1074,16 +1070,12 @@ func TestDAGState_UpdateExistingState(t *testing.T) {
 	initial := DAGState{
 		TicketID:       "ticket-dag-2",
 		CompletedTasks: []string{"task-A"},
-		FailedTasks:    nil,
-		SavedAt:        time.Now().UTC().Truncate(time.Second),
 	}
 	require.NoError(t, db.SaveDAGState(ctx, initial.TicketID, initial))
 
 	updated := DAGState{
 		TicketID:       "ticket-dag-2",
 		CompletedTasks: []string{"task-A", "task-B", "task-C"},
-		FailedTasks:    []string{"task-D"},
-		SavedAt:        time.Now().UTC().Truncate(time.Second),
 	}
 	require.NoError(t, db.SaveDAGState(ctx, updated.TicketID, updated))
 
@@ -1091,7 +1083,6 @@ func TestDAGState_UpdateExistingState(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	assert.Equal(t, []string{"task-A", "task-B", "task-C"}, got.CompletedTasks)
-	assert.Equal(t, []string{"task-D"}, got.FailedTasks)
 }
 
 func TestDAGState_GetMissing_ReturnsNil(t *testing.T) {
@@ -1102,6 +1093,40 @@ func TestDAGState_GetMissing_ReturnsNil(t *testing.T) {
 	got, err := db.GetDAGState(ctx, "nonexistent-ticket")
 	require.NoError(t, err)
 	assert.Nil(t, got)
+}
+
+func TestDAGState_DeleteRemovesRow(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	state := DAGState{
+		TicketID:       "ticket-dag-del",
+		CompletedTasks: []string{"task-A"},
+	}
+	require.NoError(t, db.SaveDAGState(ctx, state.TicketID, state))
+
+	// Verify it exists.
+	got, err := db.GetDAGState(ctx, state.TicketID)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+
+	// Delete it.
+	require.NoError(t, db.DeleteDAGState(ctx, state.TicketID))
+
+	// Must return nil after deletion.
+	got, err = db.GetDAGState(ctx, state.TicketID)
+	require.NoError(t, err)
+	assert.Nil(t, got, "DAG state must be nil after deletion")
+}
+
+func TestDAGState_DeleteNonexistent_IsNoop(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	// Deleting a row that does not exist must not return an error.
+	require.NoError(t, db.DeleteDAGState(ctx, "nonexistent-ticket"))
 }
 
 // TestSQLiteDB_StoreCallDetails_NoFKRequired verifies that StoreCallDetails succeeds

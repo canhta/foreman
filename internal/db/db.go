@@ -15,13 +15,11 @@ var ErrNotFound = errors.New("not found")
 // DAGState records which tasks of a ticket's DAG are done and which are still pending.
 // It is persisted so that crash recovery can reconstruct and re-execute only the
 // pending/failed tasks without restarting the entire ticket.
-//
-//nolint:govet // fieldalignment: SavedAt last keeps logical grouping with ticket/task ID fields first
+// Failed tasks are not persisted: they are not in CompletedTasks and will be naturally
+// re-scheduled on recovery.
 type DAGState struct {
-	SavedAt        time.Time `json:"saved_at"`
-	TicketID       string    `json:"ticket_id"`
-	CompletedTasks []string  `json:"completed_tasks"` // task IDs that finished successfully
-	FailedTasks    []string  `json:"failed_tasks"`    // task IDs that failed
+	TicketID       string   `json:"ticket_id"`
+	CompletedTasks []string `json:"completed_tasks"` // task IDs that finished successfully
 }
 
 // PromptSnapshot records the SHA256 hash of a prompt template file at a point in time.
@@ -160,6 +158,9 @@ type Database interface {
 	// GetDAGState returns the persisted DAG execution state for a ticket.
 	// Returns (nil, nil) when no state has been saved yet.
 	GetDAGState(ctx context.Context, ticketID string) (*DAGState, error)
+	// DeleteDAGState removes the DAG execution state for a ticket after it reaches a
+	// terminal state to prevent unbounded table growth.
+	DeleteDAGState(ctx context.Context, ticketID string) error
 
 	io.Closer
 }

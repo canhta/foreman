@@ -459,18 +459,26 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 	// Build DAG tasks (resolve title->ID dependencies).
 	dagTasks := buildDAGTasks(dbTasks)
 
-	// Create executor and run.
-	timeout := time.Duration(o.config.TaskTimeoutMinutes) * time.Minute
-	executor := NewDAGExecutor(dagRunner, o.config.MaxParallelTasks, timeout)
+	// Load prior DAG state so crash recovery can skip already-completed tasks (ARCH-F03).
+	dagState, dagStateErr := o.db.GetDAGState(ctx, ticket.ID)
+	if dagStateErr != nil {
+		log.Warn().Err(dagStateErr).Str("ticket_id", ticket.ID).Msg("failed to load DAG state; starting from scratch")
+	}
+	tasksToRun := TasksForDAGRecovery(dagTasks, dagState)
 
-	log.Info().Int("task_count", len(dagTasks)).Msg("starting DAG execution")
+	// Create executor, wire DAG store for persistent state snapshots, and run.
+	timeout := time.Duration(o.config.TaskTimeoutMinutes) * time.Minute
+	executor := NewDAGExecutor(dagRunner, o.config.MaxParallelTasks, timeout).
+		WithDAGStore(o.db, ticket.ID)
+
+	log.Info().Int("task_count", len(tasksToRun)).Msg("starting DAG execution")
 	execCtx := ctx
 	if o.config.DAGTimeoutMinutes > 0 {
 		var cancel context.CancelFunc
 		execCtx, cancel = context.WithTimeout(ctx, time.Duration(o.config.DAGTimeoutMinutes)*time.Minute)
 		defer cancel()
 	}
-	results := executor.Execute(execCtx, dagTasks)
+	results := executor.Execute(execCtx, tasksToRun)
 
 	// Analyze results.
 	doneCount, failedCount, skippedCount := analyzeResults(results)
@@ -503,6 +511,12 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 	if failedCount > 0 && !o.config.EnablePartialPR {
 		returnErr = fmt.Errorf("%d of %d tasks failed and partial PRs are disabled", failedCount, totalCount)
 		return returnErr
+	}
+
+	// DAG execution reached a terminal state (success or partial): remove the persisted
+	// DAG state to prevent unbounded table growth. Failure is non-fatal.
+	if delErr := o.db.DeleteDAGState(ctx, ticket.ID); delErr != nil {
+		log.Warn().Err(delErr).Str("ticket_id", ticket.ID).Msg("failed to delete DAG state after completion; row will persist until next run")
 	}
 
 	if failedCount > 0 {

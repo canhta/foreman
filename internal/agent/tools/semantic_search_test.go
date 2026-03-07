@@ -167,6 +167,7 @@ func (m *mockDB) SaveDAGState(_ context.Context, _ string, _ db.DAGState) error 
 func (m *mockDB) GetDAGState(_ context.Context, _ string) (*db.DAGState, error) {
 	return nil, nil
 }
+func (m *mockDB) DeleteDAGState(_ context.Context, _ string) error { return nil }
 
 // --- Helpers ---
 
