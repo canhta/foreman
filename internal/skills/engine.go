@@ -231,15 +231,7 @@ func (e *Engine) executeAgentSDK(ctx context.Context, step SkillStep, sCtx *Skil
 		MaxTurns:      step.MaxTurns,
 		TimeoutSecs:   step.TimeoutSecs,
 		FallbackModel: step.FallbackModel,
-		OnProgress: func(evt agent.AgentEvent) {
-			log.Debug().
-				Str("event", string(evt.Type)).
-				Int("turn", evt.Turn).
-				Str("tool", evt.ToolName).
-				Int("tokens_in", evt.TokensIn).
-				Int("tokens_out", evt.TokensOut).
-				Msg("agent progress")
-		},
+		OnProgress:    buildAgentOnProgress(ctx, sCtx, step.ID),
 	}
 
 	// Marshal OutputSchema map → json.RawMessage
@@ -386,4 +378,72 @@ func parseChecklist(output string) (passed, failed int) {
 		}
 	}
 	return
+}
+
+// buildAgentOnProgress returns an OnProgress handler for an AgentRequest that:
+//   - logs debug-level progress for every event
+//   - emits structured events via sCtx.EventEmitter (if set) for turn_start and turn_end
+//   - logs a warning when a turn_end event reports non-zero cost (for mid-execution cost visibility)
+//
+// The handler is intentionally non-blocking: telemetry.EventEmitter.Emit uses a
+// select-with-default, so slow subscribers never stall the agent loop.
+func buildAgentOnProgress(ctx context.Context, sCtx *SkillContext, stepID string) func(agent.AgentEvent) {
+	return func(evt agent.AgentEvent) {
+		log.Debug().
+			Str("event", string(evt.Type)).
+			Int("turn", evt.Turn).
+			Str("tool", evt.ToolName).
+			Int("tokens_in", evt.TokensIn).
+			Int("tokens_out", evt.TokensOut).
+			Str("step_id", stepID).
+			Msg("agent progress")
+
+		if sCtx == nil || sCtx.EventEmitter == nil || sCtx.PipelineCtx == nil {
+			return
+		}
+
+		switch evt.Type {
+		case agent.AgentEventTurnStart:
+			sCtx.EventEmitter.Emit(ctx,
+				sCtx.PipelineCtx.TicketID, sCtx.PipelineCtx.TaskID,
+				"agent_turn_start", "info",
+				fmt.Sprintf("step=%s turn=%d", stepID, evt.Turn),
+				nil,
+			)
+		case agent.AgentEventTurnEnd:
+			meta := map[string]string{
+				"step_id":    stepID,
+				"tokens_in":  fmt.Sprintf("%d", evt.TokensIn),
+				"tokens_out": fmt.Sprintf("%d", evt.TokensOut),
+			}
+			sCtx.EventEmitter.Emit(ctx,
+				sCtx.PipelineCtx.TicketID, sCtx.PipelineCtx.TaskID,
+				"agent_turn_end", "info",
+				fmt.Sprintf("step=%s turn=%d tokens_in=%d tokens_out=%d", stepID, evt.Turn, evt.TokensIn, evt.TokensOut),
+				meta,
+			)
+			if evt.CostUSD > 0 {
+				log.Warn().
+					Str("step_id", stepID).
+					Str("ticket_id", sCtx.PipelineCtx.TicketID).
+					Int("turn", evt.Turn).
+					Float64("cost_usd", evt.CostUSD).
+					Msg("agent turn cost (mid-execution)")
+			}
+		case agent.AgentEventToolStart:
+			sCtx.EventEmitter.Emit(ctx,
+				sCtx.PipelineCtx.TicketID, sCtx.PipelineCtx.TaskID,
+				"agent_tool_start", "info",
+				fmt.Sprintf("step=%s turn=%d tool=%s", stepID, evt.Turn, evt.ToolName),
+				nil,
+			)
+		case agent.AgentEventToolEnd:
+			sCtx.EventEmitter.Emit(ctx,
+				sCtx.PipelineCtx.TicketID, sCtx.PipelineCtx.TaskID,
+				"agent_tool_end", "info",
+				fmt.Sprintf("step=%s turn=%d tool=%s", stepID, evt.Turn, evt.ToolName),
+				nil,
+			)
+		}
+	}
 }
