@@ -135,3 +135,35 @@ func TestFeedbackAccumulator_ResetKeepingSummary_WhenEmpty_RemainsEmpty(t *testi
 	assert.False(t, fb.HasFeedback(), "empty accumulator should stay empty after ResetKeepingSummary")
 	assert.Equal(t, 0, fb.Attempt())
 }
+
+func TestFeedbackAccumulator_ResetKeepingSummary_UsesLargerLimit(t *testing.T) {
+	// Fill three entries each near maxFeedbackLen characters. The combined
+	// rendered summary will be well above maxFeedbackLen, so using the old per-entry
+	// cap would silently discard the second and third entries. The summary cap
+	// (maxSummaryLen = maxFeedbackLen*3) must preserve all content.
+	fb := NewFeedbackAccumulator()
+	padding := func(n int) string {
+		b := make([]byte, n)
+		for i := range b {
+			b[i] = 'x'
+		}
+		return string(b)
+	}
+	// Each entry content is padded to just under maxFeedbackLen so it passes
+	// the per-entry truncation, but the combined summary exceeds maxFeedbackLen.
+	fb.AddLintError("lint-marker " + padding(maxFeedbackLen-20))
+	fb.AddTestError("test-marker " + padding(maxFeedbackLen-20))
+	fb.AddQualityFeedback("quality-marker " + padding(maxFeedbackLen-20))
+
+	fb.ResetKeepingSummary()
+
+	rendered := fb.Render()
+	// All three category headers must survive in the summary.
+	assert.Contains(t, rendered, "Lint errors", "lint entry must survive summary collapse")
+	assert.Contains(t, rendered, "Test failures", "test entry must survive summary collapse")
+	assert.Contains(t, rendered, "Quality review issues", "quality entry must survive summary collapse")
+	// Unique markers from each entry must still be present.
+	assert.Contains(t, rendered, "lint-marker", "lint content must survive summary collapse")
+	assert.Contains(t, rendered, "test-marker", "test content must survive summary collapse")
+	assert.Contains(t, rendered, "quality-marker", "quality content must survive summary collapse")
+}

@@ -404,6 +404,75 @@ func TestRunTask_ResetWorkingTree_OnlyTouchesFilesToModify(t *testing.T) {
 	assert.True(t, checkedOut, "resetWorkingTree should have run git checkout -- for fileA")
 }
 
+// =============================================
+// resetWorkingTree: selective git error handling
+// =============================================
+
+func TestResetWorkingTree_SuppressesNotTrackedError(t *testing.T) {
+	// A "did not match any file(s) known to git" stderr with non-zero exit
+	// should be silently ignored (new file, never committed).
+	cmd := &stderrCmdRunner{
+		stderr:   "error: pathspec 'new_file.go' did not match any file(s) known to git",
+		exitCode: 128,
+	}
+	r := &PipelineTaskRunner{
+		cmdRunner: cmd,
+		config:    TaskRunnerConfig{WorkDir: t.TempDir()},
+	}
+	err := r.resetWorkingTree(context.Background(), []string{"new_file.go"})
+	assert.NoError(t, err, "untracked-file error should be suppressed")
+}
+
+func TestResetWorkingTree_ReturnsOtherGitErrors(t *testing.T) {
+	// A non-zero exit with a different stderr should be returned as an error.
+	cmd := &stderrCmdRunner{
+		stderr:   "fatal: not a git repository",
+		exitCode: 128,
+	}
+	r := &PipelineTaskRunner{
+		cmdRunner: cmd,
+		config:    TaskRunnerConfig{WorkDir: t.TempDir()},
+	}
+	err := r.resetWorkingTree(context.Background(), []string{"some_file.go"})
+	require.Error(t, err, "non-pathspec git errors should propagate")
+	assert.Contains(t, err.Error(), "not a git repository")
+}
+
+func TestResetWorkingTree_ReturnsRunError(t *testing.T) {
+	// Run() returning a non-nil error (e.g. git binary missing) must propagate.
+	cmd := &realMockCmdRunner{runErr: fmt.Errorf("exec: git not found")}
+	r := &PipelineTaskRunner{
+		cmdRunner: cmd,
+		config:    TaskRunnerConfig{WorkDir: t.TempDir()},
+	}
+	err := r.resetWorkingTree(context.Background(), []string{"handler.go"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "git not found")
+}
+
+func TestResetWorkingTree_SuccessIsTransparent(t *testing.T) {
+	// Exit code 0 — no error.
+	cmd := &realMockCmdRunner{exitCode: 0}
+	r := &PipelineTaskRunner{
+		cmdRunner: cmd,
+		config:    TaskRunnerConfig{WorkDir: t.TempDir()},
+	}
+	err := r.resetWorkingTree(context.Background(), []string{"main.go", "util.go"})
+	assert.NoError(t, err)
+}
+
+// stderrCmdRunner returns a fixed stderr/exit-code response (simulates git failures).
+type stderrCmdRunner struct {
+	stderr   string
+	exitCode int
+}
+
+func (m *stderrCmdRunner) Run(_ context.Context, _, _ string, _ []string, _ int) (*runner.CommandOutput, error) {
+	return &runner.CommandOutput{Stderr: m.stderr, ExitCode: m.exitCode}, nil
+}
+
+func (m *stderrCmdRunner) CommandExists(_ context.Context, _ string) bool { return true }
+
 // trackingCmdRunner wraps another CommandRunner and records git checkout calls.
 type trackingCmdRunner struct {
 	inner        runner.CommandRunner

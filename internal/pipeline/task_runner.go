@@ -278,14 +278,28 @@ func (r *PipelineTaskRunner) runQualityReview(
 // last-committed state using `git checkout -- <file>`. This is intentionally
 // narrower than CleanWorkingTree (which nukes the entire tree) so that
 // committed changes from prior tasks in the same pipeline run are preserved.
+//
+// Errors indicating the file is not tracked by git (new files that were never
+// committed) are suppressed. All other errors — which indicate a genuine
+// problem such as a corrupt repo or misconfigured WorkDir — are returned so
+// that the retry does not proceed with a dirty working tree.
 func (r *PipelineTaskRunner) resetWorkingTree(ctx context.Context, filesToModify []string) error {
 	for _, f := range filesToModify {
 		fullPath := filepath.Join(r.config.WorkDir, f)
 		args := []string{"checkout", "--", fullPath}
-		if _, err := r.cmdRunner.Run(ctx, r.config.WorkDir, "git", args, 30); err != nil {
-			// Ignore errors for files that don't exist in the index yet
-			// (e.g. a new file that was never committed).
-			continue
+		out, err := r.cmdRunner.Run(ctx, r.config.WorkDir, "git", args, 30)
+		if err != nil {
+			// Run() only returns a non-nil error when the process itself could
+			// not be started (e.g. git binary missing). That is always fatal.
+			return fmt.Errorf("git checkout -- %s: %w", f, err)
+		}
+		if out != nil && out.ExitCode != 0 {
+			// Suppress "pathspec did not match any file(s) known to git" — this
+			// is expected for new files that have never been committed.
+			if strings.Contains(out.Stderr, "did not match any file") {
+				continue
+			}
+			return fmt.Errorf("git checkout -- %s: exit %d: %s", f, out.ExitCode, strings.TrimSpace(out.Stderr))
 		}
 	}
 	return nil

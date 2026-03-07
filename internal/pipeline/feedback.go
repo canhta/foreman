@@ -8,6 +8,12 @@ import (
 
 const maxFeedbackLen = 2000
 
+// maxSummaryLen is the truncation limit for the collapsed "Prior attempt summary"
+// entry produced by ResetKeepingSummary. A summary combines all prior entries and
+// can legitimately be several times larger than a single entry, so it uses a
+// proportionally larger cap to avoid silently losing valid context.
+const maxSummaryLen = maxFeedbackLen * 3
+
 // FeedbackAccumulator collects feedback from various pipeline stages
 // for retry prompts.
 type FeedbackAccumulator struct {
@@ -29,11 +35,11 @@ func (f *FeedbackAccumulator) HasFeedback() bool {
 	return len(f.entries) > 0
 }
 
-// Attempt returns the number of feedback items added. Each pipeline stage that
-// adds feedback represents one piece of actionable feedback for the implementer.
-// Note: multiple feedback items may be added in a single retry cycle (e.g., both
-// a lint error and a test failure), so this count reflects distinct feedback items,
-// not the number of retry cycles performed.
+// Attempt returns the current number of feedback entries. This is the raw entry
+// count: multiple pipeline stages can each contribute an entry within one retry
+// cycle (e.g., a lint error and a test failure), and after ResetKeepingSummary()
+// the count resets to 1 (the collapsed "Prior attempt summary" entry). It does
+// not represent the number of retry cycles performed.
 func (f *FeedbackAccumulator) Attempt() int {
 	return len(f.entries)
 }
@@ -96,7 +102,7 @@ func (f *FeedbackAccumulator) ResetKeepingSummary() {
 	f.entries = f.entries[:0]
 	f.entries = append(f.entries, feedbackEntry{
 		category: "Prior attempt summary",
-		content:  truncate(summary, maxFeedbackLen),
+		content:  truncate(summary, maxSummaryLen),
 	})
 }
 
