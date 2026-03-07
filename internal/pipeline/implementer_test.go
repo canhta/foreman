@@ -122,47 +122,94 @@ func TestBuildImplementerUserPrompt_NoRetryOnFirstAttempt(t *testing.T) {
 	}
 }
 
-// TestBuildImplementerUserPrompt_CompileErrorGuidance verifies the compile-error
-// heading and guidance appear before the feedback text on retry.
-func TestBuildImplementerUserPrompt_CompileErrorGuidance(t *testing.T) {
-	input := ImplementerInput{
-		Task:           &models.Task{ID: "t1", Title: "Fix compile"},
-		Attempt:        2,
-		Feedback:       "syntax error: unexpected token",
-		RetryErrorType: ErrorTypeCompile,
+// TestBuildImplementerUserPrompt_RetryGuidancePerErrorType verifies that each of
+// the 7 classified error types produces the correct heading, guidance text, and
+// that the guidance appears before the raw feedback text.
+func TestBuildImplementerUserPrompt_RetryGuidancePerErrorType(t *testing.T) {
+	cases := []struct {
+		name             string
+		errType          ErrorType
+		feedbackText     string
+		wantHeading      string
+		wantGuidanceSnip string
+	}{
+		{
+			name:             "compile error",
+			errType:          ErrorTypeCompile,
+			feedbackText:     "syntax error: unexpected token",
+			wantHeading:      "Compile Error",
+			wantGuidanceSnip: "build error",
+		},
+		{
+			name:             "type error",
+			errType:          ErrorTypeTypeError,
+			feedbackText:     "cannot use int as string",
+			wantHeading:      "Type Error",
+			wantGuidanceSnip: "type mismatch",
+		},
+		{
+			name:             "lint/style",
+			errType:          ErrorTypeLintStyle,
+			feedbackText:     "line too long: 120 chars",
+			wantHeading:      "Lint/Style",
+			wantGuidanceSnip: "lint/style",
+		},
+		{
+			name:             "test assertion",
+			errType:          ErrorTypeTestAssertion,
+			feedbackText:     "expected: 5, got: 0",
+			wantHeading:      "Test Assertion",
+			wantGuidanceSnip: "failing test assertions",
+		},
+		{
+			name:             "test runtime",
+			errType:          ErrorTypeTestRuntime,
+			feedbackText:     "panic: runtime error: index out of range",
+			wantHeading:      "Test Runtime",
+			wantGuidanceSnip: "runtime panic",
+		},
+		{
+			name:             "spec violation",
+			errType:          ErrorTypeSpecViolation,
+			feedbackText:     "acceptance criterion not met: endpoint returns 404",
+			wantHeading:      "Spec Violation",
+			wantGuidanceSnip: "acceptance criteria",
+		},
+		{
+			name:             "quality concern",
+			errType:          ErrorTypeQualityConcern,
+			feedbackText:     "function is too complex (cyclomatic complexity 15)",
+			wantHeading:      "Quality Concern",
+			wantGuidanceSnip: "quality concerns",
+		},
 	}
-	prompt := buildImplementerUserPrompt(input)
 
-	if !strings.Contains(prompt, "Compile Error") {
-		t.Errorf("expected heading to contain 'Compile Error', got:\n%s", prompt)
-	}
-	if !strings.Contains(prompt, "Focus on fixing the build error") {
-		t.Errorf("expected compile guidance, got:\n%s", prompt)
-	}
-	// Guidance must appear BEFORE the raw feedback text.
-	guidanceIdx := strings.Index(prompt, "Focus on fixing the build error")
-	feedbackIdx := strings.Index(prompt, "syntax error: unexpected token")
-	if guidanceIdx == -1 || feedbackIdx == -1 || guidanceIdx > feedbackIdx {
-		t.Errorf("guidance must appear before feedback text; guidanceIdx=%d feedbackIdx=%d", guidanceIdx, feedbackIdx)
-	}
-}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			input := ImplementerInput{
+				Task:           &models.Task{ID: "t1", Title: "Fix something"},
+				Attempt:        2,
+				Feedback:       tc.feedbackText,
+				RetryErrorType: tc.errType,
+			}
+			prompt := buildImplementerUserPrompt(input)
 
-// TestBuildImplementerUserPrompt_TestAssertionGuidance verifies the test-assertion
-// heading and guidance appear on retry.
-func TestBuildImplementerUserPrompt_TestAssertionGuidance(t *testing.T) {
-	input := ImplementerInput{
-		Task:           &models.Task{ID: "t1", Title: "Fix test"},
-		Attempt:        2,
-		Feedback:       "expected: 5, got: 0",
-		RetryErrorType: ErrorTypeTestAssertion,
-	}
-	prompt := buildImplementerUserPrompt(input)
-
-	if !strings.Contains(prompt, "Test Assertion") {
-		t.Errorf("expected heading to contain 'Test Assertion', got:\n%s", prompt)
-	}
-	if !strings.Contains(prompt, "Focus on making the failing test assertions pass") {
-		t.Errorf("expected test assertion guidance, got:\n%s", prompt)
+			if !strings.Contains(prompt, tc.wantHeading) {
+				t.Errorf("expected heading to contain %q, got:\n%s", tc.wantHeading, prompt)
+			}
+			if !strings.Contains(prompt, tc.wantGuidanceSnip) {
+				t.Errorf("expected guidance to contain %q, got:\n%s", tc.wantGuidanceSnip, prompt)
+			}
+			if !strings.Contains(prompt, tc.feedbackText) {
+				t.Errorf("expected prompt to contain feedback text %q, got:\n%s", tc.feedbackText, prompt)
+			}
+			// Guidance must appear BEFORE the raw feedback text.
+			guidanceIdx := strings.Index(prompt, tc.wantGuidanceSnip)
+			feedbackIdx := strings.Index(prompt, tc.feedbackText)
+			if guidanceIdx == -1 || feedbackIdx == -1 || guidanceIdx > feedbackIdx {
+				t.Errorf("guidance must appear before feedback text; guidanceIdx=%d feedbackIdx=%d", guidanceIdx, feedbackIdx)
+			}
+		})
 	}
 }
 

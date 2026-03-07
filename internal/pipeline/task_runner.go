@@ -158,6 +158,9 @@ func (r *PipelineTaskRunner) RunTask(ctx context.Context, task *models.Task) err
 
 	feedback := NewFeedbackAccumulator()
 
+	// currentRetryErrorType holds the error type for the current retry.
+	// Zero value on attempt 1 is intentional — buildImplementerUserPrompt
+	// renders no retry section when Attempt == 1, regardless of error type.
 	var currentRetryErrorType ErrorType
 
 	for attempt := 1; attempt <= r.config.MaxImplementationRetries+1; attempt++ {
