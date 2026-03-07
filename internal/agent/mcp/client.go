@@ -26,9 +26,11 @@ type MCPServerConfig struct {
 	URL              string            `json:"url,omitempty"`
 	AuthToken        string            `json:"auth_token,omitempty"`
 	Command          string            `json:"command,omitempty"`
-	RestartPolicy    string            `json:"restart_policy,omitempty"`
-	AllowedTools     []string          `json:"allowed_tools,omitempty"`
-	Args             []string          `json:"args,omitempty"`
+	// Transport specifies the MCP transport to use: "stdio" (default) or "http".
+	Transport     string   `json:"transport,omitempty"`
+	RestartPolicy string   `json:"restart_policy,omitempty"`
+	AllowedTools  []string `json:"allowed_tools,omitempty"`
+	Args          []string `json:"args,omitempty"`
 }
 
 // EffectiveRestartPolicy returns the restart policy, defaulting to "on-failure".
@@ -60,6 +62,7 @@ func (c MCPServerConfig) EffectiveRestartDelaySecs() int {
 type Client interface {
 	ListTools(ctx context.Context) ([]models.ToolDef, error)
 	Call(ctx context.Context, name string, input json.RawMessage) (string, error)
+	Close() error
 }
 
 // NoopClient satisfies Client but does nothing. Placeholder until client-side
@@ -70,3 +73,4 @@ func (n *NoopClient) ListTools(_ context.Context) ([]models.ToolDef, error) { re
 func (n *NoopClient) Call(_ context.Context, name string, _ json.RawMessage) (string, error) {
 	return "", fmt.Errorf("MCP tool %q: client-side MCP not yet implemented", name)
 }
+func (n *NoopClient) Close() error { return nil }

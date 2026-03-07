@@ -11,19 +11,46 @@ import (
 
 // Manager coordinates multiple MCP server clients.
 type Manager struct {
-	clients map[string]*StdioClient
+	clients map[string]Client
 }
 
 // NewManager creates a new MCP Manager.
 func NewManager() *Manager {
 	return &Manager{
-		clients: make(map[string]*StdioClient),
+		clients: make(map[string]Client),
 	}
 }
 
 // RegisterClient registers a named MCP client with the manager.
-func (m *Manager) RegisterClient(name string, client *StdioClient) {
+func (m *Manager) RegisterClient(name string, client Client) {
 	m.clients[name] = client
+}
+
+// RegisterFromConfig creates and initializes an MCP client from the given config,
+// then registers it with the manager. Supports transport="stdio" (default) and transport="http".
+func (m *Manager) RegisterFromConfig(ctx context.Context, cfg MCPServerConfig) error {
+	var client Client
+
+	switch cfg.Transport {
+	case "http":
+		if cfg.URL == "" {
+			return fmt.Errorf("mcp/http: url is required for transport=http (server %q)", cfg.Name)
+		}
+		c := NewHTTPClient(cfg.URL, cfg.AuthToken, cfg.Name)
+		if err := c.Initialize(ctx); err != nil {
+			_ = c.Close()
+			return fmt.Errorf("mcp/http: initialize %q: %w", cfg.Name, err)
+		}
+		client = c
+	default:
+		// "stdio" or unset — caller must create and initialize the StdioClient separately.
+		// This path is a convenience for stdlib configs; for stdio the caller typically
+		// uses NewStdioClientWithTransport + RegisterClient directly.
+		return fmt.Errorf("mcp: RegisterFromConfig does not support transport %q; use RegisterClient for stdio", cfg.Transport)
+	}
+
+	m.clients[cfg.Name] = client
+	return nil
 }
 
 // AllTools aggregates tools from all registered MCP clients.
