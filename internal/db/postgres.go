@@ -928,7 +928,7 @@ func (p *PostgresDB) AcquireLock(ctx context.Context, lockName string, ttlSecond
 	res, err := p.db.ExecContext(ctx,
 		`INSERT INTO distributed_locks (lock_name, expires_at, holder_id)
 		 VALUES ($1, NOW() + ($2 || ' seconds')::interval, $3)
-		 ON CONFLICT DO NOTHING`,
+		 ON CONFLICT (lock_name) DO NOTHING`,
 		lockName, ttlSeconds, holderID)
 	if err != nil {
 		return false, fmt.Errorf("acquire lock insert: %w", err)

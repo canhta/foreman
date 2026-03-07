@@ -45,6 +45,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("daemon.max_parallel_tasks", 3)
 	v.SetDefault("daemon.task_timeout_minutes", 15)
 	v.SetDefault("daemon.merge_check_interval_secs", 300)
+	v.SetDefault("daemon.lock_ttl_seconds", 3600)
 	v.SetDefault("daemon.work_dir", "~/.foreman/work")
 	v.SetDefault("daemon.log_level", "info")
 	v.SetDefault("daemon.log_format", "json")

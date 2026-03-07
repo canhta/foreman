@@ -151,8 +151,8 @@ CREATE TABLE IF NOT EXISTS pending_pairings (
 
 CREATE TABLE IF NOT EXISTS distributed_locks (
     lock_name   TEXT PRIMARY KEY,
-    acquired_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    expires_at  DATETIME NOT NULL,
+    acquired_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at  TIMESTAMP NOT NULL,
     holder_id   TEXT NOT NULL
 );
 

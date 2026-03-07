@@ -211,6 +211,7 @@ func newStartCmd() *cobra.Command {
 				MergeCheckIntervalSecs:    cfg.Daemon.MergeCheckIntervalSecs,
 				ClarificationTimeoutHours: cfg.Tracker.ClarificationTimeoutHours,
 				ClarificationLabel:        cfg.Tracker.ClarificationLabel,
+				LockTTLSeconds:            cfg.Daemon.LockTTLSeconds,
 			})
 			d.SetDB(database)
 			d.SetTracker(tr)

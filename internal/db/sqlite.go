@@ -15,12 +15,6 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-// holderID uniquely identifies this process as a lock holder (hostname:pid).
-var holderID = func() string {
-	host, _ := os.Hostname()
-	return fmt.Sprintf("%s:%d", host, os.Getpid())
-}()
-
 type SQLiteDB struct {
 	db *sql.DB
 }
@@ -91,17 +85,6 @@ func runSQLiteMigrations(db *sql.DB) error {
 			)`); err != nil {
 			return err
 		}
-	}
-
-	// Add distributed_locks table for cross-instance advisory locking (BUG-M15).
-	if _, err := db.ExecContext(ctx,
-		`CREATE TABLE IF NOT EXISTS distributed_locks (
-		    lock_name   TEXT PRIMARY KEY,
-		    acquired_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-		    expires_at  DATETIME NOT NULL,
-		    holder_id   TEXT NOT NULL
-		)`); err != nil {
-		return err
 	}
 
 	return nil

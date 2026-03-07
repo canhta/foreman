@@ -29,7 +29,11 @@ type DaemonConfig struct {
 	TaskTimeoutMinutes        int
 	MergeCheckIntervalSecs    int
 	ClarificationTimeoutHours int
+	LockTTLSeconds            int
 }
+
+// defaultLockTTLSeconds is the fallback lock TTL when not set via config.
+const defaultLockTTLSeconds = 3600
 
 // DefaultDaemonConfig returns sensible defaults.
 func DefaultDaemonConfig() DaemonConfig {
@@ -40,6 +44,7 @@ func DefaultDaemonConfig() DaemonConfig {
 		MaxParallelTasks:       3,
 		TaskTimeoutMinutes:     15,
 		MergeCheckIntervalSecs: 300,
+		LockTTLSeconds:         defaultLockTTLSeconds,
 	}
 }
 
@@ -388,7 +393,11 @@ func (d *Daemon) processQueuedTickets(ctx context.Context, database db.Database)
 		// Acquire a distributed lock for this ticket to prevent concurrent pickup
 		// across multiple Foreman instances (BUG-M15).
 		lockName := fmt.Sprintf("ticket:%s", ticket.ID)
-		acquired, err := database.AcquireLock(ctx, lockName, 300) // 5min TTL
+		lockTTL := d.config.LockTTLSeconds
+		if lockTTL <= 0 {
+			lockTTL = defaultLockTTLSeconds
+		}
+		acquired, err := database.AcquireLock(ctx, lockName, lockTTL)
 		if err != nil {
 			<-d.tickets // Release slot on failure
 			log.Warn().Err(err).Str("ticket_id", ticket.ID).Msg("failed to acquire distributed lock for ticket")
@@ -402,7 +411,9 @@ func (d *Daemon) processQueuedTickets(ctx context.Context, database db.Database)
 		// Mark planning BEFORE launching goroutine to prevent double pickup
 		if err := database.UpdateTicketStatus(ctx, ticket.ID, models.TicketStatusPlanning); err != nil {
 			<-d.tickets // Release on failure
-			_ = database.ReleaseLock(ctx, lockName)
+			if relErr := database.ReleaseLock(ctx, lockName); relErr != nil {
+				log.Warn().Err(relErr).Str("lock_name", lockName).Msg("failed to release distributed lock")
+			}
 			log.Warn().Err(err).Str("ticket_id", ticket.ID).Msg("failed to mark ticket planning")
 			continue
 		}
@@ -411,7 +422,11 @@ func (d *Daemon) processQueuedTickets(ctx context.Context, database db.Database)
 		go func(t models.Ticket, lk string) {
 			defer d.wg.Done()
 			defer func() { <-d.tickets }()
-			defer func() { _ = database.ReleaseLock(ctx, lk) }()
+			defer func() {
+				if err := database.ReleaseLock(ctx, lk); err != nil {
+					log.Warn().Err(err).Str("lock_name", lk).Msg("failed to release distributed lock")
+				}
+			}()
 			if err := d.orchestrator.ProcessTicket(ctx, t); err != nil {
 				log.Error().Err(err).Str("ticket_id", t.ID).Msg("ticket processing failed")
 			}

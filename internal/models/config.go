@@ -59,6 +59,7 @@ type DaemonConfig struct {
 	MaxParallelTasks       int    `mapstructure:"max_parallel_tasks"`
 	TaskTimeoutMinutes     int    `mapstructure:"task_timeout_minutes"`
 	MergeCheckIntervalSecs int    `mapstructure:"merge_check_interval_secs"`
+	LockTTLSeconds         int    `mapstructure:"lock_ttl_seconds"`
 }
 
 type DashboardConfig struct {

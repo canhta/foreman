@@ -8,6 +8,10 @@ max_parallel_tickets = 3
 work_dir = "~/.foreman/work"
 log_level = "info"   # debug, info, warn, error
 log_format = "json"  # json, pretty
+# lock_ttl_seconds controls how long a distributed ticket lock is held before expiry.
+# Must exceed the maximum expected ticket processing time (num_tasks * task_timeout_minutes * 60).
+# Default: 3600 (1 hour).
+lock_ttl_seconds = 3600
 
 [dashboard]
 enabled = true
