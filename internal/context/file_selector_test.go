@@ -176,6 +176,140 @@ func TestFileSelector_NilFeedbackQuerier(t *testing.T) {
 	assert.NotEmpty(t, files)
 }
 
+// TestSelectFilesForTask_ProgressPatternBonus verifies that a file whose path
+// appears in a progress pattern value receives a +20 bonus above its base score.
+func TestSelectFilesForTask_ProgressPatternBonus(t *testing.T) {
+	workDir := setupTestRepo(t)
+
+	// Task only explicitly references handler.go — utils/helper.go has no
+	// explicit reference, test-sibling, or proximity signal.
+	task := &models.Task{
+		FilesToModify: []string{"internal/handler.go"},
+	}
+
+	// Pattern whose value contains the path of a file that would otherwise
+	// have no score signal.
+	patterns := []models.ProgressPattern{
+		{
+			PatternKey:   "helper_location",
+			PatternValue: "internal/utils/helper.go",
+		},
+	}
+
+	files, err := SelectFilesForTask(task, workDir, 80000, nil, nil, 1.5, patterns...)
+	require.NoError(t, err)
+
+	// Find the pattern-boosted file.
+	var helperScore float64
+	found := false
+	for _, f := range files {
+		if f.Path == "internal/utils/helper.go" {
+			helperScore = f.Score
+			found = true
+			break
+		}
+	}
+	require.True(t, found, "internal/utils/helper.go should be in results after pattern bonus")
+
+	// The file has no base score (it's not in an adjacent directory), so the
+	// score should be exactly +20 from the pattern bonus.
+	assert.Equal(t, 20.0, helperScore, "pattern-matched file should have score of exactly 20")
+}
+
+// TestSelectFilesForTask_ProgressPatternBonus_AddsToBaseScore verifies that a
+// file that already has a base score gets +20 added (not replaced).
+func TestSelectFilesForTask_ProgressPatternBonus_AddsToBaseScore(t *testing.T) {
+	workDir := setupTestRepo(t)
+
+	// handler_test.go gets a test-sibling score of 60 from handler.go.
+	task := &models.Task{
+		FilesToModify: []string{"internal/handler.go"},
+	}
+
+	// Pattern whose value contains the test sibling path.
+	patterns := []models.ProgressPattern{
+		{
+			PatternKey:   "test_pattern",
+			PatternValue: "use internal/handler_test.go for testing",
+		},
+	}
+
+	files, err := SelectFilesForTask(task, workDir, 80000, nil, nil, 1.5, patterns...)
+	require.NoError(t, err)
+
+	var siblingScore float64
+	for _, f := range files {
+		if f.Path == "internal/handler_test.go" {
+			siblingScore = f.Score
+			break
+		}
+	}
+
+	// Base score = 60 (test sibling) + 20 (pattern bonus) = 80.
+	assert.Equal(t, 80.0, siblingScore, "pattern-matched file with base score 60 should have score 80")
+}
+
+// TestSelectFilesForTask_NoPatternMatch verifies that a file with no pattern
+// match gets its unmodified base score.
+func TestSelectFilesForTask_NoPatternMatch(t *testing.T) {
+	workDir := setupTestRepo(t)
+	task := &models.Task{
+		FilesToModify: []string{"internal/handler.go"},
+	}
+
+	// Pattern that doesn't match any file path.
+	patterns := []models.ProgressPattern{
+		{
+			PatternKey:   "irrelevant",
+			PatternValue: "this_pattern_does_not_match_any_file",
+		},
+	}
+
+	filesWithPatterns, err := SelectFilesForTask(task, workDir, 80000, nil, nil, 1.5, patterns...)
+	require.NoError(t, err)
+
+	filesNoPatterns, err := SelectFilesForTask(task, workDir, 80000, nil, nil, 1.5)
+	require.NoError(t, err)
+
+	// Scores should be identical for all files.
+	scoreMap := func(files []ScoredFile) map[string]float64 {
+		m := make(map[string]float64, len(files))
+		for _, f := range files {
+			m[f.Path] = f.Score
+		}
+		return m
+	}
+
+	withPatternScores := scoreMap(filesWithPatterns)
+	withoutPatternScores := scoreMap(filesNoPatterns)
+
+	for path, score := range withoutPatternScores {
+		assert.Equal(t, score, withPatternScores[path],
+			"file %s score should be unchanged when pattern doesn't match", path)
+	}
+}
+
+// TestSelectFilesForTask_EmptyPatterns verifies that an empty patterns list
+// produces identical scores to calling with no patterns.
+func TestSelectFilesForTask_EmptyPatterns(t *testing.T) {
+	workDir := setupTestRepo(t)
+	task := &models.Task{
+		FilesToModify: []string{"internal/handler.go"},
+	}
+
+	filesEmpty, err := SelectFilesForTask(task, workDir, 80000, nil, nil, 1.5, []models.ProgressPattern{}...)
+	require.NoError(t, err)
+
+	filesNone, err := SelectFilesForTask(task, workDir, 80000, nil, nil, 1.5)
+	require.NoError(t, err)
+
+	assert.Equal(t, len(filesNone), len(filesEmpty), "empty patterns should produce same number of files")
+	for i := range filesNone {
+		assert.Equal(t, filesNone[i].Score, filesEmpty[i].Score,
+			"file %s score should match with empty vs no patterns", filesNone[i].Path)
+	}
+}
+
 func filePaths(files []ScoredFile) []string {
 	paths := make([]string, len(files))
 	for i, f := range files {

@@ -68,6 +68,10 @@ func (m *mockAdapterDB) QueryContextFeedback(_ context.Context, _ []string, _ fl
 	return nil, nil
 }
 
+func (m *mockAdapterDB) GetProgressPatterns(_ context.Context, _ string, _ []string) ([]models.ProgressPattern, error) {
+	return nil, nil
+}
+
 // realMockGitProvider implements git.GitProvider using the real package types.
 type realMockGitProvider struct {
 	commitErr   error

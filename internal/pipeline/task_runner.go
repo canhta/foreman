@@ -78,6 +78,7 @@ type TaskRunnerDB interface {
 	IncrementTaskLlmCalls(ctx context.Context, id string) (int, error)
 	WriteContextFeedback(ctx context.Context, row dbpkg.ContextFeedbackRow) error
 	QueryContextFeedback(ctx context.Context, candidates []string, minJaccard float64) ([]dbpkg.ContextFeedbackRow, error)
+	GetProgressPatterns(ctx context.Context, ticketID string, directories []string) ([]models.ProgressPattern, error)
 }
 
 // PipelineTaskRunner implements daemon.TaskRunner by orchestrating the full
@@ -418,14 +419,23 @@ func (r *PipelineTaskRunner) resetWorkingTree(ctx context.Context, filesToModify
 }
 
 // selectContextFiles selects relevant files for the task using scored selection
-// with feedback boosting (REQ-CTX-003). Falls back to loadContextFiles if
-// SelectFilesForTask fails. The result is a map of relative path → file content.
+// with feedback boosting (REQ-CTX-003) and progress pattern bonus (ARCH-M03).
+// Falls back to loadContextFiles if SelectFilesForTask fails.
+// The result is a map of relative path → file content.
 func (r *PipelineTaskRunner) selectContextFiles(task *models.Task, budget int) map[string]string {
 	boost := r.config.ContextFeedbackBoost
 	if boost <= 0 {
 		boost = 1.5
 	}
-	scored, err := appcontext.SelectFilesForTask(task, r.config.WorkDir, budget, r.config.Cache, r.db, boost)
+
+	// Load progress patterns for this ticket to apply bonus weight (ARCH-M03).
+	patterns, err := r.db.GetProgressPatterns(context.Background(), task.TicketID, nil)
+	if err != nil {
+		log.Warn().Err(err).Str("task_id", task.ID).Msg("context_assembly: failed to load progress patterns, skipping bonus")
+		patterns = nil
+	}
+
+	scored, err := appcontext.SelectFilesForTask(task, r.config.WorkDir, budget, r.config.Cache, r.db, boost, patterns...)
 	if err != nil {
 		log.Warn().Err(err).Str("task_id", task.ID).Msg("context_assembly: SelectFilesForTask failed, falling back to explicit files")
 		return r.loadContextFiles(task.FilesToRead, budget)

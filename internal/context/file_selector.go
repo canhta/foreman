@@ -32,7 +32,10 @@ type ScoredFile struct {
 // fq is an optional FeedbackQuerier; when non-nil, files that appeared in
 // files_touched of prior similar tasks receive a boost of feedbackBoost.
 // If feedbackBoost <= 0, 1.5 is used as the default.
-func SelectFilesForTask(task *models.Task, workDir string, tokenBudget int, cache *ContextCache, fq FeedbackQuerier, feedbackBoost float64) ([]ScoredFile, error) {
+// patterns is an optional list of progress patterns (variadic); each file
+// whose path appears as a substring of any pattern key or value receives a
+// bonus of +20 to its score (ARCH-M03).
+func SelectFilesForTask(task *models.Task, workDir string, tokenBudget int, cache *ContextCache, fq FeedbackQuerier, feedbackBoost float64, patterns ...models.ProgressPattern) ([]ScoredFile, error) {
 	if feedbackBoost <= 0 {
 		feedbackBoost = 1.5
 	}
@@ -102,6 +105,27 @@ func SelectFilesForTask(task *models.Task, workDir string, tokenBudget int, cach
 				// New file from feedback — add with boosted score if it exists on disk.
 				// (boostedFiles contains only files NOT already in candidates)
 				addCandidate(candidates, workDir, f, boostedScore, "feedback_boost")
+			}
+		}
+	}
+
+	// Signal 5: Progress pattern bonus (ARCH-M03)
+	// For each file (already in candidates or from a full walk), check if any
+	// progress pattern key or value contains the file's path as a substring.
+	// Matching files receive a +20 score bonus. New files (not yet candidates)
+	// are added with a base score of 20.
+	if len(patterns) > 0 {
+		patternFiles := GetOrListSourceFiles(cache, workDir)
+		for _, f := range patternFiles {
+			for _, p := range patterns {
+				if strings.Contains(p.PatternKey, f) || strings.Contains(p.PatternValue, f) {
+					if existing, ok := candidates[f]; ok {
+						existing.Score += 20
+					} else {
+						addCandidate(candidates, workDir, f, 20, "pattern_bonus")
+					}
+					break // one match is enough per file
+				}
 			}
 		}
 	}

@@ -63,6 +63,10 @@ func (m *mockTaskRunnerDB) QueryContextFeedback(_ context.Context, _ []string, _
 	return nil, nil
 }
 
+func (m *mockTaskRunnerDB) GetProgressPatterns(_ context.Context, _ string, _ []string) ([]models.ProgressPattern, error) {
+	return nil, nil
+}
+
 // --- Tests ---
 
 func TestDetectEscalation(t *testing.T) {
