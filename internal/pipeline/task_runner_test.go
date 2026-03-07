@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/canhta/foreman/internal/models"
@@ -237,4 +240,95 @@ func TestTaskRunnerConfig_Defaults(t *testing.T) {
 	assert.Equal(t, 2, config.MaxImplementationRetries)
 	assert.Equal(t, 8, config.MaxLlmCallsPerTask)
 	assert.True(t, config.EnableTDDVerification)
+}
+
+// --- loadContextFiles tests ---
+
+func TestLoadContextFiles_TokenBudget_StopsAfterBudgetExceeded(t *testing.T) {
+	// Create a temp dir with three files, each large enough that two exceed the budget.
+	dir := t.TempDir()
+
+	// Write three files: each ~400 tokens (roughly 1600 chars at 4 chars/token).
+	bigContent := strings.Repeat("hello world foo bar baz qux ", 57) // ~57*7 = 399 words ≈ 400 tokens
+	for i, name := range []string{"a.txt", "b.txt", "c.txt"} {
+		content := fmt.Sprintf("file%d: ", i) + bigContent
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644))
+	}
+
+	r := &PipelineTaskRunner{config: TaskRunnerConfig{WorkDir: dir}}
+	// Budget of 600 tokens: should fit file a.txt (~400 tokens) but NOT b.txt (400+400 > 600).
+	result := r.loadContextFiles([]string{"a.txt", "b.txt", "c.txt"}, 600)
+
+	assert.Contains(t, result, "a.txt", "first file must be included")
+	assert.NotContains(t, result, "b.txt", "second file must be excluded when budget exceeded")
+	assert.NotContains(t, result, "c.txt", "third file must be excluded when budget exceeded")
+}
+
+func TestLoadContextFiles_FirstRealFileAlwaysIncluded_EvenIfExceedsBudget(t *testing.T) {
+	// Create a file that is larger than the budget.
+	dir := t.TempDir()
+	bigContent := strings.Repeat("hello world foo bar baz qux ", 200) // ~1400 tokens
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "big.txt"), []byte(bigContent), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "small.txt"), []byte("tiny"), 0o644))
+
+	r := &PipelineTaskRunner{config: TaskRunnerConfig{WorkDir: dir}}
+	// Budget of 100 tokens: big.txt exceeds it, but since it's the first real file it must be included.
+	result := r.loadContextFiles([]string{"big.txt", "small.txt"}, 100)
+
+	assert.Contains(t, result, "big.txt", "first real file must be included even if it exceeds the budget")
+	assert.NotContains(t, result, "small.txt", "subsequent files must be excluded after first oversized file")
+}
+
+func TestLoadContextFiles_MissingFileDoesNotCountAsFirstRealFile(t *testing.T) {
+	// A FILE NOT FOUND placeholder must NOT exempt the next real file from budget checks.
+	// Scenario: missing.txt (placeholder), then big.txt (exceeds budget), then small.txt
+	// Because big.txt is the FIRST REAL file, it must still be included (at least one real file).
+	// But after big.txt, small.txt must be excluded since realFilesAdded > 0 and budget exceeded.
+	dir := t.TempDir()
+	bigContent := strings.Repeat("hello world foo bar baz qux ", 200) // ~1400 tokens
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "big.txt"), []byte(bigContent), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "small.txt"), []byte("tiny"), 0o644))
+	// missing.txt is intentionally not created.
+
+	r := &PipelineTaskRunner{config: TaskRunnerConfig{WorkDir: dir}}
+	// Budget of 100 tokens. missing.txt → placeholder, big.txt → first real file (must be included).
+	// After big.txt, tokensUsed >> budget, so small.txt must be excluded.
+	result := r.loadContextFiles([]string{"missing.txt", "big.txt", "small.txt"}, 100)
+
+	assert.Contains(t, result, "missing.txt", "placeholder must be present for missing file")
+	assert.Contains(t, result["missing.txt"], "[FILE NOT FOUND", "placeholder must contain FILE NOT FOUND marker")
+	assert.Contains(t, result, "big.txt", "first real file after placeholder must be included")
+	assert.NotContains(t, result, "small.txt", "file after first-real-file-that-exceeded-budget must be excluded")
+}
+
+func TestLoadContextFiles_TokensAccumulateCorrectly(t *testing.T) {
+	// Verify that tokensUsed accumulates from the FIRST real file, not the second.
+	// Three files: a.txt (~200 tokens), b.txt (~200 tokens), c.txt (~200 tokens).
+	// Budget: 350 tokens. After a.txt (200), adding b.txt would reach 400 > 350, so b.txt excluded.
+	dir := t.TempDir()
+	content200 := strings.Repeat("hello world foo bar baz ", 40) // ~40*5 = 200 words ≈ 200 tokens
+	for _, name := range []string{"a.txt", "b.txt", "c.txt"} {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(content200), 0o644))
+	}
+
+	r := &PipelineTaskRunner{config: TaskRunnerConfig{WorkDir: dir}}
+	result := r.loadContextFiles([]string{"a.txt", "b.txt", "c.txt"}, 350)
+
+	assert.Contains(t, result, "a.txt", "a.txt should be included (~200 tokens)")
+	assert.NotContains(t, result, "b.txt", "b.txt should be excluded (200+200=400 > 350)")
+	assert.NotContains(t, result, "c.txt", "c.txt should be excluded after b.txt stops iteration")
+}
+
+func TestLoadContextFiles_NoBudget_AllFilesIncluded(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"a.txt", "b.txt", "c.txt"} {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte("content of "+name), 0o644))
+	}
+
+	r := &PipelineTaskRunner{config: TaskRunnerConfig{WorkDir: dir}}
+	result := r.loadContextFiles([]string{"a.txt", "b.txt", "c.txt"}, 0)
+
+	assert.Contains(t, result, "a.txt")
+	assert.Contains(t, result, "b.txt")
+	assert.Contains(t, result, "c.txt")
 }

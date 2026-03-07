@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/canhta/foreman/internal/agent/agentconst"
 	"github.com/canhta/foreman/internal/agent/mcp"
 )
 
@@ -60,7 +61,8 @@ type AgentRequest struct {
 
 // MaxAgentDepth is the maximum allowed nesting depth for subagent calls.
 // A top-level agent is depth 0; its subagents are depth 1; etc.
-const MaxAgentDepth = 3
+// Defined in agentconst to share with agent/tools without an import cycle.
+const MaxAgentDepth = agentconst.MaxAgentDepth
 
 // AgentResult holds the output of an agent task.
 type AgentResult struct {

@@ -6,15 +6,12 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/canhta/foreman/internal/agent/agentconst"
 	"github.com/canhta/foreman/internal/runner"
 )
 
 // hardBlockedCommands are never allowed regardless of AllowedCommands config.
 var hardBlockedCommands = []string{"rm", "curl", "wget", "ssh", "scp", "git push", "git reset", "dd", "mkfs", "shutdown", "reboot"}
-
-// maxAgentDepth mirrors agent.MaxAgentDepth; defined here to avoid an import cycle.
-// Keep in sync with internal/agent/runner.go.
-const maxAgentDepth = 3
 
 func registerExec(r *Registry, cmd runner.CommandRunner) {
 	r.Register(&bashTool{cmd: cmd, registry: r})
@@ -172,8 +169,8 @@ func (t *subagentTool) Execute(ctx context.Context, workDir string, input json.R
 
 	// Enforce max agent depth before delegating.
 	parentBudget, parentDepth := t.registry.GetParentBudgetAndDepth()
-	if parentDepth >= maxAgentDepth {
-		return "", fmt.Errorf("subagent: max agent depth %d reached; cannot nest further", maxAgentDepth)
+	if parentDepth >= agentconst.MaxAgentDepth {
+		return "", fmt.Errorf("subagent: max agent depth %d reached; cannot nest further", agentconst.MaxAgentDepth)
 	}
 
 	// Enforce budget: if parent has a remaining budget and it's exhausted, fail.

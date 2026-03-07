@@ -335,11 +335,14 @@ func (r *PipelineTaskRunner) resetWorkingTree(ctx context.Context, filesToModify
 }
 
 // loadContextFiles reads all paths. If budget > 0, stops adding files once the
-// accumulated estimated token count would exceed budget (always adds at least one file).
-// Missing files produce a [FILE NOT FOUND: ...] placeholder (BUG-M14 fix).
+// accumulated estimated token count would exceed budget (always adds at least one
+// real file regardless of size). Missing files produce a [FILE NOT FOUND: ...]
+// placeholder (BUG-M14 fix) but do NOT count as "the first real file" for the
+// budget exemption.
 func (r *PipelineTaskRunner) loadContextFiles(paths []string, budget int) map[string]string {
 	files := make(map[string]string, len(paths))
 	tokensUsed := 0
+	realFilesAdded := 0
 	for _, p := range paths {
 		fullPath := filepath.Join(r.config.WorkDir, p)
 		data, err := os.ReadFile(fullPath)
@@ -351,14 +354,21 @@ func (r *PipelineTaskRunner) loadContextFiles(paths []string, budget int) map[st
 			continue
 		}
 		content := string(data)
-		if budget > 0 && len(files) > 0 {
+		if budget > 0 && realFilesAdded > 0 {
+			// Only enforce the budget after at least one real file has been added.
+			// This guarantees the implementer always gets at least one real file.
 			est := appcontext.EstimateTokens(content)
 			if tokensUsed+est > budget {
 				break
 			}
 			tokensUsed += est
+		} else if budget > 0 {
+			// First real file: count its tokens so subsequent files are checked
+			// against the correct accumulated usage.
+			tokensUsed += appcontext.EstimateTokens(content)
 		}
 		files[p] = content
+		realFilesAdded++
 	}
 	return files
 }
