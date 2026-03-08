@@ -47,7 +47,7 @@
 <svelte:window onkeydown={handleKeydown} />
 
 {#if appState.ticketDetail}
-  <div class="flex flex-col h-full">
+  <div class="flex flex-col h-full w-full">
     <!-- Status banner -->
     <div class="flex items-center justify-between px-3 py-1.5 {statusBg}">
       <div class="flex items-center gap-2">
