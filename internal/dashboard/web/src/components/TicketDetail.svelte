@@ -23,11 +23,11 @@
 
   let tasksDone = $derived(appState.ticketTasks.filter(t => t.Status === 'done').length);
 
-  let statusBg = $derived(
-    isFailed ? 'bg-danger text-bg' :
-    isActive ? 'bg-accent text-bg' :
-    isDone ? 'bg-success text-bg' :
-    'bg-surface-active text-muted-bright'
+  let statusBadge = $derived(
+    isFailed ? 'bg-danger/15 text-danger border border-danger/40' :
+    isActive ? 'bg-accent/15 text-accent border border-accent/40' :
+    isDone ? 'bg-success/15 text-success border border-success/40' :
+    'bg-surface-active text-muted-bright border border-border'
   );
 
   function handleRetry() {
@@ -48,35 +48,29 @@
 
 {#if appState.ticketDetail}
   <div class="flex flex-col h-full w-full">
-    <!-- Status banner -->
-    <div class="flex items-center justify-between px-3 py-1.5 {statusBg}">
-      <div class="flex items-center gap-2">
-        <button
-          class="text-[10px] opacity-60 hover:opacity-100 transition-opacity tracking-wider"
-          onclick={deselectTicket}
-          aria-label="Back to ticket list"
-        >← BACK</button>
-        <span class="text-[10px] font-bold tracking-[0.2em]">
-          {appState.ticketDetail.Status.toUpperCase()}
-          {#if isActive}<span class="animate-pulse ml-1">▌</span>{/if}
-        </span>
-      </div>
+    <!-- Action bar -->
+    <div class="flex items-center justify-between px-3 py-1.5 bg-surface border-b border-border">
+      <button
+        class="text-[10px] opacity-60 hover:opacity-100 transition-opacity tracking-wider"
+        onclick={deselectTicket}
+        aria-label="Back to ticket list"
+      >← BACK</button>
       <div class="flex items-center gap-2">
         {#if appState.ticketDetail.PRURL}
           <a
             href={appState.ticketDetail.PRURL}
             target="_blank"
-            class="text-[10px] tracking-wider opacity-80 hover:opacity-100 transition-opacity"
+            class="text-[10px] tracking-wider text-muted hover:text-text transition-colors px-2 py-1 border border-border hover:border-border-strong"
           >PR #{appState.ticketDetail.PRNumber || '—'} ↗</a>
         {/if}
         {#if isFailed || appState.ticketDetail.Status === 'partial'}
           <button
-            class="text-[10px] tracking-wider opacity-80 hover:opacity-100 transition-opacity"
+            class="text-[10px] font-bold tracking-wider px-3 py-1 bg-warning text-bg hover:bg-text transition-colors"
             onclick={handleRetry}
           >↺ RETRY</button>
         {/if}
         <button
-          class="text-[10px] tracking-wider opacity-60 hover:opacity-100 transition-opacity"
+          class="text-[10px] font-bold tracking-wider px-3 py-1 border border-danger text-danger hover:bg-danger hover:text-bg transition-colors"
           onclick={handleDelete}
         >✕ DEL</button>
       </div>
@@ -84,15 +78,25 @@
 
     <!-- Ticket title + meta -->
     <div class="px-4 py-3 border-b-2 border-border">
-      <h2 class="text-sm font-bold text-text leading-snug">{appState.ticketDetail.Title}</h2>
-      <div class="flex flex-wrap items-center gap-2 mt-2 text-[10px] text-muted">
-        <span class="text-muted-bright">{formatSender(appState.ticketDetail.ChannelSenderID)}</span>
-        <span>·</span>
-        <span>{formatRelative(appState.ticketDetail.StartedAt || appState.ticketDetail.CreatedAt)}</span>
-        <span>·</span>
+      <div class="flex items-start gap-2 flex-wrap">
+        <span class="text-[9px] font-bold tracking-[0.2em] px-1.5 py-0.5 rounded-sm shrink-0 {statusBadge}">
+          {appState.ticketDetail.Status.toUpperCase()}
+          {#if isActive}<span class="animate-pulse ml-0.5">▌</span>{/if}
+        </span>
+        <h2 class="text-sm font-bold text-text leading-snug">{appState.ticketDetail.Title}</h2>
+      </div>
+      <div class="flex flex-wrap items-center gap-x-2 gap-y-1 mt-2 text-[10px] text-muted">
+        {#if formatSender(appState.ticketDetail.ChannelSenderID)}
+          <span class="text-muted-bright">{formatSender(appState.ticketDetail.ChannelSenderID)}</span>
+          <span class="opacity-40">·</span>
+        {/if}
+        {#if formatRelative(appState.ticketDetail.StartedAt || appState.ticketDetail.CreatedAt)}
+          <span>{formatRelative(appState.ticketDetail.StartedAt || appState.ticketDetail.CreatedAt)}</span>
+          <span class="opacity-40">·</span>
+        {/if}
         <span class="text-muted-bright">{formatCost(appState.ticketDetail.CostUSD)}</span>
         {#if appState.ticketDetail.TotalLlmCalls > 0}
-          <span>·</span>
+          <span class="opacity-40">·</span>
           <span>{appState.ticketDetail.TotalLlmCalls} LLM calls</span>
         {/if}
       </div>
