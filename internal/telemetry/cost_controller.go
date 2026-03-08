@@ -2,6 +2,8 @@ package telemetry
 
 import (
 	"fmt"
+	"regexp"
+	"strings"
 
 	"github.com/rs/zerolog/log"
 
@@ -12,6 +14,8 @@ import (
 type CostController struct {
 	config models.CostConfig
 }
+
+var modelSnapshotSuffixRe = regexp.MustCompile(`-\d{4}-\d{2}-\d{2}$`)
 
 // NewCostController creates a cost controller.
 func NewCostController(config models.CostConfig) *CostController {
@@ -53,7 +57,7 @@ func (c *CostController) ShouldAlert(currentCost, limit float64) bool {
 
 // CalculateCost computes the USD cost for a given model and token counts.
 func (c *CostController) CalculateCost(model string, inputTokens, outputTokens int) float64 {
-	pricing, ok := c.config.Pricing[model]
+	pricing, ok := c.lookupPricing(model)
 	if !ok {
 		if c.config.FallbackPricing != nil {
 			pricing = *c.config.FallbackPricing
@@ -67,6 +71,58 @@ func (c *CostController) CalculateCost(model string, inputTokens, outputTokens i
 	}
 	return (float64(inputTokens)/1_000_000)*pricing.Input +
 		(float64(outputTokens)/1_000_000)*pricing.Output
+}
+
+func (c *CostController) lookupPricing(model string) (models.PricingConfig, bool) {
+	if c.config.Pricing == nil {
+		return models.PricingConfig{}, false
+	}
+	for _, key := range candidateModelKeys(model) {
+		if pricing, ok := c.config.Pricing[key]; ok {
+			return pricing, true
+		}
+	}
+	return models.PricingConfig{}, false
+}
+
+func candidateModelKeys(model string) []string {
+	base := strings.TrimSpace(model)
+	if base == "" {
+		return nil
+	}
+
+	seen := make(map[string]struct{})
+	add := func(k string, out *[]string) {
+		if k == "" {
+			return
+		}
+		if _, ok := seen[k]; ok {
+			return
+		}
+		seen[k] = struct{}{}
+		*out = append(*out, k)
+	}
+
+	var keys []string
+	add(base, &keys)
+	trimmed := trimModelSnapshot(base)
+	add(trimmed, &keys)
+
+	if idx := strings.Index(base, ":"); idx != -1 {
+		modelOnly := base[idx+1:]
+		add(modelOnly, &keys)
+		add(trimModelSnapshot(modelOnly), &keys)
+	}
+
+	for _, k := range append([]string(nil), keys...) {
+		add(strings.ToLower(k), &keys)
+	}
+
+	return keys
+}
+
+func trimModelSnapshot(model string) string {
+	return modelSnapshotSuffixRe.ReplaceAllString(model, "")
 }
 
 // CheckTaskCallCap returns an error if the task has reached the LLM call cap.

@@ -90,6 +90,37 @@ func TestParseImplementerOutput_PermissiveParsing(t *testing.T) {
 	}
 }
 
+func TestParseImplementerOutput_DashedNewFileFormat(t *testing.T) {
+	raw := `--- NEW FILE src/hello.ts ---
+export const hello = () => "hi";
+--- END FILE ---`
+
+	result, err := ParseImplementerOutput(raw, 0.92)
+	require.NoError(t, err)
+	require.Len(t, result.Files, 1)
+	assert.True(t, result.Files[0].IsNew)
+	assert.Equal(t, "src/hello.ts", result.Files[0].Path)
+}
+
+func TestParseImplementerOutput_ModifyFile_EqualReplaceMarker(t *testing.T) {
+	raw := `=== MODIFY FILE: src/app.ts ===
+<<<< SEARCH
+const port = 3000;
+>>>>
+==== REPLACE
+const port = 8080;
+>>>>
+=== END FILE ===`
+
+	result, err := ParseImplementerOutput(raw, 0.92)
+	require.NoError(t, err)
+	require.Len(t, result.Files, 1)
+	assert.False(t, result.Files[0].IsNew)
+	require.Len(t, result.Files[0].Patches, 1)
+	assert.Equal(t, "const port = 3000;", result.Files[0].Patches[0].Search)
+	assert.Equal(t, "const port = 8080;", result.Files[0].Patches[0].Replace)
+}
+
 func TestApplySearchReplace_ExactMatch(t *testing.T) {
 	content := "line1\nline2\nline3\nline4"
 	sr := &SearchReplace{

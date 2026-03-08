@@ -121,3 +121,25 @@ func TestCostController_DefaultFallbackPricing(t *testing.T) {
 	cost := cc.CalculateCost("unknown-model-default", 1_000_000, 1_000_000)
 	assert.InDelta(t, 18.0, cost, 0.001, "default fallback pricing $3/$15 should be used when none configured")
 }
+
+func TestCostController_CalculateCost_SnapshotModelSuffix(t *testing.T) {
+	cc := NewCostController(models.CostConfig{
+		Pricing: map[string]models.PricingConfig{
+			"gpt-5.4": {Input: 2.0, Output: 10.0},
+		},
+	})
+
+	cost := cc.CalculateCost("gpt-5.4-2026-03-05", 1_000_000, 1_000_000)
+	assert.InDelta(t, 12.0, cost, 0.001)
+}
+
+func TestCostController_CalculateCost_ProviderPrefixedSnapshotModel(t *testing.T) {
+	cc := NewCostController(models.CostConfig{
+		Pricing: map[string]models.PricingConfig{
+			"openai:gpt-5.4": {Input: 2.0, Output: 10.0},
+		},
+	})
+
+	cost := cc.CalculateCost("openai:gpt-5.4-2026-03-05", 1_000_000, 1_000_000)
+	assert.InDelta(t, 12.0, cost, 0.001)
+}
