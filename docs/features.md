@@ -530,7 +530,6 @@ WhatsApp sessions are stored in a local SQLite database (default `~/.foreman/wha
 - **GetTypeDefinition tool** — cross-file type resolution using `go/types` or tree-sitter (`REQ-TOOLS-004`) is Wave 4.
 - **MCP HTTP/SSE transport** — only stdio subprocess transport is implemented. HTTP+SSE client is Wave 4 (`REQ-MCP-003`).
 - **LLM-assisted decomposition check** — secondary LLM check when heuristics don't trigger (`REQ-PIPE-004`) is Wave 4.
-- **Token budget dashboard panel** — `GET /api/tasks/{id}/context` endpoint showing budget utilisation, files selected, and cache hits (`REQ-OBS-004`) is Wave 4.
 - **Structured error classification metrics** — `foreman_task_failures_total{error_type, runner}` and related counters (`REQ-OBS-003`) are Wave 4.
 - **Distributed locking** — cross-process file reservation coordination for multi-instance deployments (`BUG-M15`) is Wave 4.
 - **GitLab and Bitbucket PR creation** — defined in the interface but GitHub is the primary tested backend.

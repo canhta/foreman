@@ -282,7 +282,7 @@ File reservations are stored in the database, not in memory. Before a pipeline b
 | SQL extensions | `sqlx` |
 | Git fallback | `go-git/v5` |
 | LLM prompt templates | `pongo2` (Jinja2-compatible) |
-| Token counting | Built-in heuristic (`len/4` approximation) |
+| Token counting | `tiktoken-go` model-accurate tokenization |
 | Logging | `zerolog` (structured JSON) |
 | Metrics | `prometheus/client_golang` |
 | WebSocket | `gorilla/websocket` |

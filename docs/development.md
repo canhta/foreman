@@ -11,7 +11,9 @@ This guide covers setting up a development environment, the project's convention
 
 | Command | What it does |
 |---|---|
-| `make build` | Build the `./foreman` binary |
+| `make build` | Build dashboard assets, then build the `./foreman` binary |
+| `make dashboard-build` | Build Svelte dashboard assets into `internal/dashboard/dist/` |
+| `make dashboard-dev` | Start Vite dev server for dashboard frontend |
 | `make test` | Run all tests with the race detector |
 | `make lint` | Run `go vet` + `golangci-lint` |
 | `make dev` | Hot-reload daemon on file changes (requires `make setup-dev`) |
@@ -25,7 +27,8 @@ This guide covers setting up a development environment, the project's convention
 
 | Requirement | Version | Notes |
 |---|---|---|
-| Go | 1.23+ | Module: `github.com/canhta/foreman` |
+| Go | 1.25+ | Module: `github.com/canhta/foreman` |
+| Node.js | 20+ | Required for dashboard frontend build (`npm ci`, `vite build`) |
 | C toolchain | Any | Required by `go-sqlite3` (CGO) |
 | `git` | 2.x+ | Used as subprocess by the git module |
 | `golangci-lint` | Latest | Optional, for lint checks |
@@ -68,7 +71,9 @@ cp foreman.example.toml foreman.toml
 
 | Command | Description |
 |---|---|
-| `make build` | Build binary to `./foreman` |
+| `make build` | Build dashboard assets, then build binary to `./foreman` |
+| `make dashboard-build` | Build dashboard assets to `internal/dashboard/dist/` |
+| `make dashboard-dev` | Run Vite dev server for dashboard frontend |
 | `make test` | Run all tests with `-race` flag |
 | `make lint` | Run `go vet` + `golangci-lint` |
 | `make clean` | Remove `./foreman` binary |
@@ -82,6 +87,7 @@ cp foreman.example.toml foreman.toml
 ### Building Without Make
 
 ```bash
+cd internal/dashboard/web && npm ci && npm run build && cd ../../..
 go build -o foreman ./main.go
 go test ./...                              # all packages
 go test ./internal/pipeline/...           # single package
@@ -172,7 +178,7 @@ cmd/                 CLI commands (run, start, stop, status, ps, cost, dashboard
 internal/
   agent/             AgentRunner interface + builtin, claudecode, copilot implementations
   agent/tools/       Typed tool registry (14 tools)
-  agent/mcp/         MCP config stub
+  agent/mcp/         MCP manager, stdio client, and health monitoring
   config/            TOML/Viper config loading + validation
   context/           Context assembler, file selector, token budget, secrets scanner
   daemon/            Scheduler, clarification gate, file reservations, crash recovery
@@ -365,10 +371,6 @@ Before opening a PR, verify:
 - [ ] Relevant docs in `docs/` updated for any user-facing change
 - [ ] No secrets, credentials, or API keys in code or tests
 - [ ] PR description explains what changed, why, and links the relevant issue
-- [ ] New tests cover the changed behavior
-- [ ] Config changes are reflected in `foreman.example.toml`
-- [ ] Documentation updated (`docs/`) if user-facing behavior changed
-- [ ] No secrets, credentials, or API keys in code or tests
 
 ## CI Pipeline
 

@@ -1,19 +1,19 @@
 ## Project Overview
 
-Foreman is an autonomous software development daemon written in Go (1.23+). It polls issue trackers (Jira, GitHub Issues, Linear), decomposes tickets into tasks, generates code via LLM using TDD, runs reviews, and creates pull requests — all autonomously.
+Foreman is an autonomous software development daemon written in Go (1.25+). It polls issue trackers (Jira, GitHub Issues, Linear), decomposes tickets into tasks, generates code via LLM using TDD, runs reviews, and creates pull requests — all autonomously.
 
 **Status:** Core pipeline, daemon, tracker integrations, LLM providers, agent runner, skills engine, ticket decomposition, and PR merge lifecycle are all implemented and working.
 
 ## Build & Development Commands
 
 ```bash
-go build -o foreman ./main.go        # Build binary
+make build                            # Build dashboard assets + binary
+go build -o foreman ./main.go        # Build binary (after dashboard assets exist)
 go test ./...                         # Run all tests
 go test ./internal/pipeline/...       # Run tests for a specific package
 go test -run TestPlanValidator ./internal/pipeline/  # Run a single test
 go vet ./...                          # Static analysis
 golangci-lint run                     # Lint (requires golangci-lint)
-make build                            # Build via Makefile
 make test                             # Test via Makefile
 ```
 

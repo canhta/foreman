@@ -8,7 +8,7 @@ Foreman polls your issue tracker, breaks tickets into granular tasks, writes cod
 
 ## Quick Start
 
-**Requirements:** Go 1.25+ and a C toolchain (CGO is required for SQLite).
+**Requirements (build from source):** Go 1.25+, Node.js 20+ (for dashboard assets), and a C toolchain (CGO is required for SQLite).
 
 ```bash
 make build

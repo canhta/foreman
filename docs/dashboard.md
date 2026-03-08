@@ -26,7 +26,7 @@ Access the dashboard at `http://localhost:3333`. All endpoints require a bearer 
 
 ## Authentication
 
-All API endpoints (except `/api/metrics` and `/ws/events` with a query-param token) require a bearer token in the `Authorization` header:
+All REST API endpoints require a bearer token in the `Authorization` header:
 
 ```
 Authorization: Bearer <your-token>
@@ -34,7 +34,20 @@ Authorization: Bearer <your-token>
 
 Tokens are stored as SHA-256 hashes in the database. They can be revoked via the API.
 
-The WebSocket endpoint accepts the token as a query parameter:
+The WebSocket endpoint supports three auth modes (in priority order):
+
+1. `Sec-WebSocket-Protocol: bearer.<token>` (preferred)
+2. `Authorization: Bearer <token>`
+3. `?token=<token>` query parameter (deprecated)
+
+Example (preferred):
+
+```javascript
+const token = '<your-token>';
+const ws = new WebSocket('ws://localhost:3333/ws/events', [`bearer.${token}`]);
+```
+
+Deprecated query-param form still works:
 
 ```
 ws://localhost:3333/ws/events?token=<your-token>
@@ -46,13 +59,20 @@ ws://localhost:3333/ws/events?token=<your-token>
 
 **`GET /api/status`**
 
-Returns daemon status and version.
+Returns dashboard process status, daemon runtime state, and optional channel/MCP connectivity.
 
 ```json
 {
   "status": "running",
   "version": "0.1.0",
-  "uptime": "3h24m12s"
+  "uptime": "3h24m12s",
+  "daemon_state": "running",
+  "channels": {
+    "whatsapp": { "connected": true }
+  },
+  "mcp_servers": {
+    "filesystem": { "healthy": true }
+  }
 }
 ```
 
@@ -66,7 +86,7 @@ Returns a list of all tickets. Optional query parameter:
 
 | Parameter | Values | Description |
 |---|---|---|
-| `status` | `queued`, `planning`, `implementing`, `pr_created`, `done`, `failed`, `blocked`, `partial` | Filter by status |
+| `status` | `queued`, `clarification_needed`, `planning`, `plan_validating`, `implementing`, `reviewing`, `pr_created`, `awaiting_merge`, `merged`, `pr_closed`, `decomposing`, `decomposed`, `done`, `failed`, `blocked`, `partial` | Filter by status |
 
 ```json
 [
@@ -155,6 +175,28 @@ Returns the last 100 events for a ticket.
 
 ---
 
+**`GET /api/ticket-summaries`**
+
+Returns compact ticket cards used by the dashboard list view.
+
+---
+
+**`GET /api/events?limit=50&offset=0`**
+
+Returns global event feed entries across tickets.
+
+---
+
+**`DELETE /api/tickets/{id}`**
+
+Permanently deletes a ticket and associated records.
+
+```json
+{ "status": "deleted", "ticket_id": "uuid" }
+```
+
+---
+
 **`GET /api/tickets/{id}/llm-calls`**
 
 Returns all recorded LLM calls for a ticket.
@@ -186,7 +228,34 @@ Returns all recorded LLM calls for a ticket.
 Resets a failed or blocked ticket to `queued` so it will be picked up on the next daemon poll cycle.
 
 ```json
-{ "message": "ticket re-queued" }
+{ "status": "retrying", "ticket_id": "uuid" }
+```
+
+---
+
+**`POST /api/tasks/{id}/retry`**
+
+Resets a failed task to `pending` so the pipeline can retry it.
+
+```json
+{ "status": "retrying", "task_id": "task-uuid" }
+```
+
+---
+
+**`GET /api/tasks/{id}/context`**
+
+Returns context budget/utilization stats for a task.
+
+```json
+{
+  "budget": 18000,
+  "used": 12450,
+  "utilization_pct": 69.1,
+  "files_selected": 14,
+  "files_touched": 6,
+  "cache_hits": 3
+}
 ```
 
 ---
@@ -230,16 +299,13 @@ Returns total spend for today.
 
 **`GET /api/costs/week`**
 
-Returns spend for the past 7 days as a daily breakdown.
+Returns spend for the past 7 days as a flat day-by-day array.
 
 ```json
-{
-  "total_usd": 87.32,
-  "days": [
-    { "date": "2026-02-27", "cost_usd": 11.20 },
-    { "date": "2026-02-28", "cost_usd": 9.80 }
-  ]
-}
+[
+  { "date": "2026-02-27", "cost_usd": 11.20 },
+  { "date": "2026-02-28", "cost_usd": 9.80 }
+]
 ```
 
 ---
@@ -250,7 +316,7 @@ Returns spend for the current calendar month.
 
 ```json
 {
-  "year_month": "2026-03",
+  "month": "2026-03",
   "cost_usd": 245.10
 }
 ```
@@ -259,22 +325,30 @@ Returns spend for the current calendar month.
 
 **`GET /api/costs/budgets`**
 
-Returns current spend vs. configured budget limits.
+Returns configured budget limits.
 
 ```json
 {
-  "today": {
-    "spent_usd": 12.45,
-    "limit_usd": 150.00,
-    "percent": 8.3
-  },
-  "month": {
-    "spent_usd": 245.10,
-    "limit_usd": 3000.00,
-    "percent": 8.17
-  }
+  "max_daily_usd": 150,
+  "max_monthly_usd": 3000,
+  "max_ticket_usd": 100,
+  "alert_threshold_pct": 80
 }
 ```
+
+---
+
+### Team and PR Stats
+
+**`GET /api/stats/team`** returns 7-day submitter aggregates.
+
+**`GET /api/stats/recent-prs`** returns recent merged/created PR-linked tickets.
+
+---
+
+### Prompt Versions
+
+**`GET /api/prompts/versions`** returns prompt-template snapshot hashes for auditability.
 
 ---
 
@@ -305,7 +379,8 @@ Resumes a paused daemon.
 Connect to `/ws/events` to receive real-time pipeline events as JSON objects.
 
 ```javascript
-const ws = new WebSocket('ws://localhost:3333/ws/events?token=<your-token>');
+const token = '<your-token>';
+const ws = new WebSocket('ws://localhost:3333/ws/events', [`bearer.${token}`]);
 
 ws.onmessage = (event) => {
   const evt = JSON.parse(event.data);
@@ -313,18 +388,21 @@ ws.onmessage = (event) => {
 };
 ```
 
-Each message has the same shape as events returned by `GET /api/tickets/{id}/events`:
+Each message has the same shape as events returned by `GET /api/tickets/{id}/events`, enriched with ticket context fields:
 
 ```json
 {
   "id": "evt-uuid",
   "ticket_id": "uuid",
   "task_id": "task-uuid",
+  "seq": 42,
   "event_type": "task_spec_review_pass",
   "severity": "info",
   "message": "Spec review passed",
   "details": null,
-  "created_at": "2026-03-05T10:06:00Z"
+  "created_at": "2026-03-05T10:06:00Z",
+  "ticket_title": "Add user authentication",
+  "submitter": "123456789@s.whatsapp.net"
 }
 ```
 
@@ -334,7 +412,7 @@ The WebSocket endpoint broadcasts all pipeline events to all connected clients. 
 
 ## Prometheus Metrics
 
-The `/api/metrics` endpoint exposes Prometheus-compatible metrics. It does **not** require authentication (Prometheus scrapers are assumed to run on trusted networks).
+The `/api/metrics` endpoint exposes Prometheus-compatible metrics. It requires the same bearer token authentication as other API routes.
 
 ```yaml
 # prometheus.yml scrape config
@@ -371,7 +449,15 @@ scrape_configs:
 
 ## Web UI
 
-The web UI is a single-page application embedded into the binary at build time (`go:embed`). It serves from `/` with no external dependencies.
+The web UI is a Svelte 5 + TypeScript single-page app built with Vite and Tailwind CSS 4. Build output is embedded into the binary at build time (`//go:embed dist`) and served from `/`.
+
+Developer commands:
+
+```bash
+make dashboard-dev    # run Vite dev server
+make dashboard-build  # build web/dist assets
+make build            # builds dashboard assets + foreman binary
+```
 
 The UI provides:
 - Ticket list with status indicators and filtering

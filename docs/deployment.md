@@ -64,9 +64,9 @@ This guide covers production deployment using Docker Compose or as a native syst
 
 ## Option B: Systemd Native Binary
 
-1. **Build the binary:**
+1. **Build the binary (includes dashboard assets):**
    ```bash
-   CGO_ENABLED=1 go build -trimpath -ldflags="-s -w" -o foreman ./main.go
+   make build
    ```
 
 2. **Install with the systemd helper script:**
@@ -121,7 +121,7 @@ The script checks DNS resolution, installs nginx and certbot if needed, configur
 - **Logs:** `docker compose logs -f` or `journalctl -u foreman -f`
 - **Dashboard:** `http://<server-ip>:3333` (or `https://<domain>` with SSL) — requires `FOREMAN_DASHBOARD_TOKEN`
 - **Active pipelines:** `foreman ps --all`
-- **Cost tracking:** `foreman cost today` / `foreman cost month` / `foreman cost per-ticket`
+- **Cost tracking:** `foreman cost today` / `foreman cost month` / `foreman cost ticket <ID>`
 - **Metrics:** Prometheus endpoint at `/api/metrics`
 
 ---
@@ -139,7 +139,7 @@ docker compose up --build -d
 
 ```bash
 git pull
-CGO_ENABLED=1 go build -trimpath -ldflags="-s -w" -o foreman ./main.go
+make build
 foreman doctor          # validate new binary before restart
 sudo systemctl restart foreman
 ```

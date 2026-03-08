@@ -9,6 +9,7 @@ This guide walks you through installing Foreman, writing a minimal configuration
 | Requirement | Notes |
 |---|---|
 | Go 1.25+ | CGO is required by `go-sqlite3`; a C toolchain must be available |
+| Node.js 20+ | Required when building from source (`make build` runs dashboard frontend build) |
 | Git | The `git` CLI must be on `$PATH` |
 | LLM API key | Anthropic, OpenAI, or OpenRouter |
 | Issue tracker | Jira, GitHub Issues, Linear, or local file (no account needed) |
