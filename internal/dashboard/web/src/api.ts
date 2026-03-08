@@ -48,6 +48,16 @@ export async function postJSON<T>(url: string): Promise<T> {
   return handleResponse(res).json();
 }
 
+export async function postJSONBody<T>(url: string, body: unknown): Promise<T> {
+  if (!token) throw new Error('No token');
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { ...headers(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return handleResponse(res).json();
+}
+
 export async function deleteJSON(url: string): Promise<void> {
   if (!token) throw new Error('No token');
   const res = await fetch(url, { method: 'DELETE', headers: headers() });

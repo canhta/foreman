@@ -1,6 +1,6 @@
 <script lang="ts">
   import {
-    appState, deselectTicket, retryTicket, deleteTicketAction,
+    appState, deselectTicket, retryTicket, deleteTicketAction, replyToTicket,
   } from '../state.svelte';
   import { FAIL_STATUSES, ACTIVE_STATUSES, DONE_STATUSES } from '../types';
   import { formatSender, formatRelative, formatCost } from '../format';
@@ -14,6 +14,8 @@
   let confirmDialog = $state<{ open: boolean; title: string; message: string; confirmLabel: string; confirmClass: string; action: () => void }>({
     open: false, title: '', message: '', confirmLabel: 'CONFIRM', confirmClass: 'bg-accent text-bg hover:bg-text', action: () => {},
   });
+  let replyText = $state('');
+  let replySending = $state(false);
 
   let isFailed = $derived(
     appState.ticketDetail ? FAIL_STATUSES.includes(appState.ticketDetail.Status) : false
@@ -44,6 +46,17 @@
       confirmClass: 'bg-warning text-bg hover:bg-text',
       action: () => retryTicket(appState.selectedTicketId!),
     };
+  }
+
+  async function handleReply() {
+    if (!appState.selectedTicketId || !replyText.trim()) return;
+    replySending = true;
+    try {
+      await replyToTicket(appState.selectedTicketId, replyText.trim());
+      replyText = '';
+    } finally {
+      replySending = false;
+    }
   }
 
   function handleDelete() {
@@ -124,16 +137,32 @@
       </div>
     </div>
 
-    <!-- Clarification warning -->
+    <!-- Clarification warning + reply -->
     {#if appState.ticketDetail.ClarificationRequestedAt}
-      <div class="mx-4 mt-3 border-l-4 border-l-warning p-2 bg-warning-bg text-xs">
-        <div class="text-warning font-bold">⚠ CLARIFICATION NEEDED</div>
+      <div class="mx-4 mt-3 border-l-4 border-l-warning p-3 bg-warning-bg text-xs">
+        <div class="text-warning font-bold tracking-wider">⚠ CLARIFICATION NEEDED</div>
         <div class="text-text mt-1">{appState.ticketDetail.ErrorMessage || 'Clarification was requested'}</div>
         {#if appState.ticketDetail.Comments?.length}
           <div class="text-muted-bright mt-1 border-t border-border-strong pt-1">
             {appState.ticketDetail.Comments[appState.ticketDetail.Comments.length - 1].Body}
           </div>
         {/if}
+        <div class="mt-2 border-t border-border-strong pt-2">
+          <textarea
+            class="w-full bg-bg border-2 border-border text-text text-xs p-2 font-mono resize-none focus:border-warning focus:outline-none"
+            rows="3"
+            placeholder="Type your clarification reply..."
+            bind:value={replyText}
+            disabled={replySending}
+          ></textarea>
+          <div class="flex justify-end mt-1">
+            <button
+              class="text-[10px] font-bold tracking-wider px-4 py-1.5 bg-warning text-bg hover:bg-text transition-colors disabled:opacity-40"
+              onclick={handleReply}
+              disabled={replySending || !replyText.trim()}
+            >{replySending ? 'SENDING...' : '→ REPLY & RESUME'}</button>
+          </div>
+        </div>
       </div>
     {/if}
 

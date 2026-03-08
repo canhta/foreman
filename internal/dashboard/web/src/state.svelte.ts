@@ -1,4 +1,4 @@
-import { fetchJSON, postJSON, deleteJSON, getToken, clearToken, setOnUnauthorized } from './api';
+import { fetchJSON, postJSON, postJSONBody, deleteJSON, getToken, clearToken, setOnUnauthorized } from './api';
 import type {
   Ticket, TicketSummary, Task, EventRecord, LlmCallRecord,
   TeamStat, DayCost, StatusResponse,
@@ -199,6 +199,12 @@ export async function retryTicket(id: string) {
 export async function retryTask(taskId: string) {
   await postJSON(`/api/tasks/${taskId}/retry`);
   if (appState.selectedTicketId) loadTicketDetail(appState.selectedTicketId);
+}
+
+export async function replyToTicket(id: string, message: string) {
+  await postJSONBody(`/api/tickets/${id}/reply`, { message });
+  loadTicketDetail(id);
+  loadTickets();
 }
 
 export async function deleteTicketAction(id: string) {
