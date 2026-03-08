@@ -13,6 +13,7 @@ type RouterDB interface {
 	PairingDB
 	FindActiveClarification(ctx context.Context, senderID string) (*models.Ticket, error)
 	UpdateTicketStatus(ctx context.Context, id string, status models.TicketStatus) error
+	AppendTicketDescription(ctx context.Context, id, text string) error
 }
 
 // ChannelRouter implements InboundHandler and routes messages to the right action.
@@ -122,6 +123,10 @@ func (r *ChannelRouter) handleCommand(ctx context.Context, msg InboundMessage, c
 }
 
 func (r *ChannelRouter) handleClarificationReply(ctx context.Context, msg InboundMessage, ticket *models.Ticket) error {
+	if err := r.db.AppendTicketDescription(ctx, ticket.ID, msg.Body); err != nil {
+		r.logger.Error().Err(err).Str("ticket", ticket.ID).Msg("failed to append clarification reply")
+		return err
+	}
 	if err := r.db.UpdateTicketStatus(ctx, ticket.ID, models.TicketStatusQueued); err != nil {
 		r.logger.Error().Err(err).Str("ticket", ticket.ID).Msg("failed to requeue after clarification")
 		return err

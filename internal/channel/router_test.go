@@ -43,7 +43,11 @@ func (m *mockChannel) lastSent() *sentMessage {
 
 type mockRouterDB struct {
 	mockPairingDB
-	tickets []models.Ticket
+	tickets       []models.Ticket
+	appendedID    string
+	appendedText  string
+	updatedID     string
+	updatedStatus models.TicketStatus
 }
 
 func (m *mockRouterDB) FindActiveClarification(_ context.Context, senderID string) (*models.Ticket, error) {
@@ -55,7 +59,15 @@ func (m *mockRouterDB) FindActiveClarification(_ context.Context, senderID strin
 	return nil, nil
 }
 
-func (m *mockRouterDB) UpdateTicketStatus(_ context.Context, _ string, _ models.TicketStatus) error {
+func (m *mockRouterDB) UpdateTicketStatus(_ context.Context, id string, status models.TicketStatus) error {
+	m.updatedID = id
+	m.updatedStatus = status
+	return nil
+}
+
+func (m *mockRouterDB) AppendTicketDescription(_ context.Context, id, text string) error {
+	m.appendedID = id
+	m.appendedText = text
 	return nil
 }
 
@@ -105,5 +117,55 @@ func TestRouter_CommandRouting(t *testing.T) {
 	}
 	if msg.message != "3 tickets active" {
 		t.Errorf("sent = %q, want %q", msg.message, "3 tickets active")
+	}
+}
+
+func TestRouter_ClarificationReply(t *testing.T) {
+	ch := &mockChannel{}
+	allowlist := NewAllowlist([]string{"+84111111111"})
+	db := &mockRouterDB{
+		mockPairingDB: *newMockPairingDB(),
+		tickets: []models.Ticket{
+			{
+				ID:              "ticket-123",
+				ChannelSenderID: "84111111111@s.whatsapp.net",
+				Status:          models.TicketStatusClarificationNeeded,
+			},
+		},
+	}
+	router := NewRouter(ch, db, NewClassifier(nil), allowlist, nil, nil, zerolog.Nop())
+
+	err := router.HandleMessage(context.Background(), InboundMessage{
+		SenderID:  "84111111111@s.whatsapp.net",
+		Body:      "The error is on line 42 of main.go",
+		Timestamp: time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+
+	// Verify AppendTicketDescription was called with the message body
+	if db.appendedID != "ticket-123" {
+		t.Errorf("appendedID = %q, want %q", db.appendedID, "ticket-123")
+	}
+	if db.appendedText != "The error is on line 42 of main.go" {
+		t.Errorf("appendedText = %q, want %q", db.appendedText, "The error is on line 42 of main.go")
+	}
+
+	// Verify ticket status was updated to queued
+	if db.updatedID != "ticket-123" {
+		t.Errorf("updatedID = %q, want %q", db.updatedID, "ticket-123")
+	}
+	if db.updatedStatus != models.TicketStatusQueued {
+		t.Errorf("updatedStatus = %q, want %q", db.updatedStatus, models.TicketStatusQueued)
+	}
+
+	// Verify confirmation message was sent
+	msg := ch.lastSent()
+	if msg == nil {
+		t.Fatal("expected a confirmation message to be sent")
+	}
+	if msg.message != "Updated ticket #ticket-123, resuming..." {
+		t.Errorf("sent = %q, want %q", msg.message, "Updated ticket #ticket-123, resuming...")
 	}
 }
