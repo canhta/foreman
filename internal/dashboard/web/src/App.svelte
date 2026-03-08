@@ -1,10 +1,10 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { setToken, getToken } from './api';
+  import { setToken } from './api';
   import {
     appState,
     startPolling, stopPolling, connectWebSocket, restoreFromURL,
-    setActivePanel,
+    setActivePanel, logout,
   } from './state.svelte';
   import Header from './components/Header.svelte';
   import TicketList from './components/TicketList.svelte';
@@ -14,18 +14,31 @@
   import LiveFeed from './components/LiveFeed.svelte';
   import Toasts from './components/Toasts.svelte';
 
-  let authenticated = $state(!!getToken());
   let tokenInput = $state('');
+  let sessionExpired = $state(false);
+
+  // Track if we were previously authenticated (to detect 401 logout)
+  let wasAuthenticated = false;
+  $effect(() => {
+    if (wasAuthenticated && !appState.authenticated) {
+      sessionExpired = true;
+    }
+    wasAuthenticated = appState.authenticated;
+  });
 
   function handleAuth() {
     if (tokenInput.trim()) {
       setToken(tokenInput.trim());
-      authenticated = true;
+      appState.authenticated = true;
+      sessionExpired = false;
+      startPolling();
+      connectWebSocket();
+      restoreFromURL();
     }
   }
 
   onMount(() => {
-    if (authenticated) {
+    if (appState.authenticated) {
       startPolling();
       connectWebSocket();
       restoreFromURL();
@@ -48,7 +61,7 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-{#if !authenticated}
+{#if !appState.authenticated}
   <!-- Auth gate -->
   <div class="min-h-screen bg-bg text-text font-mono flex items-center justify-center">
     <!-- Grid lines backdrop -->
@@ -64,7 +77,12 @@
       </div>
 
       <div class="p-5 space-y-4">
-        <div class="text-xs text-muted tracking-wider">AUTHENTICATION REQUIRED</div>
+        {#if sessionExpired}
+          <div class="border-2 border-danger bg-danger-bg px-3 py-2 text-xs text-danger tracking-wider">
+            SESSION EXPIRED — PLEASE RE-AUTHENTICATE
+          </div>
+        {/if}
+        <div class="text-xs text-muted-bright tracking-wider">AUTHENTICATION REQUIRED</div>
         <div class="space-y-2">
           <label for="auth-token" class="text-xs text-muted-bright block">AUTH TOKEN</label>
           <input
@@ -89,15 +107,15 @@
     <Header />
 
     <main class="flex-1 flex overflow-hidden">
-      <!-- Left: Ticket List -->
-      <div class="hidden md:flex w-64 shrink-0 border-r-2 border-border">
+      <!-- Left: Ticket List (hidden on mobile, visible tablet+) -->
+      <div class="hidden md:flex w-56 lg:w-64 shrink-0 border-r-2 border-border">
         <TicketList />
       </div>
       <div class="flex md:hidden w-full {appState.activePanel === 'tickets' ? '' : 'hidden'}">
         <TicketList />
       </div>
 
-      <!-- Center: Detail / Summary / Health -->
+      <!-- Center: Detail / Summary / Health (hidden on mobile, visible tablet+) -->
       <div class="hidden md:flex flex-1 min-w-0">
         {#if appState.activePanel === 'health'}
           <SystemHealth />
@@ -117,25 +135,26 @@
         {/if}
       </div>
 
-      <!-- Right: Live Feed -->
-      <div class="hidden md:flex shrink-0 border-l-2 border-border">
+      <!-- Right: Live Feed (hidden on mobile+tablet, visible desktop only) -->
+      <div class="hidden lg:flex shrink-0 border-l-2 border-border">
         <LiveFeed />
       </div>
-      <div class="flex md:hidden w-full {appState.activePanel === 'feed' ? '' : 'hidden'}">
+      <div class="flex lg:hidden w-full {appState.activePanel === 'feed' ? '' : 'hidden'}">
         <LiveFeed />
       </div>
     </main>
 
-    <!-- Mobile tab bar -->
-    <nav class="flex md:hidden border-t-2 border-border bg-surface" aria-label="Navigation">
+    <!-- Mobile/tablet tab bar (hidden on desktop for feed, always visible below lg for feed access) -->
+    <nav class="flex lg:hidden border-t-2 border-border bg-surface" aria-label="Navigation">
       {#each [
-        { key: 'tickets', icon: '☰', label: 'TICKETS' },
-        { key: 'detail', icon: '▶', label: 'DETAIL' },
-        { key: 'feed', icon: '⚡', label: 'FEED' },
-        { key: 'health', icon: '⚙', label: 'SYSTEM' },
+        { key: 'tickets', icon: '☰', label: 'TICKETS', hideTablet: true },
+        { key: 'detail', icon: '▶', label: 'DETAIL', hideTablet: true },
+        { key: 'feed', icon: '⚡', label: 'FEED', hideTablet: false },
+        { key: 'health', icon: '⚙', label: 'SYSTEM', hideTablet: true },
       ] as tab}
         <button
           class="flex-1 py-2.5 text-center text-xs tracking-wider transition-colors
+            {tab.hideTablet ? 'md:hidden' : ''}
             {appState.activePanel === tab.key
               ? 'text-bg bg-accent font-bold'
               : 'text-muted hover:text-text hover:bg-surface-hover'}"
@@ -153,10 +172,10 @@
         DAILY: <span class="{appState.dailyBudget > 0 && appState.dailyCost / appState.dailyBudget >= 0.8 ? 'text-danger' : 'text-accent'}">
           ${appState.dailyCost.toFixed(2)}</span>{appState.dailyBudget > 0 ? ` / $${Math.round(appState.dailyBudget)}` : ''}
       </span>
-      <span class="px-3 py-1.5 border-r border-border text-muted-bright">
+      <span class="px-3 py-1.5 border-r border-border text-muted-bright hidden lg:inline">
         WEEKLY: <span class="text-text">${appState.weeklyCost.toFixed(2)}</span>
       </span>
-      <span class="px-3 py-1.5 text-muted-bright">
+      <span class="px-3 py-1.5 text-muted-bright hidden lg:inline">
         MONTHLY: <span class="text-text">${appState.monthlyCost.toFixed(2)}</span>
         {#if appState.monthlyBudget > 0}<span class="text-muted-bright"> / ${Math.round(appState.monthlyBudget)}</span>{/if}
       </span>

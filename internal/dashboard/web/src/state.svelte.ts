@@ -1,4 +1,4 @@
-import { fetchJSON, postJSON, deleteJSON, getToken } from './api';
+import { fetchJSON, postJSON, deleteJSON, getToken, clearToken, setOnUnauthorized } from './api';
 import type {
   Ticket, TicketSummary, Task, EventRecord, LlmCallRecord,
   TeamStat, DayCost, StatusResponse,
@@ -15,6 +15,7 @@ export interface Toast {
 
 // ── Reactive State (class-based singleton to allow internal reassignment) ──
 class AppState {
+  authenticated = $state(!!getToken());
   daemonState = $state<string>('stopped');
   wsConnected = $state(false);
   whatsapp = $state<boolean | null>(null);
@@ -267,10 +268,13 @@ export function connectWebSocket() {
 
   ws.onclose = () => {
     appState.wsConnected = false;
-    setTimeout(() => {
-      reconnectDelay = Math.min(reconnectDelay * 2, 30000);
-      connectWebSocket();
-    }, reconnectDelay);
+    // Only reconnect if still authenticated
+    if (appState.authenticated && getToken()) {
+      setTimeout(() => {
+        reconnectDelay = Math.min(reconnectDelay * 2, 30000);
+        connectWebSocket();
+      }, reconnectDelay);
+    }
   };
 }
 
@@ -299,6 +303,32 @@ export function stopPolling() {
   intervals = [];
   ws?.close();
 }
+
+let loggedOut = false;
+
+export function logout() {
+  if (loggedOut) return;
+  loggedOut = true;
+  stopPolling();
+  clearToken();
+  appState.authenticated = false;
+  appState.daemonState = 'stopped';
+  appState.wsConnected = false;
+  appState.tickets = [];
+  appState.selectedTicketId = null;
+  appState.ticketDetail = null;
+  appState.ticketTasks = [];
+  appState.ticketLlmCalls = [];
+  appState.ticketEvents = [];
+  appState.events = [];
+  appState.teamStats = [];
+  appState.recentPRs = [];
+  appState.toasts = [];
+  loggedOut = false;
+}
+
+// Wire up the 401 handler
+setOnUnauthorized(logout);
 
 // ── URL State ──
 

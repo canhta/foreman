@@ -17,8 +17,12 @@ var upgrader = websocket.Upgrader{
 		if origin == "" {
 			return true // Same-origin requests may not send Origin header
 		}
-		// Allow if Origin matches the request Host
-		return strings.HasSuffix(origin, "://"+r.Host)
+		// Allow if Origin matches the request Host (production)
+		if strings.HasSuffix(origin, "://"+r.Host) {
+			return true
+		}
+		// Allow localhost origins for dev (Vite on :5173 proxying to :8080)
+		return strings.Contains(origin, "://localhost:") || strings.Contains(origin, "://127.0.0.1:")
 	},
 }
 
@@ -72,7 +76,8 @@ func (a *API) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	var respHeader http.Header
 	if proto := r.Header.Get("Sec-WebSocket-Protocol"); strings.HasPrefix(strings.ToLower(proto), "bearer.") {
-		respHeader = http.Header{"Sec-WebSocket-Protocol": []string{"bearer"}}
+		// Echo back the exact subprotocol the client offered so the browser accepts the connection
+		respHeader = http.Header{"Sec-WebSocket-Protocol": []string{proto}}
 	}
 	conn, err := upgrader.Upgrade(w, r, respHeader)
 	if err != nil {

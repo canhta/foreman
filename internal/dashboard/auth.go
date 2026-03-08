@@ -2,17 +2,11 @@ package dashboard
 
 import (
 	"context"
-	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"net/http"
 	"strings"
 )
-
-// tokenSalt is a constant salt prepended before hashing auth tokens.
-// Using HMAC-SHA256 with this key prevents rainbow table attacks against
-// the stored token hashes.
-const tokenSalt = "foreman-auth-token-v1"
 
 // AuthValidator is a subset of db.Database for token validation.
 type AuthValidator interface {
@@ -20,9 +14,8 @@ type AuthValidator interface {
 }
 
 func hashToken(token string) string {
-	mac := hmac.New(sha256.New, []byte(tokenSalt))
-	mac.Write([]byte(token))
-	return hex.EncodeToString(mac.Sum(nil))
+	h := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(h[:])
 }
 
 func extractBearerToken(r *http.Request) string {
