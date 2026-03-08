@@ -102,6 +102,8 @@ func (a *API) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 // enrichedEvent is the WebSocket payload with ticket context.
 // ticket_title is a snapshot at event time — titles rarely change.
+//
+//nolint:govet // fieldalignment: embedding EventRecord first prioritises readability
 type enrichedEvent struct {
 	models.EventRecord
 	TicketTitle string `json:"ticket_title"`

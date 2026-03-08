@@ -28,6 +28,7 @@ type EventEmitter struct {
 	mu             sync.RWMutex
 	droppedCount   int64              // accessed atomically (ARCH-O03)
 	droppedCounter prometheus.Counter // optional Prometheus counter (ARCH-O03)
+	seq            int64              // monotonic sequence number for WebSocket gap detection
 }
 
 // NewEventEmitter creates a new EventEmitter backed by the given store.
@@ -82,6 +83,8 @@ func (e *EventEmitter) Emit(ctx context.Context, ticketID, taskID, eventType, se
 	if err := e.store.RecordEvent(ctx, evt); err != nil {
 		log.Error().Err(err).Str("ticket_id", ticketID).Str("event_type", eventType).Msg("failed to record event")
 	}
+
+	evt.Seq = atomic.AddInt64(&e.seq, 1)
 
 	e.mu.RLock()
 	defer e.mu.RUnlock()

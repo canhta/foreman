@@ -122,6 +122,7 @@ type EventRecord struct {
 	Severity  string
 	Message   string
 	Details   string
+	Seq       int64 `json:"seq,omitempty"`
 }
 
 type TicketFilter struct {
