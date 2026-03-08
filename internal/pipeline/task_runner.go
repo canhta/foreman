@@ -322,14 +322,14 @@ func (r *PipelineTaskRunner) RunTask(ctx context.Context, task *models.Task) err
 
 	// All retries exhausted.
 	_ = r.db.UpdateTaskStatus(ctx, task.ID, models.TaskStatusFailed)
+	feedbackText := feedback.Render()
 	if r.metrics != nil {
-		feedbackText := feedback.Render()
 		errType := string(ClassifyRetryError(feedbackText))
 		r.metrics.TaskFailuresTotal.WithLabelValues(errType, "builtin").Inc()
 	}
 	// Write context feedback on failure too, so the system can learn from missed files.
 	r.writeContextFeedback(ctx, task, nil, nil)
-	return fmt.Errorf("task %q failed after %d attempts", task.Title, r.config.MaxImplementationRetries+1)
+	return fmt.Errorf("task %q failed after %d attempts: %s", task.Title, r.config.MaxImplementationRetries+1, feedbackText)
 }
 
 // reviewRejectedError is an internal sentinel for review rejection (triggers retry).

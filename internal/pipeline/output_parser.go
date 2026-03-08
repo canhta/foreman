@@ -26,12 +26,15 @@ type SearchReplace struct {
 }
 
 var (
-	newFileRe    = regexp.MustCompile(`===\s*NEW FILE:\s*(.+?)\s*===`)
-	modifyFileRe = regexp.MustCompile(`===\s*MODIFY FILE:\s*(.+?)\s*===`)
-	endFileRe    = regexp.MustCompile(`===\s*END FILE\s*===`)
-	searchRe     = regexp.MustCompile(`<<<<\s*SEARCH`)
-	replaceRe    = regexp.MustCompile(`<<<<\s*REPLACE`)
-	endBlockRe   = regexp.MustCompile(`>>>>`)
+	newFileRe     = regexp.MustCompile(`^\s*===\s*NEW FILE:\s*(.+?)\s*===\s*$`)
+	newFileDashRe = regexp.MustCompile(`^\s*---\s*NEW FILE\s+(.+?)\s*---\s*$`)
+	modifyFileRe  = regexp.MustCompile(`^\s*===\s*MODIFY FILE:\s*(.+?)\s*===\s*$`)
+	modifyDashRe  = regexp.MustCompile(`^\s*---\s*MODIFY FILE\s+(.+?)\s*---\s*$`)
+	endFileRe     = regexp.MustCompile(`^\s*===\s*END FILE\s*===\s*$`)
+	endFileDashRe = regexp.MustCompile(`^\s*---\s*END FILE\s*---\s*$`)
+	searchRe      = regexp.MustCompile(`<<<<\s*SEARCH`)
+	replaceRe     = regexp.MustCompile(`<<<<\s*REPLACE|====\s*REPLACE`)
+	endBlockRe    = regexp.MustCompile(`>>>>`)
 )
 
 func ParseImplementerOutput(raw string, similarityThreshold float64) (*ParsedOutput, error) {
@@ -59,11 +62,10 @@ func parseStrict(raw string) (*ParsedOutput, error) {
 	for i < len(lines) {
 		line := lines[i]
 
-		if m := newFileRe.FindStringSubmatch(line); m != nil {
-			path := strings.TrimSpace(m[1])
+		if path, ok := parseNewFileHeader(line); ok {
 			i++
 			var contentLines []string
-			for i < len(lines) && !endFileRe.MatchString(lines[i]) {
+			for i < len(lines) && !isEndFileLine(lines[i]) {
 				contentLines = append(contentLines, lines[i])
 				i++
 			}
@@ -78,11 +80,10 @@ func parseStrict(raw string) (*ParsedOutput, error) {
 			continue
 		}
 
-		if m := modifyFileRe.FindStringSubmatch(line); m != nil {
-			path := strings.TrimSpace(m[1])
+		if path, ok := parseModifyFileHeader(line); ok {
 			i++
 			var patches []SearchReplace
-			for i < len(lines) && !endFileRe.MatchString(lines[i]) {
+			for i < len(lines) && !isEndFileLine(lines[i]) {
 				if searchRe.MatchString(lines[i]) {
 					i++
 					var searchLines []string
@@ -147,6 +148,30 @@ func stripMarkdownFences(raw string) string {
 		result = append(result, line)
 	}
 	return strings.Join(result, "\n")
+}
+
+func parseNewFileHeader(line string) (string, bool) {
+	if m := newFileRe.FindStringSubmatch(line); m != nil {
+		return strings.TrimSpace(m[1]), true
+	}
+	if m := newFileDashRe.FindStringSubmatch(line); m != nil {
+		return strings.TrimSpace(m[1]), true
+	}
+	return "", false
+}
+
+func parseModifyFileHeader(line string) (string, bool) {
+	if m := modifyFileRe.FindStringSubmatch(line); m != nil {
+		return strings.TrimSpace(m[1]), true
+	}
+	if m := modifyDashRe.FindStringSubmatch(line); m != nil {
+		return strings.TrimSpace(m[1]), true
+	}
+	return "", false
+}
+
+func isEndFileLine(line string) bool {
+	return endFileRe.MatchString(line) || endFileDashRe.MatchString(line)
 }
 
 // ApplySearchReplace applies a search/replace patch to file content.
