@@ -13,4 +13,30 @@
   --color-success: #00CC66;
   --color-warning: #FFB020;
   --font-family-mono: "JetBrains Mono", "SF Mono", "Fira Code", "Cascadia Code", ui-monospace, monospace;
+  --animate-fade-in: fade-in 0.3s ease-out;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Base styles */
+body {
+  @apply bg-bg text-text font-mono m-0 p-0;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--color-bg); }
+::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-muted); }
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
