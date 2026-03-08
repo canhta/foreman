@@ -8,7 +8,7 @@ import (
 
 func TestCalculateCost(t *testing.T) {
 	pricing := map[string]models.PricingConfig{
-		"anthropic:claude-sonnet-4-5-20250929": {Input: 3.00, Output: 15.00},
+		"anthropic:claude-sonnet-4-6": {Input: 3.00, Output: 15.00},
 	}
 
 	tests := []struct {
@@ -20,7 +20,7 @@ func TestCalculateCost(t *testing.T) {
 	}{
 		{
 			name:         "basic cost calculation",
-			model:        "anthropic:claude-sonnet-4-5-20250929",
+			model:        "anthropic:claude-sonnet-4-6",
 			tokensInput:  1000,
 			tokensOutput: 500,
 			wantCost:     0.0105, // (1000/1M)*3.00 + (500/1M)*15.00

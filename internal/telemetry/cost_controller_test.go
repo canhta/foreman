@@ -70,11 +70,11 @@ func TestCostController_CheckMonthlyBudget(t *testing.T) {
 func TestCostController_CalculateCost(t *testing.T) {
 	cc := NewCostController(models.CostConfig{
 		Pricing: map[string]models.PricingConfig{
-			"anthropic:claude-sonnet-4-5-20250929": {Input: 3.0, Output: 15.0},
+			"anthropic:claude-sonnet-4-6": {Input: 3.0, Output: 15.0},
 		},
 	})
 
-	cost := cc.CalculateCost("anthropic:claude-sonnet-4-5-20250929", 10000, 2000)
+	cost := cc.CalculateCost("anthropic:claude-sonnet-4-6", 10000, 2000)
 	// (10000/1M)*3.0 + (2000/1M)*15.0 = 0.03 + 0.03 = 0.06
 	require.InDelta(t, 0.06, cost, 0.001)
 }

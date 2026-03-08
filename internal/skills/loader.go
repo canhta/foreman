@@ -19,9 +19,12 @@ type Skill struct {
 }
 
 // SkillStepThinking holds extended thinking configuration in skill YAML.
+// Use adaptive=true for Opus 4.6 / Sonnet 4.6 (no budget_tokens needed).
+// Use enabled=true with budget_tokens for older models.
 type SkillStepThinking struct {
 	Enabled      bool `yaml:"enabled"`
-	BudgetTokens int  `yaml:"budget_tokens"`
+	Adaptive     bool `yaml:"adaptive,omitempty"`
+	BudgetTokens int  `yaml:"budget_tokens,omitempty"`
 }
 
 // SkillStep is one step within a skill.

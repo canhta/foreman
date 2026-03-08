@@ -71,12 +71,12 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("llm.outage.max_connection_retries", 3)
 	v.SetDefault("llm.outage.connection_retry_delay_secs", 30)
 
-	v.SetDefault("models.planner", "anthropic:claude-sonnet-4-5-20250929")
-	v.SetDefault("models.implementer", "anthropic:claude-sonnet-4-5-20250929")
-	v.SetDefault("models.spec_reviewer", "anthropic:claude-haiku-4-5-20251001")
-	v.SetDefault("models.quality_reviewer", "anthropic:claude-haiku-4-5-20251001")
-	v.SetDefault("models.final_reviewer", "anthropic:claude-sonnet-4-5-20250929")
-	v.SetDefault("models.clarifier", "anthropic:claude-haiku-4-5-20251001")
+	v.SetDefault("models.planner", "anthropic:claude-sonnet-4-6")
+	v.SetDefault("models.implementer", "anthropic:claude-sonnet-4-6")
+	v.SetDefault("models.spec_reviewer", "anthropic:claude-haiku-4-5")
+	v.SetDefault("models.quality_reviewer", "anthropic:claude-haiku-4-5")
+	v.SetDefault("models.final_reviewer", "anthropic:claude-sonnet-4-6")
+	v.SetDefault("models.clarifier", "anthropic:claude-haiku-4-5")
 
 	v.SetDefault("cost.max_cost_per_ticket_usd", 15.0)
 	v.SetDefault("cost.max_cost_per_day_usd", 150.0)

@@ -133,11 +133,19 @@ func (e *Engine) executeLLMCall(ctx context.Context, step SkillStep, sCtx *Skill
 		prompt = fmt.Sprintf("Execute skill step: %s", step.ID)
 	}
 
-	resp, err := e.llm.Complete(ctx, models.LlmRequest{
+	req := models.LlmRequest{
 		Model:      step.Model,
 		UserPrompt: prompt,
 		MaxTokens:  4096,
-	})
+	}
+	if t := step.Thinking; t != nil && (t.Enabled || t.Adaptive) {
+		req.Thinking = &models.ThinkingConfig{
+			Enabled:      t.Enabled,
+			Adaptive:     t.Adaptive,
+			BudgetTokens: t.BudgetTokens,
+		}
+	}
+	resp, err := e.llm.Complete(ctx, req)
 	if err != nil {
 		return nil, err
 	}

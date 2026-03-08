@@ -28,7 +28,7 @@ func TestMetricsRecordLlmCall(t *testing.T) {
 	reg := prometheus.NewRegistry()
 	m := NewMetrics(reg)
 
-	m.RecordLlmCall("implementer", "anthropic:claude-sonnet-4-5-20250929", "success", 1000, 500, 0.015, 2500)
+	m.RecordLlmCall("implementer", "anthropic:claude-sonnet-4-6", "success", 1000, 500, 0.015, 2500)
 
 	families, _ := reg.Gather()
 	found := false

@@ -78,9 +78,12 @@ type Message struct {
 }
 
 // ThinkingConfig enables extended thinking for supported models.
+// For Opus 4.6 / Sonnet 4.6 set Adaptive=true (no BudgetTokens needed).
+// For older models set Enabled=true with BudgetTokens (minimum 1024, must be < MaxTokens).
 type ThinkingConfig struct {
 	Enabled      bool `json:"enabled"`
-	BudgetTokens int  `json:"budget_tokens"` // e.g. 10000
+	Adaptive     bool `json:"adaptive,omitempty"`
+	BudgetTokens int  `json:"budget_tokens,omitempty"` // only for Enabled (legacy) mode
 }
 
 // LlmRequest holds the parameters for a single stateless LLM call.

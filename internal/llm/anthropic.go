@@ -53,8 +53,8 @@ type anthropicToolChoice struct {
 }
 
 type anthropicThinking struct {
-	Type         string `json:"type"` // "enabled"
-	BudgetTokens int    `json:"budget_tokens"`
+	Type         string `json:"type"`                    // "enabled" or "adaptive"
+	BudgetTokens int    `json:"budget_tokens,omitempty"` // only for "enabled" mode
 }
 
 type anthropicSystemBlock struct {
@@ -134,7 +134,7 @@ type anthropicToolUseBlock struct {
 
 func (p *AnthropicProvider) Complete(ctx context.Context, req models.LlmRequest) (*models.LlmResponse, error) {
 	body := anthropicRequest{
-		Model:       resolveModel(req.Model, "claude-3-5-haiku-20241022"),
+		Model:       resolveModel(req.Model, "claude-haiku-4-5"),
 		MaxTokens:   req.MaxTokens,
 		Temperature: req.Temperature,
 		Stop:        req.StopSequences,
@@ -152,10 +152,16 @@ func (p *AnthropicProvider) Complete(ctx context.Context, req models.LlmRequest)
 	}
 
 	// Extended thinking
-	if req.Thinking != nil && req.Thinking.Enabled {
-		body.Thinking = &anthropicThinking{
-			Type:         "enabled",
-			BudgetTokens: req.Thinking.BudgetTokens,
+	if req.Thinking != nil && (req.Thinking.Enabled || req.Thinking.Adaptive) {
+		if req.Thinking.Adaptive {
+			// Opus 4.6 / Sonnet 4.6: adaptive thinking, no budget_tokens
+			body.Thinking = &anthropicThinking{Type: "adaptive"}
+		} else {
+			// Legacy models: fixed budget_tokens required
+			body.Thinking = &anthropicThinking{
+				Type:         "enabled",
+				BudgetTokens: req.Thinking.BudgetTokens,
+			}
 		}
 		// Thinking requires temperature=1; silence temperature when thinking is on
 		body.Temperature = 0
@@ -343,7 +349,7 @@ func parseAnthropicResponse(resp anthropicResponse, durationMs int64) *models.Ll
 
 func (p *AnthropicProvider) HealthCheck(ctx context.Context) error {
 	_, err := p.Complete(ctx, models.LlmRequest{
-		Model:      "claude-haiku-4-5-20251001",
+		Model:      "claude-haiku-4-5",
 		UserPrompt: "ping",
 		MaxTokens:  5,
 	})

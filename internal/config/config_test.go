@@ -244,7 +244,7 @@ func TestBuiltinRunnerConfig_ModelField(t *testing.T) {
 type = "builtin"
 
 [skills.agent_runner.builtin]
-model = "claude-3-5-sonnet-20241022"
+model = "claude-sonnet-4-6"
 `), 0644)
 		if err != nil {
 			t.Fatal(err)
@@ -255,8 +255,8 @@ model = "claude-3-5-sonnet-20241022"
 			t.Fatalf("LoadFromFile: %v", err)
 		}
 
-		if cfg.Skills.AgentRunner.Builtin.Model != "claude-3-5-sonnet-20241022" {
-			t.Errorf("expected model=claude-3-5-sonnet-20241022, got %q",
+		if cfg.Skills.AgentRunner.Builtin.Model != "claude-sonnet-4-6" {
+			t.Errorf("expected model=claude-sonnet-4-6, got %q",
 				cfg.Skills.AgentRunner.Builtin.Model)
 		}
 	})

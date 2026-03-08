@@ -28,7 +28,7 @@ func TestAnthropicProvider_Complete(t *testing.T) {
 			"content": []map[string]interface{}{
 				{"type": "text", "text": "Hello from Claude"},
 			},
-			"model":       "claude-sonnet-4-5-20250929",
+			"model":       "claude-sonnet-4-6",
 			"stop_reason": "end_turn",
 			"usage": map[string]interface{}{
 				"input_tokens":  100,
@@ -42,7 +42,7 @@ func TestAnthropicProvider_Complete(t *testing.T) {
 
 	provider := NewAnthropicProvider("test-key", server.URL)
 	resp, err := provider.Complete(context.Background(), models.LlmRequest{
-		Model:        "claude-sonnet-4-5-20250929",
+		Model:        "claude-sonnet-4-6",
 		SystemPrompt: "You are helpful.",
 		UserPrompt:   "Say hello",
 		MaxTokens:    1024,
@@ -108,7 +108,7 @@ func TestAnthropicProvider_Complete_WithTools(t *testing.T) {
 					"input": map[string]string{"path": "main.go"},
 				},
 			},
-			"model":       "claude-sonnet-4-5-20250929",
+			"model":       "claude-sonnet-4-6",
 			"stop_reason": "tool_use",
 			"usage": map[string]interface{}{
 				"input_tokens":  100,
@@ -121,7 +121,7 @@ func TestAnthropicProvider_Complete_WithTools(t *testing.T) {
 
 	provider := NewAnthropicProvider("test-key", server.URL)
 	result, err := provider.Complete(context.Background(), models.LlmRequest{
-		Model: "claude-sonnet-4-5-20250929",
+		Model: "claude-sonnet-4-6",
 		Messages: []models.Message{
 			{Role: "user", Content: "Read main.go"},
 		},
@@ -166,7 +166,7 @@ func TestAnthropicProvider_Complete_WithToolResults(t *testing.T) {
 			"content": []map[string]interface{}{
 				{"type": "text", "text": "The file contains a Go program."},
 			},
-			"model":       "claude-sonnet-4-5-20250929",
+			"model":       "claude-sonnet-4-6",
 			"stop_reason": "end_turn",
 			"usage": map[string]interface{}{
 				"input_tokens":  200,
@@ -179,7 +179,7 @@ func TestAnthropicProvider_Complete_WithToolResults(t *testing.T) {
 
 	provider := NewAnthropicProvider("test-key", server.URL)
 	result, err := provider.Complete(context.Background(), models.LlmRequest{
-		Model: "claude-sonnet-4-5-20250929",
+		Model: "claude-sonnet-4-6",
 		Messages: []models.Message{
 			{Role: "user", Content: "Read main.go"},
 			{Role: "assistant", ToolCalls: []models.ToolCall{
@@ -232,7 +232,7 @@ func TestAnthropicProvider_StructuredOutput(t *testing.T) {
 					"input": map[string]string{"severity": "high", "summary": "Issue found"},
 				},
 			},
-			"model":       "claude-sonnet-4-5-20250929",
+			"model":       "claude-sonnet-4-6",
 			"stop_reason": "tool_use",
 			"usage":       map[string]interface{}{"input_tokens": 50, "output_tokens": 20},
 		}
@@ -243,7 +243,7 @@ func TestAnthropicProvider_StructuredOutput(t *testing.T) {
 	schema := json.RawMessage(`{"type":"object","properties":{"severity":{"type":"string"},"summary":{"type":"string"}}}`)
 	provider := NewAnthropicProvider("test-key", server.URL)
 	resp, err := provider.Complete(context.Background(), models.LlmRequest{
-		Model:        "claude-sonnet-4-5-20250929",
+		Model:        "claude-sonnet-4-6",
 		UserPrompt:   "Analyze this",
 		MaxTokens:    1024,
 		OutputSchema: &schema,
@@ -274,8 +274,11 @@ func TestAnthropicProvider_Thinking(t *testing.T) {
 		if !ok {
 			t.Error("expected thinking in request")
 		}
-		if thinking["type"] != "enabled" {
+		if thinking["type"] != "adaptive" {
 			t.Errorf("unexpected thinking type: %v", thinking["type"])
+		}
+		if _, present := thinking["budget_tokens"]; present {
+			t.Error("budget_tokens must not be sent for adaptive thinking")
 		}
 
 		// Return response with thinking block + text
@@ -287,7 +290,7 @@ func TestAnthropicProvider_Thinking(t *testing.T) {
 				{"type": "thinking", "thinking": "Let me reason through this..."},
 				{"type": "text", "text": "The answer is 42."},
 			},
-			"model":       "claude-sonnet-4-5-20250929",
+			"model":       "claude-sonnet-4-6",
 			"stop_reason": "end_turn",
 			"usage":       map[string]interface{}{"input_tokens": 100, "output_tokens": 50},
 		}
@@ -297,10 +300,10 @@ func TestAnthropicProvider_Thinking(t *testing.T) {
 
 	provider := NewAnthropicProvider("test-key", server.URL)
 	resp, err := provider.Complete(context.Background(), models.LlmRequest{
-		Model:      "claude-sonnet-4-5-20250929",
+		Model:      "claude-sonnet-4-6",
 		UserPrompt: "What is the answer?",
 		MaxTokens:  1024,
-		Thinking:   &models.ThinkingConfig{Enabled: true, BudgetTokens: 5000},
+		Thinking:   &models.ThinkingConfig{Adaptive: true},
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -340,7 +343,7 @@ func TestAnthropicProvider_PromptCaching(t *testing.T) {
 			"content": []map[string]interface{}{
 				{"type": "text", "text": "cached response"},
 			},
-			"model":       "claude-sonnet-4-5-20250929",
+			"model":       "claude-sonnet-4-6",
 			"stop_reason": "end_turn",
 			"usage": map[string]interface{}{
 				"input_tokens":                50,
@@ -355,7 +358,7 @@ func TestAnthropicProvider_PromptCaching(t *testing.T) {
 
 	provider := NewAnthropicProvider("test-key", server.URL)
 	resp, err := provider.Complete(context.Background(), models.LlmRequest{
-		Model:             "claude-sonnet-4-5-20250929",
+		Model:             "claude-sonnet-4-6",
 		SystemPrompt:      "Large system prompt to cache",
 		UserPrompt:        "Hello",
 		MaxTokens:         1024,
@@ -376,7 +379,7 @@ func TestAnthropicProvider_Thinking_TemperatureOmitted(t *testing.T) {
 		resp := map[string]interface{}{
 			"id": "msg_think", "type": "message", "role": "assistant",
 			"content":     []map[string]interface{}{{"type": "text", "text": "ok"}},
-			"model":       "claude-sonnet-4-5-20250929",
+			"model":       "claude-sonnet-4-6",
 			"stop_reason": "end_turn",
 			"usage":       map[string]interface{}{"input_tokens": 10, "output_tokens": 5},
 		}
@@ -386,7 +389,7 @@ func TestAnthropicProvider_Thinking_TemperatureOmitted(t *testing.T) {
 
 	provider := NewAnthropicProvider("test-key", server.URL)
 	_, err := provider.Complete(context.Background(), models.LlmRequest{
-		Model:       "claude-sonnet-4-5-20250929",
+		Model:       "claude-sonnet-4-6",
 		UserPrompt:  "hi",
 		MaxTokens:   2048,
 		Temperature: 0.7, // caller sets a temperature; thinking must override it
@@ -421,7 +424,7 @@ func TestAnthropicProvider_ServerOverload(t *testing.T) {
 
 	provider := NewAnthropicProvider("test-key", server.URL)
 	_, err := provider.Complete(context.Background(), models.LlmRequest{
-		Model: "claude-sonnet-4-5-20250929", UserPrompt: "hi", MaxTokens: 10,
+		Model: "claude-sonnet-4-6", UserPrompt: "hi", MaxTokens: 10,
 	})
 	if _, ok := err.(*ServerOverloadError); !ok {
 		t.Errorf("expected ServerOverloadError for 529, got %T: %v", err, err)
