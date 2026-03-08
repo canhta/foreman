@@ -33,9 +33,12 @@
 </script>
 
 <div class="border border-border {isActive ? 'border-l-2 border-l-accent' : ''} {task.Status === 'failed' ? 'border-l-2 border-l-danger' : ''}">
-  <button
+  <div
     class="w-full text-left px-3 py-2 hover:bg-surface-hover flex items-center gap-2 cursor-pointer"
     onclick={toggle}
+    onkeydown={(e) => e.key === 'Enter' && toggle()}
+    role="button"
+    tabindex="0"
     aria-expanded={expanded}
   >
     <span class="{statusColor()} {isActive ? 'animate-pulse' : ''}">{taskIcon(task.Status)}</span>
@@ -44,7 +47,7 @@
     {#if task.Status === 'failed'}
       <button class="text-xs text-danger hover:text-text" onclick={handleRetry}>[retry]</button>
     {/if}
-  </button>
+  </div>
 
   {#if expanded}
     <div class="px-3 py-2 border-t border-border text-xs space-y-1 bg-bg">
