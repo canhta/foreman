@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/canhta/foreman/internal/agent/mcp"
@@ -9,6 +10,7 @@ import (
 	"github.com/canhta/foreman/internal/llm"
 	"github.com/canhta/foreman/internal/models"
 	"github.com/canhta/foreman/internal/runner"
+	"github.com/canhta/foreman/internal/telemetry"
 )
 
 // NewAgentRunner creates the configured agent runner.
@@ -18,6 +20,7 @@ import (
 // builtin runner's tool registry.
 // mcpMgr is optional; when non-nil it is wired into the builtin runner's
 // tool registry so that ListMCPTools returns the populated cache.
+// metrics is optional; when non-nil, built-in tool calls are instrumented.
 func NewAgentRunner(
 	cfg models.AgentRunnerConfig,
 	cmdRunner runner.CommandRunner,
@@ -26,10 +29,12 @@ func NewAgentRunner(
 	database db.Database,
 	llmCfg models.LLMConfig,
 	mcpMgr *mcp.Manager,
+	metrics *telemetry.Metrics,
 ) (AgentRunner, error) {
 	switch cfg.Provider {
 	case "builtin", "":
-		reg := tools.NewRegistryWithMCP(nil, cmdRunner, tools.ToolHooks{}, mcpMgr)
+		hooks := buildToolHooks(metrics)
+		reg := tools.NewRegistryWithMCP(nil, cmdRunner, hooks, mcpMgr)
 		embedder := llm.NewEmbedder(llmCfg)
 		reg.WithSemanticSearch(embedder, database)
 		builtinRunner := NewBuiltinRunner(llmProvider, agentModel, BuiltinConfig{
@@ -66,5 +71,22 @@ func NewAgentRunner(
 			"unknown agent runner provider %q — valid: builtin, claudecode, copilot",
 			cfg.Provider,
 		)
+	}
+}
+
+// buildToolHooks constructs ToolHooks that record built-in tool call metrics.
+// When metrics is nil, empty hooks are returned.
+func buildToolHooks(metrics *telemetry.Metrics) tools.ToolHooks {
+	if metrics == nil {
+		return tools.ToolHooks{}
+	}
+	return tools.ToolHooks{
+		PostToolUse: func(_ context.Context, name, _ string, err error) {
+			status := "success"
+			if err != nil {
+				status = "error"
+			}
+			metrics.BuiltinToolCallsTotal.WithLabelValues(name, status).Inc()
+		},
 	}
 }

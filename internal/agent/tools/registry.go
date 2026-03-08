@@ -92,6 +92,9 @@ func (r *Registry) Execute(ctx context.Context, workDir, name string, input json
 		}
 		return "", fmt.Errorf("unknown tool: %s", name)
 	}
+	if err := validateRequiredFields(t.Schema(), input); err != nil {
+		return "", err
+	}
 	if r.hooks.PreToolUse != nil {
 		if err := r.hooks.PreToolUse(ctx, name, input); err != nil {
 			return "", err
@@ -105,6 +108,8 @@ func (r *Registry) Execute(ctx context.Context, workDir, name string, input json
 }
 
 // Defs returns ToolDef slices for the named tools, in request order. Unknown names are skipped.
+// When an MCP manager is configured, all cached MCP tool defs are appended automatically
+// so the LLM always sees MCP tool schemas without the caller needing to enumerate them.
 func (r *Registry) Defs(names []string) []models.ToolDef {
 	var defs []models.ToolDef
 	for _, name := range names {
@@ -118,7 +123,32 @@ func (r *Registry) Defs(names []string) []models.ToolDef {
 			InputSchema: t.Schema(),
 		})
 	}
+	if r.mcpMgr != nil {
+		defs = append(defs, r.mcpMgr.CachedToolDefs()...)
+	}
 	return defs
+}
+
+// validateRequiredFields checks that all fields listed in schema's "required"
+// array are present in input. It is a lightweight pre-execution guard — it does
+// not perform type checking or enum validation.
+func validateRequiredFields(schema, input json.RawMessage) error {
+	var s struct {
+		Required []string `json:"required"`
+	}
+	if err := json.Unmarshal(schema, &s); err != nil || len(s.Required) == 0 {
+		return nil
+	}
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(input, &obj); err != nil {
+		return fmt.Errorf("invalid input JSON: %w", err)
+	}
+	for _, field := range s.Required {
+		if _, ok := obj[field]; !ok {
+			return fmt.Errorf("missing required field %q", field)
+		}
+	}
+	return nil
 }
 
 // Has reports whether the named tool is registered.

@@ -46,7 +46,10 @@ type AgentEvent struct {
 
 // AgentRequest defines the input for a single agent task.
 type AgentRequest struct {
-	OnProgress      func(AgentEvent)
+	OnProgress func(AgentEvent)
+	// Thinking configures adaptive or extended thinking for the builtin runner.
+	// ClaudeCode and Copilot runners ignore this field (thinking is model-managed).
+	Thinking        *models.ThinkingConfig
 	Prompt          string
 	SystemPrompt    string
 	WorkDir         string
@@ -54,9 +57,6 @@ type AgentRequest struct {
 	AllowedTools    []string
 	OutputSchema    json.RawMessage
 	MCPServers      []mcp.MCPServerConfig
-	// Thinking configures adaptive or extended thinking for the builtin runner.
-	// ClaudeCode and Copilot runners ignore this field (thinking is model-managed).
-	Thinking        *models.ThinkingConfig
 	MaxTurns        int
 	TimeoutSecs     int
 	AgentDepth      int

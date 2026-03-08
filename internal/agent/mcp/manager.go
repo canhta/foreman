@@ -55,6 +55,7 @@ type Manager struct {
 	clients          map[string]Client
 	metrics          *telemetry.Metrics
 	toolCache        []MCPToolSummary
+	toolDefCache     []models.ToolDef
 	mu               sync.RWMutex
 	resourceMaxBytes int // 0 = use default (512 KB)
 }
@@ -208,12 +209,14 @@ func (m *Manager) ListToolSummaries() []MCPToolSummary {
 // Safe for concurrent use.
 func (m *Manager) CacheToolSummaries(ctx context.Context) {
 	var summaries []MCPToolSummary
+	var allDefs []models.ToolDef
 	for serverName, c := range m.clients {
 		toolDefs, err := c.ListTools(ctx)
 		if err != nil {
 			log.Warn().Err(err).Str("server", serverName).Msg("mcp: CacheToolSummaries: ListTools failed")
 			continue
 		}
+		allDefs = append(allDefs, toolDefs...)
 		for _, td := range toolDefs {
 			// td.Name is already the normalized form (MCPToolName(server, tool))
 			// We reverse-derive the original name by stripping the server prefix.
@@ -233,9 +236,26 @@ func (m *Manager) CacheToolSummaries(ctx context.Context) {
 	if summaries == nil {
 		summaries = []MCPToolSummary{}
 	}
+	if allDefs == nil {
+		allDefs = []models.ToolDef{}
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.toolCache = summaries
+	m.toolDefCache = allDefs
+}
+
+// CachedToolDefs returns the full ToolDef list (including input schemas) for all
+// MCP tools cached by the last CacheToolSummaries call.
+// Returns an empty (non-nil) slice when no tools are cached.
+// Safe for concurrent use.
+func (m *Manager) CachedToolDefs() []models.ToolDef {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if m.toolDefCache == nil {
+		return []models.ToolDef{}
+	}
+	return m.toolDefCache
 }
 
 // defaultResourceMaxBytes is the default maximum resource response size (512 KB).

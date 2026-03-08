@@ -340,7 +340,7 @@ func TestNewAgentRunner_BuiltinConfigModelOverride(t *testing.T) {
 		},
 	}
 
-	agentRunner, err := NewAgentRunner(cfg, nil, mockLLM, "default-agent-model", nil, models.LLMConfig{}, nil)
+	agentRunner, err := NewAgentRunner(cfg, nil, mockLLM, "default-agent-model", nil, models.LLMConfig{}, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -373,7 +373,7 @@ func TestNewAgentRunner_BuiltinFallsBackToAgentModel(t *testing.T) {
 		},
 	}
 
-	agentRunner, err := NewAgentRunner(cfg, nil, mockLLM, "default-agent-model", nil, models.LLMConfig{}, nil)
+	agentRunner, err := NewAgentRunner(cfg, nil, mockLLM, "default-agent-model", nil, models.LLMConfig{}, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

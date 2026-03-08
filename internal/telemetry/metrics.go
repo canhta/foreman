@@ -40,11 +40,12 @@ type Metrics struct {
 
 	AnthropicCacheSavingsTotal prometheus.Counter
 
-	TaskFailuresTotal    *prometheus.CounterVec // labels: error_type, runner
-	RetryTriggeredTotal  *prometheus.CounterVec // labels: stage, error_type
-	PlanConfidenceScore  prometheus.Histogram
-	ContextCacheHitRatio prometheus.Gauge
-	MCPToolCallsTotal    *prometheus.CounterVec // labels: server, tool, status
+	TaskFailuresTotal     *prometheus.CounterVec // labels: error_type, runner
+	RetryTriggeredTotal   *prometheus.CounterVec // labels: stage, error_type
+	PlanConfidenceScore   prometheus.Histogram
+	ContextCacheHitRatio  prometheus.Gauge
+	MCPToolCallsTotal     *prometheus.CounterVec // labels: server, tool, status
+	BuiltinToolCallsTotal *prometheus.CounterVec // labels: tool, status
 
 	EventsDroppedTotal prometheus.Counter // total event deliveries dropped to slow subscribers (ARCH-O03)
 }
@@ -188,6 +189,10 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 			Name: "foreman_mcp_tool_calls_total",
 			Help: "Total number of MCP tool calls by server, tool name, and status.",
 		}, []string{"server", "tool", "status"}),
+		BuiltinToolCallsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "foreman_builtin_tool_calls_total",
+			Help: "Total number of built-in tool calls by tool name and status.",
+		}, []string{"tool", "status"}),
 		EventsDroppedTotal: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "foreman_events_dropped_total",
 			Help: "Total event deliveries dropped due to slow WebSocket subscribers (ARCH-O03).",
@@ -207,7 +212,7 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 		m.DAGTasksCompleted, m.DAGTasksFailed, m.DAGTasksSkipped, m.DAGDuration,
 		m.AnthropicCacheSavingsTotal,
 		m.TaskFailuresTotal, m.RetryTriggeredTotal, m.PlanConfidenceScore,
-		m.ContextCacheHitRatio, m.MCPToolCallsTotal,
+		m.ContextCacheHitRatio, m.MCPToolCallsTotal, m.BuiltinToolCallsTotal,
 		m.EventsDroppedTotal,
 	)
 
