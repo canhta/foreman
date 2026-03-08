@@ -15,18 +15,17 @@
 
   $effect(() => {
     if (autoScroll && container && events.length) {
-      container.scrollTop = 0; // Events prepend, so scroll to top
+      container.scrollTop = 0;
     }
   });
 
   function eventLabel(evt: EventRecord): string {
-    // Derive human-readable labels from event types
     const type = evt.EventType;
     if (type === 'planning_started') return 'Planning started';
     if (type === 'planning_complete') return 'Planning complete';
-    if (type === 'task_started') return `Task started`;
-    if (type === 'task_completed') return `Task completed`;
-    if (type === 'task_failed') return `Task failed`;
+    if (type === 'task_started') return 'Task started';
+    if (type === 'task_completed') return 'Task completed';
+    if (type === 'task_failed') return 'Task failed';
     if (type === 'tests_passed') return 'Tests passed';
     if (type === 'tests_failed') return 'Tests failed';
     if (type === 'pr_created') return 'PR created';
@@ -44,59 +43,74 @@
     if (!details) return null;
     try { return JSON.parse(details); } catch { return null; }
   }
+
+  function severityLeft(severity: string): string {
+    if (severity === 'error') return 'border-l-4 border-l-danger bg-danger-bg';
+    if (severity === 'success') return 'border-l-4 border-l-success';
+    if (severity === 'warning') return 'border-l-4 border-l-warning bg-warning-bg';
+    return 'border-l-4 border-l-border';
+  }
+
+  function severityTextCls(severity: string): string {
+    if (severity === 'error') return 'text-danger';
+    if (severity === 'success') return 'text-success';
+    if (severity === 'warning') return 'text-warning';
+    return 'text-muted-bright';
+  }
 </script>
 
 <div
   bind:this={container}
   onscroll={handleScroll}
-  class="flex-1 overflow-y-auto space-y-0"
+  class="flex-1 overflow-y-auto"
   role="log"
   aria-label="Activity stream"
 >
   {#each events as evt (evt.ID)}
-    <div
-      class="px-3 py-2 border-b border-border hover:bg-surface-hover
-        {evt.Severity === 'error' ? 'bg-danger/5 border-l-2 border-l-danger' : ''}
-        {evt.isNew ? 'animate-fade-in' : ''}"
-    >
+    <div class="px-3 py-2.5 border-b border-border {severityLeft(evt.Severity)} {evt.isNew ? 'animate-fade-in' : ''}">
       <div class="flex items-start gap-2">
-        <span class="shrink-0 {
-          evt.Severity === 'success' ? 'text-success' :
-          evt.Severity === 'error' ? 'text-danger' :
-          evt.Severity === 'warning' ? 'text-warning' :
-          'text-muted'
-        }">{severityIcon(evt.Severity)}</span>
+        <!-- Icon -->
+        <span class="text-xs shrink-0 mt-0.5 w-3 text-center {severityTextCls(evt.Severity)}">
+          {severityIcon(evt.Severity)}
+        </span>
 
         <div class="flex-1 min-w-0">
+          <!-- Header row -->
           <div class="flex items-center gap-2">
-            <span class="text-sm font-medium">{eventLabel(evt)}</span>
-            <span class="text-xs text-muted ml-auto shrink-0">{formatRelative(evt.CreatedAt)}</span>
+            <span class="text-xs font-bold text-text tracking-wide">{eventLabel(evt)}</span>
+            <span class="text-[10px] text-muted ml-auto shrink-0">{formatRelative(evt.CreatedAt)}</span>
           </div>
 
+          <!-- Task reference -->
           {#if evt.TaskID && taskTitle(evt.TaskID)}
-            <div class="text-xs text-muted mt-0.5">{taskTitle(evt.TaskID)}</div>
+            <div class="text-[10px] text-muted-bright mt-0.5">{taskTitle(evt.TaskID)}</div>
           {/if}
 
+          <!-- Message -->
           {#if evt.Message}
-            <div class="text-xs text-text/80 mt-0.5">{evt.Message}</div>
+            <div class="text-[10px] text-text/70 mt-0.5 break-words">{evt.Message}</div>
+          {/if}
+
+          <!-- Raw detail expand -->
+          {#if evt.Details}
+            {@const details = expandDetails(evt.Details)}
+            {#if details}
+              <details class="mt-1">
+                <summary class="text-[10px] text-muted cursor-pointer hover:text-accent transition-colors select-none">
+                  raw detail ▸
+                </summary>
+                <pre class="text-[10px] text-muted mt-1 overflow-x-auto bg-bg p-2 border border-border">{JSON.stringify(details, null, 2)}</pre>
+              </details>
+            {/if}
           {/if}
         </div>
       </div>
-
-      <!-- Expandable raw details -->
-      {#if evt.Details}
-        {@const details = expandDetails(evt.Details)}
-        {#if details}
-          <details class="mt-1 ml-5">
-            <summary class="text-xs text-muted cursor-pointer hover:text-accent">raw detail</summary>
-            <pre class="text-xs text-muted mt-1 overflow-x-auto">{JSON.stringify(details, null, 2)}</pre>
-          </details>
-        {/if}
-      {/if}
     </div>
   {/each}
 
   {#if events.length === 0}
-    <div class="px-3 py-8 text-center text-muted text-sm">No activity yet.</div>
+    <div class="px-3 py-8 text-center">
+      <div class="text-muted text-xs tracking-wider">NO ACTIVITY YET</div>
+    </div>
   {/if}
 </div>

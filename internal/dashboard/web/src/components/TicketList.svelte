@@ -37,11 +37,15 @@
     return appState.tickets.length;
   }
 
-  function statusClass(status: string): string {
-    if (FAIL_STATUSES.includes(status as any)) return 'text-danger';
-    if (ACTIVE_STATUSES.includes(status as any)) return 'text-accent';
-    if (DONE_STATUSES.includes(status as any)) return 'text-success';
-    return 'text-muted';
+  function statusBadge(status: string): { text: string; cls: string } {
+    if (FAIL_STATUSES.includes(status as any)) return { text: status.toUpperCase(), cls: 'text-danger border-danger/40' };
+    if (ACTIVE_STATUSES.includes(status as any)) return { text: status.toUpperCase(), cls: 'text-accent border-accent/40' };
+    if (DONE_STATUSES.includes(status as any)) return { text: status.toUpperCase(), cls: 'text-success border-success/40' };
+    return { text: status.toUpperCase(), cls: 'text-muted border-border-strong' };
+  }
+
+  function isActive(t: TicketSummary): boolean {
+    return ACTIVE_STATUSES.includes(t.Status);
   }
 
   function handleKeydown(e: KeyboardEvent) {
@@ -57,51 +61,97 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
-<section class="flex flex-col h-full border-r border-border bg-surface">
-  <div class="px-3 py-2 border-b border-border text-xs text-muted font-bold tracking-wider">
-    TICKETS ({filteredTickets.length})
+<section class="flex flex-col h-full bg-surface w-full">
+  <!-- Header -->
+  <div class="px-3 py-2 border-b-2 border-border flex items-center justify-between">
+    <span class="text-xs font-bold tracking-[0.2em] text-muted-bright">TICKETS</span>
+    <span class="text-xs text-muted bg-surface-active px-2 py-0.5 border border-border">{filteredTickets.length}</span>
   </div>
 
-  <div class="px-3 py-2 border-b border-border space-y-2">
+  <!-- Search -->
+  <div class="px-3 pt-2 pb-1 border-b border-border">
     <input
       type="text"
       value={appState.search}
       oninput={(e) => setSearch((e.target as HTMLInputElement).value)}
-      placeholder="Search tickets..."
-      class="w-full bg-bg border border-border px-2 py-1 text-xs text-text placeholder:text-muted focus:border-accent outline-none"
+      placeholder="search..."
+      class="w-full bg-bg border border-border px-2 py-1.5 text-xs text-text placeholder:text-muted
+             focus:border-accent focus:outline-none transition-colors"
     />
-    <div class="flex gap-1">
-      {#each [['all', 'ALL'], ['active', 'ACT'], ['done', 'DONE'], ['fail', 'FAIL']] as [key, label]}
-        <button
-          class="flex-1 text-xs py-1 border {appState.filter === key ? 'border-accent text-accent' : 'border-border text-muted hover:text-text'}"
-          onclick={() => setFilter(key as 'all' | 'active' | 'done' | 'fail')}
-        >{label} {countByFilter(key)}</button>
-      {/each}
-    </div>
   </div>
 
-  <div class="flex-1 overflow-y-auto">
-    {#each filteredTickets as t, i}
+  <!-- Filter tabs -->
+  <div class="flex border-b-2 border-border">
+    {#each [['all', 'ALL'], ['active', 'ACT'], ['done', 'DONE'], ['fail', 'FAIL']] as [key, lbl]}
+      {@const n = countByFilter(key)}
       <button
-        class="w-full text-left px-3 py-2 border-b border-border hover:bg-surface-hover cursor-pointer
-          {appState.selectedTicketId === t.ID ? 'bg-surface-hover border-l-2 border-l-accent' : ''}
-          {focusIndex === i ? 'ring-1 ring-accent ring-inset' : ''}"
-        onclick={() => selectTicket(t.ID)}
+        class="flex-1 text-xs py-1.5 border-r border-border last:border-r-0 transition-colors
+          {appState.filter === key
+            ? 'bg-accent text-bg font-bold'
+            : 'text-muted hover:text-text hover:bg-surface-hover'}"
+        onclick={() => setFilter(key as 'all' | 'active' | 'done' | 'fail')}
       >
-        <div class="text-sm text-text truncate">{t.Title || t.ID}</div>
-        <div class="flex items-center gap-2 mt-1 text-xs">
-          <span class={statusClass(t.Status)}>{t.Status.toUpperCase()}</span>
-          <span class="text-muted">{formatSender(t.ChannelSenderID)}</span>
-        </div>
-        {#if t.tasks_total > 0}
-          <div class="flex items-center gap-2 mt-1">
-            <div class="flex-1 h-1 bg-border rounded overflow-hidden">
-              <div class="h-full bg-accent" style="width:{(t.tasks_done / t.tasks_total) * 100}%"></div>
-            </div>
-            <span class="text-xs text-muted">{formatCost(t.CostUSD)} {t.tasks_done}/{t.tasks_total}</span>
-          </div>
+        <div class="tracking-wider">{lbl}</div>
+        {#if n > 0}
+          <div class="text-[10px] opacity-70">{n}</div>
         {/if}
       </button>
     {/each}
+  </div>
+
+  <!-- List -->
+  <div class="flex-1 overflow-y-auto">
+    {#each filteredTickets as t, i (t.ID)}
+      {@const badge = statusBadge(t.Status)}
+      {@const selected = appState.selectedTicketId === t.ID}
+      <button
+        class="w-full text-left px-3 py-2.5 border-b border-border transition-colors cursor-pointer
+          {selected ? 'bg-accent-bg border-l-4 border-l-accent pl-2' : 'border-l-4 border-l-transparent hover:bg-surface-hover'}
+          {focusIndex === i ? 'ring-1 ring-inset ring-accent/40' : ''}"
+        onclick={() => selectTicket(t.ID)}
+      >
+        <!-- Title -->
+        <div class="text-xs text-text truncate leading-tight {selected ? 'font-bold' : ''}"
+          title={t.Title || t.ID}>
+          {t.Title || t.ID}
+        </div>
+
+        <!-- Status + sender -->
+        <div class="flex items-center gap-1.5 mt-1.5">
+          <span class="text-[10px] border px-1 py-0.5 leading-none tracking-wider {badge.cls}">
+            {badge.text}
+          </span>
+          {#if isActive(t)}
+            <span class="w-1 h-1 bg-accent animate-pulse"></span>
+          {/if}
+          <span class="text-[10px] text-muted ml-auto">{formatRelative(t.UpdatedAt)}</span>
+        </div>
+
+        <!-- Progress bar -->
+        {#if t.tasks_total > 0}
+          <div class="mt-1.5 space-y-0.5">
+            <div class="flex justify-between text-[10px] text-muted">
+              <span>{formatSender(t.ChannelSenderID)}</span>
+              <span>{t.tasks_done}/{t.tasks_total} · {formatCost(t.CostUSD)}</span>
+            </div>
+            <div class="h-0.5 bg-border overflow-hidden">
+              <div
+                class="h-full {t.tasks_done === t.tasks_total ? 'bg-success' : 'bg-accent'} transition-all"
+                style="width:{(t.tasks_done / t.tasks_total) * 100}%"
+              ></div>
+            </div>
+          </div>
+        {:else}
+          <div class="text-[10px] text-muted mt-1">{formatSender(t.ChannelSenderID)}</div>
+        {/if}
+      </button>
+    {/each}
+
+    {#if filteredTickets.length === 0}
+      <div class="px-3 py-8 text-center">
+        <div class="text-muted text-xs tracking-wider mb-1">NO TICKETS</div>
+        <div class="text-muted/50 text-[10px]">{appState.filter !== 'all' ? 'Try a different filter' : 'Waiting for work...'}</div>
+      </div>
+    {/if}
   </div>
 </section>

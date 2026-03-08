@@ -1,65 +1,87 @@
 <script lang="ts">
   import { appState, selectTicket, setFeedCollapsed } from '../state.svelte';
-  import { formatTime, severityIcon, formatSender } from '../format';
+  import { formatTime, severityIcon } from '../format';
 
   function toggleCollapse() {
     setFeedCollapsed(!appState.feedCollapsed);
   }
+
+  function eventTypeCls(eventType: string): string {
+    if (!eventType) return 'text-muted-bright';
+    if (eventType.includes('fail') || eventType.includes('error')) return 'text-danger';
+    if (eventType.includes('complet') || eventType.includes('done') || eventType.includes('pass') || eventType.includes('merg')) return 'text-success';
+    if (eventType.includes('start') || eventType.includes('creat') || eventType.includes('new')) return 'text-accent';
+    return 'text-muted-bright';
+  }
 </script>
 
-<section class="flex flex-col h-full border-l border-border bg-surface {appState.feedCollapsed ? 'w-8' : 'w-72'}
-  transition-[width] duration-200">
-  <div class="flex items-center justify-between px-2 py-2 border-b border-border">
+<section
+  class="flex flex-col h-full bg-surface {appState.feedCollapsed ? 'w-8' : 'w-72'} transition-[width] duration-200"
+  aria-label="Live event feed"
+>
+  <!-- Header -->
+  <div class="flex items-center px-2 border-b-2 border-border" style="min-height:40px">
     {#if !appState.feedCollapsed}
-      <span class="text-xs text-muted font-bold tracking-wider">LIVE FEED</span>
+      <span class="text-[10px] font-bold tracking-[0.2em] text-muted-bright flex-1">LIVE FEED</span>
     {/if}
     <button
-      class="text-xs text-muted hover:text-accent"
+      class="text-muted hover:text-accent transition-colors text-xs {appState.feedCollapsed ? 'mx-auto' : ''}"
       onclick={toggleCollapse}
       aria-label={appState.feedCollapsed ? 'Expand feed' : 'Collapse feed'}
-    >{appState.feedCollapsed ? '\u25B6' : '\u25C0'}</button>
+    >{appState.feedCollapsed ? '▶' : '◀'}</button>
   </div>
 
   {#if !appState.feedCollapsed}
     <div class="flex-1 overflow-y-auto">
       {#each appState.events as evt (evt.ID)}
-        <div class="px-2 py-1.5 border-b border-border text-xs hover:bg-surface-hover
-          {evt.isNew ? 'animate-fade-in bg-accent/5' : ''}">
-          <div class="flex gap-1.5 items-start">
-            <span class="text-muted shrink-0">{formatTime(evt.CreatedAt)}</span>
+        <div class="px-2 py-2 border-b border-border text-[10px] hover:bg-surface-hover transition-colors
+          {evt.isNew ? 'animate-fade-in bg-accent-bg' : ''}">
+
+          <!-- Type + time -->
+          <div class="flex items-center gap-1.5 leading-tight">
             <span class="{
               evt.Severity === 'success' ? 'text-success' :
               evt.Severity === 'error' ? 'text-danger' :
               evt.Severity === 'warning' ? 'text-warning' :
               'text-muted'
             }">{severityIcon(evt.Severity)}</span>
-            <span class="text-text">{evt.EventType}</span>
+            <span class="font-bold {eventTypeCls(evt.EventType)} truncate flex-1">
+              {evt.EventType || '—'}
+            </span>
+            <span class="text-muted shrink-0 tabular-nums">{formatTime(evt.CreatedAt)}</span>
           </div>
+
+          <!-- Message -->
           {#if evt.Message}
-            <div class="text-muted ml-5 truncate">{evt.Message}</div>
+            <div class="text-text/50 mt-0.5 truncate pl-3.5">{evt.Message}</div>
           {/if}
+
+          <!-- Ticket link -->
           {#if evt.ticket_title}
-            <div class="ml-5 mt-0.5">
+            <div class="pl-3.5 mt-0.5">
               <button
-                class="text-accent/70 hover:text-accent text-xs cursor-pointer"
+                class="text-accent/60 hover:text-accent transition-colors truncate cursor-pointer block max-w-full"
                 onclick={() => selectTicket(evt.TicketID)}
-              >[{evt.ticket_title}]</button>
-              <span class="text-muted">{formatSender(evt.submitter || '')}</span>
+              >{evt.ticket_title}</button>
             </div>
           {/if}
         </div>
       {/each}
+
+      {#if appState.events.length === 0}
+        <div class="px-2 py-4 text-center text-muted text-[10px] tracking-wider">WAITING...</div>
+      {/if}
     </div>
   {:else}
-    <!-- Collapsed: severity dots -->
-    <div class="flex flex-col items-center gap-0.5 py-2 overflow-hidden">
-      {#each appState.events.slice(0, 50) as evt (evt.ID)}
-        <span class="w-1.5 h-1.5 rounded-full {
+    <!-- Collapsed: severity column -->
+    <div class="flex flex-col items-center gap-0.5 py-2 overflow-hidden flex-1">
+      {#each appState.events.slice(0, 60) as evt (evt.ID)}
+        <span class="w-1.5 h-1.5 shrink-0 {
           evt.Severity === 'success' ? 'bg-success' :
           evt.Severity === 'error' ? 'bg-danger' :
           evt.Severity === 'warning' ? 'bg-warning' :
-          'bg-muted'
-        }"></span>
+          'bg-border-strong'
+        } {evt.isNew ? 'animate-pulse' : ''}"></span>
       {/each}
     </div>
   {/if}

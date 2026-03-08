@@ -19,12 +19,22 @@
     appState.expandedTasks[task.ID] = !expanded;
   }
 
-  function statusColor(): string {
-    if (task.Status === 'done') return 'text-success';
-    if (task.Status === 'failed') return 'text-danger';
-    if (isActive) return 'text-accent';
-    return 'text-muted';
+  function leftBorderCls(): string {
+    if (task.Status === 'done') return 'border-l-4 border-l-success';
+    if (task.Status === 'failed') return 'border-l-4 border-l-danger';
+    if (isActive) return 'border-l-4 border-l-accent';
+    return 'border-l-4 border-l-border-strong';
   }
+
+  function statusBadge(): { text: string; cls: string } {
+    if (task.Status === 'done') return { text: 'DONE', cls: 'text-success border-success/40' };
+    if (task.Status === 'failed') return { text: 'FAILED', cls: 'text-danger border-danger/40' };
+    if (isActive) return { text: task.Status.toUpperCase().replace('_', ' '), cls: 'text-accent border-accent/40' };
+    if (task.Status === 'skipped') return { text: 'SKIP', cls: 'text-muted border-border-strong' };
+    return { text: task.Status.toUpperCase(), cls: 'text-muted border-border-strong' };
+  }
+
+  let badge = $derived(statusBadge());
 
   function handleRetry(e: MouseEvent) {
     e.stopPropagation();
@@ -32,7 +42,8 @@
   }
 </script>
 
-<div class="border border-border {isActive ? 'border-l-2 border-l-accent' : ''} {task.Status === 'failed' ? 'border-l-2 border-l-danger' : ''}">
+<div class="border border-border {leftBorderCls()} bg-surface">
+  <!-- Summary row -->
   <div
     class="w-full text-left px-3 py-2 hover:bg-surface-hover flex items-center gap-2 cursor-pointer"
     onclick={toggle}
@@ -41,58 +52,103 @@
     tabindex="0"
     aria-expanded={expanded}
   >
-    <span class="{statusColor()} {isActive ? 'animate-pulse' : ''}">{taskIcon(task.Status)}</span>
-    <span class="text-sm flex-1 truncate">{task.Sequence}. {task.Title}</span>
-    <span class="text-xs text-muted">{task.EstimatedComplexity}</span>
-    {#if task.Status === 'failed'}
-      <button class="text-xs text-danger hover:text-text" onclick={handleRetry}>[retry]</button>
+    <!-- Sequence + icon -->
+    <span class="text-muted-bright text-xs shrink-0 w-5 text-center">
+      {#if isActive}
+        <span class="animate-pulse text-accent">{taskIcon(task.Status)}</span>
+      {:else}
+        <span>{taskIcon(task.Status)}</span>
+      {/if}
+    </span>
+
+    <!-- Title -->
+    <span class="text-xs flex-1 truncate text-text">{task.Sequence}. {task.Title}</span>
+
+    <!-- Complexity -->
+    {#if task.EstimatedComplexity}
+      <span class="text-[10px] text-muted border border-border px-1 shrink-0">{task.EstimatedComplexity}</span>
     {/if}
+
+    <!-- Status badge -->
+    <span class="text-[10px] border px-1 py-0.5 leading-none shrink-0 {badge.cls}">{badge.text}</span>
+
+    <!-- Retry -->
+    {#if task.Status === 'failed'}
+      <button
+        class="text-[10px] text-danger hover:text-text border border-danger/40 px-1.5 py-0.5 hover:bg-danger/10 transition-colors shrink-0"
+        onclick={handleRetry}
+      >↺</button>
+    {/if}
+
+    <!-- Expand indicator -->
+    <span class="text-muted text-[10px] shrink-0">{expanded ? '▲' : '▼'}</span>
   </div>
 
   {#if expanded}
-    <div class="px-3 py-2 border-t border-border text-xs space-y-1 bg-bg">
-      <div class="flex gap-4 text-muted">
-        <span>Status: <span class={statusColor()}>{task.Status}</span></span>
+    <div class="border-t border-border bg-bg text-xs">
+      <!-- Stats row -->
+      <div class="flex flex-wrap items-center gap-3 px-3 py-2 text-muted border-b border-border">
         {#if task.ImplementationAttempts > 0}
-          <span>Attempt {task.ImplementationAttempts}</span>
+          <span>Attempt <span class="text-text">{task.ImplementationAttempts}</span></span>
         {/if}
-        <span>Cost: {formatCost(task.CostUSD)}</span>
+        <span>Cost <span class="text-text">{formatCost(task.CostUSD)}</span></span>
+        {#if task.TotalLlmCalls > 0}
+          <span><span class="text-text">{task.TotalLlmCalls}</span> LLM calls</span>
+        {/if}
+        {#if task.StartedAt}
+          <span>{formatRelative(task.StartedAt)}</span>
+        {/if}
       </div>
 
-      {#if task.FilesToModify?.length}
-        <div class="text-muted">
-          Files: <span class="text-text">{task.FilesToModify.join(', ')}</span>
-        </div>
-      {/if}
-
+      <!-- Error -->
       {#if task.ErrorMessage}
-        <div class="text-danger mt-1 p-2 bg-danger/10 border border-danger/20">
-          {task.ErrorMessage}
+        <div class="mx-3 my-2 border-l-4 border-l-danger bg-danger-bg p-2">
+          <div class="text-danger font-bold text-[10px] tracking-wider mb-1">ERROR</div>
+          <div class="text-text/80">{task.ErrorMessage}</div>
         </div>
       {/if}
 
+      <!-- Files -->
+      {#if task.FilesToModify?.length}
+        <div class="px-3 py-1.5 border-b border-border">
+          <div class="text-muted text-[10px] tracking-wider mb-1">FILES</div>
+          <div class="space-y-0.5">
+            {#each task.FilesToModify as f}
+              <div class="text-text/70 text-[10px] truncate">· {f}</div>
+            {/each}
+          </div>
+        </div>
+      {/if}
+
+      <!-- Acceptance criteria -->
       {#if task.AcceptanceCriteria?.length}
-        <div class="mt-2">
-          <div class="text-muted mb-1">Acceptance Criteria:</div>
-          {#each task.AcceptanceCriteria as criterion}
-            <div class="flex items-center gap-1">
-              <span class="text-muted">{task.Status === 'done' ? '\u2713' : '\u25CB'}</span>
-              <span>{criterion}</span>
-            </div>
-          {/each}
+        <div class="px-3 py-1.5 border-b border-border">
+          <div class="text-muted text-[10px] tracking-wider mb-1">ACCEPTANCE CRITERIA</div>
+          <div class="space-y-1">
+            {#each task.AcceptanceCriteria as criterion}
+              <div class="flex items-start gap-1.5">
+                <span class="{task.Status === 'done' ? 'text-success' : 'text-muted'}">
+                  {task.Status === 'done' ? '✓' : '○'}
+                </span>
+                <span class="text-text/70">{criterion}</span>
+              </div>
+            {/each}
+          </div>
         </div>
       {/if}
 
-      <!-- Activity stream for this task -->
+      <!-- Recent events -->
       {#if taskEvents.length > 0}
-        <div class="mt-2 border-t border-border pt-2">
-          <div class="text-muted mb-1">Activity:</div>
-          {#each taskEvents as evt}
-            <div class="flex gap-2 py-0.5">
-              <span class="text-muted shrink-0">{formatRelative(evt.CreatedAt)}</span>
-              <span class="truncate">{evt.Message || evt.EventType}</span>
-            </div>
-          {/each}
+        <div class="px-3 py-1.5">
+          <div class="text-muted text-[10px] tracking-wider mb-1">ACTIVITY</div>
+          <div class="space-y-0.5">
+            {#each taskEvents as evt}
+              <div class="flex gap-2 py-0.5 text-[10px]">
+                <span class="text-muted shrink-0">{formatRelative(evt.CreatedAt)}</span>
+                <span class="text-text/60 truncate">{evt.Message || evt.EventType}</span>
+              </div>
+            {/each}
+          </div>
         </div>
       {/if}
     </div>

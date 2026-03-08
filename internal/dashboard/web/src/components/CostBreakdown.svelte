@@ -33,27 +33,47 @@
   });
 </script>
 
-<div class="space-y-2">
-  <div class="flex justify-between text-xs text-muted font-bold tracking-wider">
-    <span>COST BREAKDOWN</span>
-    <span>{formatCost(ticket?.CostUSD || 0)}</span>
+<div class="space-y-3">
+  <!-- Header row -->
+  <div class="flex items-center justify-between border-b border-border pb-2">
+    <span class="text-[10px] font-bold tracking-[0.2em] text-muted-bright">COST BREAKDOWN</span>
+    <span class="text-sm font-bold text-text">{formatCost(ticket?.CostUSD || 0)}</span>
   </div>
 
+  <!-- By role -->
   {#each costByRole as item}
-    <div class="flex items-center gap-2 text-xs">
-      <span class="w-24 text-muted truncate">{item.role}</span>
-      <span class="text-text">{formatCost(item.cost)}</span>
-      <div class="flex-1 h-1 bg-border rounded overflow-hidden">
-        <div class="h-full bg-accent" style="width:{item.pct}%"></div>
+    <div class="space-y-1">
+      <div class="flex justify-between text-xs">
+        <span class="text-muted truncate">{item.role}</span>
+        <span class="text-text font-bold tabular-nums">{formatCost(item.cost)}</span>
+      </div>
+      <div class="h-1.5 bg-border overflow-hidden">
+        <div class="h-full bg-accent transition-all" style="width:{item.pct}%"></div>
       </div>
     </div>
   {/each}
 
-  <div class="text-xs text-muted space-x-2 pt-1 border-t border-border">
-    <span>Model: {summary.model}</span>
-    <span>|</span>
-    <span>{formatTokens(summary.totalTokens)} tokens</span>
-    <span>|</span>
-    <span>{summary.totalCalls} calls ({summary.ok} ok, {summary.retried} retried)</span>
+  {#if costByRole.length === 0}
+    <div class="text-xs text-muted py-2">No LLM call data.</div>
+  {/if}
+
+  <!-- Summary stats -->
+  <div class="border-t border-border pt-2 grid grid-cols-2 gap-2 text-[10px]">
+    <div>
+      <div class="text-muted tracking-wider">MODEL</div>
+      <div class="text-text mt-0.5 truncate">{summary.model}</div>
+    </div>
+    <div>
+      <div class="text-muted tracking-wider">TOKENS</div>
+      <div class="text-text mt-0.5">{formatTokens(summary.totalTokens)}</div>
+    </div>
+    <div>
+      <div class="text-muted tracking-wider">CALLS</div>
+      <div class="text-text mt-0.5">{summary.totalCalls}</div>
+    </div>
+    <div>
+      <div class="text-muted tracking-wider">RETRIED</div>
+      <div class="{summary.retried > 0 ? 'text-warning' : 'text-text'} mt-0.5">{summary.retried}</div>
+    </div>
   </div>
 </div>

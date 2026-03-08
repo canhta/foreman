@@ -5,7 +5,8 @@
     "moduleResolution": "bundler",
     "strict": true,
     "noEmit": true,
-    "verbatimModuleSyntax": true
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true
   },
   "include": ["src/**/*"]
 }
