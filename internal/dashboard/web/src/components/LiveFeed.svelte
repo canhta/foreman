@@ -1,28 +1,28 @@
 <script lang="ts">
-  import { events, feedCollapsed, selectTicket, setFeedCollapsed } from '../state.svelte';
+  import { appState, selectTicket, setFeedCollapsed } from '../state.svelte';
   import { formatTime, severityIcon, formatSender } from '../format';
 
   function toggleCollapse() {
-    setFeedCollapsed(!feedCollapsed);
+    setFeedCollapsed(!appState.feedCollapsed);
   }
 </script>
 
-<section class="flex flex-col h-full border-l border-border bg-surface {feedCollapsed ? 'w-8' : 'w-72'}
+<section class="flex flex-col h-full border-l border-border bg-surface {appState.feedCollapsed ? 'w-8' : 'w-72'}
   transition-[width] duration-200">
   <div class="flex items-center justify-between px-2 py-2 border-b border-border">
-    {#if !feedCollapsed}
+    {#if !appState.feedCollapsed}
       <span class="text-xs text-muted font-bold tracking-wider">LIVE FEED</span>
     {/if}
     <button
       class="text-xs text-muted hover:text-accent"
       onclick={toggleCollapse}
-      aria-label={feedCollapsed ? 'Expand feed' : 'Collapse feed'}
-    >{feedCollapsed ? '\u25B6' : '\u25C0'}</button>
+      aria-label={appState.feedCollapsed ? 'Expand feed' : 'Collapse feed'}
+    >{appState.feedCollapsed ? '\u25B6' : '\u25C0'}</button>
   </div>
 
-  {#if !feedCollapsed}
+  {#if !appState.feedCollapsed}
     <div class="flex-1 overflow-y-auto">
-      {#each events as evt (evt.ID)}
+      {#each appState.events as evt (evt.ID)}
         <div class="px-2 py-1.5 border-b border-border text-xs hover:bg-surface-hover
           {evt.isNew ? 'animate-fade-in bg-accent/5' : ''}">
           <div class="flex gap-1.5 items-start">
@@ -53,7 +53,7 @@
   {:else}
     <!-- Collapsed: severity dots -->
     <div class="flex flex-col items-center gap-0.5 py-2 overflow-hidden">
-      {#each events.slice(0, 50) as evt (evt.ID)}
+      {#each appState.events.slice(0, 50) as evt (evt.ID)}
         <span class="w-1.5 h-1.5 rounded-full {
           evt.Severity === 'success' ? 'bg-success' :
           evt.Severity === 'error' ? 'bg-danger' :

@@ -1,11 +1,11 @@
 <script lang="ts">
   import type { Task, EventRecord } from '../types';
-  import { retryTask, expandedTasks } from '../state.svelte';
+  import { appState, retryTask } from '../state.svelte';
   import { taskIcon, formatCost, formatRelative } from '../format';
 
   let { task, events = [] }: { task: Task; events?: EventRecord[] } = $props();
 
-  let expanded = $derived(expandedTasks[task.ID] ?? false);
+  let expanded = $derived(appState.expandedTasks[task.ID] ?? false);
 
   let taskEvents = $derived(
     events.filter(e => e.TaskID === task.ID).slice(0, 10)
@@ -16,7 +16,7 @@
   );
 
   function toggle() {
-    expandedTasks[task.ID] = !expanded;
+    appState.expandedTasks[task.ID] = !expanded;
   }
 
   function statusColor(): string {

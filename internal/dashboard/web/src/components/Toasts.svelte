@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { toasts, selectTicket } from '../state.svelte';
+  import { appState, selectTicket } from '../state.svelte';
   import { severityIcon } from '../format';
 </script>
 
-{#if toasts.length > 0}
+{#if appState.toasts.length > 0}
   <div class="fixed bottom-16 right-4 z-50 space-y-2 md:bottom-4" role="alert">
-    {#each toasts as toast (toast.id)}
+    {#each appState.toasts as toast (toast.id)}
       <div
         class="flex items-center gap-2 px-3 py-2 bg-surface border border-border text-xs shadow-lg
           animate-fade-in max-w-xs

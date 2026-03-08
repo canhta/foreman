@@ -1,6 +1,6 @@
 <script lang="ts">
   import {
-    tickets, filter, search, selectedTicketId, selectTicket, setFilter, setSearch,
+    appState, selectTicket, setFilter, setSearch,
   } from '../state.svelte';
   import { ACTIVE_STATUSES, DONE_STATUSES, FAIL_STATUSES } from '../types';
   import type { TicketSummary } from '../types';
@@ -9,13 +9,13 @@
   let focusIndex = $state(-1);
 
   let filteredTickets = $derived.by(() => {
-    let list = tickets;
-    if (filter === 'active') list = list.filter(t => ACTIVE_STATUSES.includes(t.Status));
-    else if (filter === 'done') list = list.filter(t => DONE_STATUSES.includes(t.Status));
-    else if (filter === 'fail') list = list.filter(t => FAIL_STATUSES.includes(t.Status));
+    let list = appState.tickets;
+    if (appState.filter === 'active') list = list.filter(t => ACTIVE_STATUSES.includes(t.Status));
+    else if (appState.filter === 'done') list = list.filter(t => DONE_STATUSES.includes(t.Status));
+    else if (appState.filter === 'fail') list = list.filter(t => FAIL_STATUSES.includes(t.Status));
 
-    if (search) {
-      const q = search.toLowerCase();
+    if (appState.search) {
+      const q = appState.search.toLowerCase();
       list = list.filter(t =>
         t.Title?.toLowerCase().includes(q) ||
         t.ChannelSenderID?.toLowerCase().includes(q)
@@ -31,10 +31,10 @@
   });
 
   function countByFilter(f: string): number {
-    if (f === 'active') return tickets.filter(t => ACTIVE_STATUSES.includes(t.Status)).length;
-    if (f === 'done') return tickets.filter(t => DONE_STATUSES.includes(t.Status)).length;
-    if (f === 'fail') return tickets.filter(t => FAIL_STATUSES.includes(t.Status)).length;
-    return tickets.length;
+    if (f === 'active') return appState.tickets.filter(t => ACTIVE_STATUSES.includes(t.Status)).length;
+    if (f === 'done') return appState.tickets.filter(t => DONE_STATUSES.includes(t.Status)).length;
+    if (f === 'fail') return appState.tickets.filter(t => FAIL_STATUSES.includes(t.Status)).length;
+    return appState.tickets.length;
   }
 
   function statusClass(status: string): string {
@@ -65,7 +65,7 @@
   <div class="px-3 py-2 border-b border-border space-y-2">
     <input
       type="text"
-      value={search}
+      value={appState.search}
       oninput={(e) => setSearch((e.target as HTMLInputElement).value)}
       placeholder="Search tickets..."
       class="w-full bg-bg border border-border px-2 py-1 text-xs text-text placeholder:text-muted focus:border-accent outline-none"
@@ -73,7 +73,7 @@
     <div class="flex gap-1">
       {#each [['all', 'ALL'], ['active', 'ACT'], ['done', 'DONE'], ['fail', 'FAIL']] as [key, label]}
         <button
-          class="flex-1 text-xs py-1 border {filter === key ? 'border-accent text-accent' : 'border-border text-muted hover:text-text'}"
+          class="flex-1 text-xs py-1 border {appState.filter === key ? 'border-accent text-accent' : 'border-border text-muted hover:text-text'}"
           onclick={() => setFilter(key as 'all' | 'active' | 'done' | 'fail')}
         >{label} {countByFilter(key)}</button>
       {/each}
@@ -84,7 +84,7 @@
     {#each filteredTickets as t, i}
       <button
         class="w-full text-left px-3 py-2 border-b border-border hover:bg-surface-hover cursor-pointer
-          {selectedTicketId === t.ID ? 'bg-surface-hover border-l-2 border-l-accent' : ''}
+          {appState.selectedTicketId === t.ID ? 'bg-surface-hover border-l-2 border-l-accent' : ''}
           {focusIndex === i ? 'ring-1 ring-accent ring-inset' : ''}"
         onclick={() => selectTicket(t.ID)}
       >
