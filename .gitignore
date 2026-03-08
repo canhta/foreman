@@ -3,7 +3,7 @@ foreman
 
 # Build artifacts
 dist/
-!internal/dashboard/dist/
+internal/dashboard/dist/
 
 # Database
 *.db

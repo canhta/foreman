@@ -1,6 +1,10 @@
 .git
 *.toml
 dist/
+internal/dashboard/dist/
+internal/dashboard/web/node_modules/
+internal/dashboard/web/.svelte-kit/
+internal/dashboard/web/.vite/
 .env*
 testdata/
 *.md

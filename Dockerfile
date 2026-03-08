@@ -1,5 +1,14 @@
 # syntax=docker/dockerfile:1
 
+FROM node:20-bookworm AS web-builder
+WORKDIR /src/internal/dashboard/web
+
+COPY internal/dashboard/web/package*.json ./
+RUN npm ci
+
+COPY internal/dashboard/web/ ./
+RUN npm run build
+
 FROM --platform=$BUILDPLATFORM golang:1.25-bookworm AS builder
 ARG TARGETOS=linux
 ARG TARGETARCH
@@ -16,6 +25,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
+COPY --from=web-builder /src/internal/dashboard/dist /src/internal/dashboard/dist
 RUN CGO_ENABLED=1 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /out/foreman ./main.go
 
 FROM debian:bookworm-slim AS runtime

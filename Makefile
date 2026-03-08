@@ -1,10 +1,12 @@
-.PHONY: build test lint clean setup-hooks setup-dev coverage dev debug dashboard-build dashboard-dev
+.PHONY: build test lint clean setup-hooks setup-dev coverage dev debug dashboard-build dashboard-dev web-lint web-test ci release docker
 
 BINARY := foreman
 GOBIN  := $(shell go env GOPATH)/bin
 
 build: dashboard-build
 	go build -o $(BINARY) .
+
+ci: build test lint web-test
 
 # Install development tools (air + dlv). Run once after cloning.
 setup-dev:
@@ -37,6 +39,10 @@ dashboard-build:
 	cd internal/dashboard/web && npm ci && npm run build
 dashboard-dev:
 	cd internal/dashboard/web && npm run dev
+web-lint:
+	cd internal/dashboard/web && npm ci && npm run lint
+web-test:
+	cd internal/dashboard/web && npm ci && npm run test
 
 clean:
 	rm -f $(BINARY)
@@ -60,7 +66,7 @@ coverage:
 PLATFORMS := linux-amd64 linux-arm64 darwin-amd64 darwin-arm64 windows-amd64
 
 .PHONY: release
-release: $(PLATFORMS)
+release: dashboard-build $(PLATFORMS)
 
 linux-amd64:
 	@mkdir -p dist

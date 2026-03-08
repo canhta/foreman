@@ -14,10 +14,17 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.25'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: internal/dashboard/web/package-lock.json
       - name: Install C toolchain (required for go-sqlite3)
         run: sudo apt-get update && sudo apt-get install -y gcc
       - name: Install dependencies
         run: go mod download
+      - name: Build (includes dashboard assets)
+        run: make build
       - name: Run tests
         run: go test ./... -v -race -coverprofile=coverage.out
       - name: Upload coverage
@@ -46,7 +53,22 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.25'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: internal/dashboard/web/package-lock.json
+      - name: Install C toolchain (required for go-sqlite3)
+        run: sudo apt-get update && sudo apt-get install -y gcc
       - name: Build
-        run: go build -o foreman .
+        run: make build
       - name: Verify binary
         run: ./foreman --help
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: [build]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Docker image
+        run: docker build -t foreman:ci .

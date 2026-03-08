@@ -29,8 +29,27 @@ if ! go test ./... -race 2>/tmp/test_out; then
   exit 1
 fi
 
+if ! command -v npm > /dev/null 2>&1; then
+  fail "web test"
+  printf "    npm not found. Install Node.js 20+ and retry.\n"
+  exit 1
+fi
+
+if ! (cd internal/dashboard/web && npm ci >/tmp/web_npm_ci_out 2>&1); then
+  fail "web npm ci"
+  cat /tmp/web_npm_ci_out | sed 's/^/    /'
+  exit 1
+fi
+
+if ! (cd internal/dashboard/web && npm run test >/tmp/web_test_out 2>&1); then
+  fail "web test"
+  cat /tmp/web_test_out | sed 's/^/    /'
+  exit 1
+fi
+
 END=$(date +%s)
 ELAPSED=$((END - START))
 pass "go test (${ELAPSED}s)"
+pass "web test"
 
 printf "${GREEN}${BOLD}All checks passed.${RESET}\n"
