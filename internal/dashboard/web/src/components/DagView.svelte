@@ -67,17 +67,17 @@
   let svgHeight = $derived(Math.max(90, ...nodes.map(n => n.y + 56)));
 
   function statusStroke(status: string): string {
-    if (status === 'done') return '#00E060';
-    if (status === 'failed') return '#FF2222';
+    if (status === 'done') return '#00E868';
+    if (status === 'failed') return '#FF3B3B';
     if (['implementing', 'tdd_verifying', 'testing', 'spec_review', 'quality_review'].includes(status)) return '#FFE600';
-    return '#2e2e2e';
+    return '#3c3c3c';
   }
 
   function statusTextColor(status: string): string {
-    if (status === 'done') return '#00E060';
-    if (status === 'failed') return '#FF2222';
+    if (status === 'done') return '#00E868';
+    if (status === 'failed') return '#FF3B3B';
     if (['implementing', 'tdd_verifying', 'testing', 'spec_review', 'quality_review'].includes(status)) return '#FFE600';
-    return '#808080';
+    return '#9a9a9a';
   }
 
   let edges = $derived.by(() => {
@@ -97,7 +97,7 @@
     <svg width={svgWidth} height={svgHeight} class="block">
       <defs>
         <marker id="arrow" viewBox="0 0 8 6" refX="8" refY="3" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-          <path d="M 0 0 L 8 3 L 0 6 z" fill="#444" />
+          <path d="M 0 0 L 8 3 L 0 6 z" fill="#585858" />
         </marker>
       </defs>
 
@@ -106,7 +106,7 @@
         <line
           x1={edge.from.x + 160} y1={edge.from.y + 19}
           x2={edge.to.x} y2={edge.to.y + 19}
-          stroke="#2e2e2e" stroke-width="1.5" marker-end="url(#arrow)"
+          stroke="#3c3c3c" stroke-width="1.5" marker-end="url(#arrow)"
         />
       {/each}
 
@@ -118,14 +118,14 @@
           <!-- Node box — square corners (brutalist) -->
           <rect
             width="160" height="38"
-            fill="#0d0d0d"
+            fill="#121212"
             stroke={stroke}
             stroke-width="2"
           />
           <!-- Left accent bar -->
           <rect width="3" height="38" fill={stroke} />
           <!-- Task label -->
-          <text x="12" y="15" fill="#EBEBEB" font-size="10" font-family="monospace" font-weight="600">
+          <text x="12" y="15" fill="#F0F0F0" font-size="10" font-family="monospace" font-weight="600">
             {node.task.Sequence}. {node.task.Title.slice(0, 16)}{node.task.Title.length > 16 ? '…' : ''}
           </text>
           <!-- Status -->

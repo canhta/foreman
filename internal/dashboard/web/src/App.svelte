@@ -149,19 +149,19 @@
 
     <!-- Footer -->
     <footer class="hidden md:flex items-center gap-0 border-t-2 border-border bg-surface text-xs">
-      <span class="px-3 py-1.5 border-r border-border text-muted">
+      <span class="px-3 py-1.5 border-r border-border text-muted-bright">
         DAILY: <span class="{appState.dailyBudget > 0 && appState.dailyCost / appState.dailyBudget >= 0.8 ? 'text-danger' : 'text-accent'}">
           ${appState.dailyCost.toFixed(2)}</span>{appState.dailyBudget > 0 ? ` / $${Math.round(appState.dailyBudget)}` : ''}
       </span>
-      <span class="px-3 py-1.5 border-r border-border text-muted">
-        WEEKLY: <span class="text-muted-bright">${appState.weeklyCost.toFixed(2)}</span>
+      <span class="px-3 py-1.5 border-r border-border text-muted-bright">
+        WEEKLY: <span class="text-text">${appState.weeklyCost.toFixed(2)}</span>
       </span>
-      <span class="px-3 py-1.5 text-muted">
-        MONTHLY: <span class="text-muted-bright">${appState.monthlyCost.toFixed(2)}</span>
-        {#if appState.monthlyBudget > 0}<span class="text-muted"> / ${Math.round(appState.monthlyBudget)}</span>{/if}
+      <span class="px-3 py-1.5 text-muted-bright">
+        MONTHLY: <span class="text-text">${appState.monthlyCost.toFixed(2)}</span>
+        {#if appState.monthlyBudget > 0}<span class="text-muted-bright"> / ${Math.round(appState.monthlyBudget)}</span>{/if}
       </span>
       <div class="flex-1"></div>
-      <span class="px-3 py-1.5 border-l border-border text-muted">
+      <span class="px-3 py-1.5 border-l border-border {appState.wsConnected ? 'text-success' : 'text-danger'}">
         <span class="w-1.5 h-1.5 inline-block mr-1 {appState.wsConnected ? 'bg-success' : 'bg-danger'}"></span>
         {appState.wsConnected ? 'LIVE' : 'OFFLINE'}
       </span>

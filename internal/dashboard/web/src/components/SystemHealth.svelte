@@ -45,8 +45,8 @@
   <div class="p-4 space-y-4">
     <!-- Daemon & Connectivity -->
     <section class="border-2 border-border">
-      <div class="px-3 py-1.5 border-b border-border bg-surface-active">
-        <span class="text-[10px] font-bold tracking-[0.2em] text-muted-bright">DAEMON</span>
+      <div class="px-3 py-1.5 border-b border-border bg-surface-active border-l-4 border-l-accent">
+        <span class="text-[10px] font-bold tracking-[0.2em] text-text">DAEMON</span>
       </div>
       <div class="p-3 space-y-2">
         <div class="flex items-center gap-2 text-xs">
@@ -75,8 +75,8 @@
     <!-- MCP Servers -->
     {#if Object.keys(appState.mcpServers).length > 0}
       <section class="border-2 border-border">
-        <div class="px-3 py-1.5 border-b border-border bg-surface-active">
-          <span class="text-[10px] font-bold tracking-[0.2em] text-muted-bright">MCP SERVERS</span>
+        <div class="px-3 py-1.5 border-b border-border bg-surface-active border-l-4 border-l-accent">
+          <span class="text-[10px] font-bold tracking-[0.2em] text-text">MCP SERVERS</span>
         </div>
         <div class="p-3 space-y-1.5">
           {#each Object.entries(appState.mcpServers) as [name, info]}
@@ -96,20 +96,20 @@
 
     <!-- Pipeline stats -->
     <section class="border-2 border-border">
-      <div class="px-3 py-1.5 border-b border-border bg-surface-active">
-        <span class="text-[10px] font-bold tracking-[0.2em] text-muted-bright">PIPELINE</span>
+      <div class="px-3 py-1.5 border-b border-border bg-surface-active border-l-4 border-l-accent">
+        <span class="text-[10px] font-bold tracking-[0.2em] text-text">PIPELINE</span>
       </div>
       <div class="grid grid-cols-3 gap-0">
         <div class="p-3 border-r border-border">
-          <div class="text-[10px] text-muted tracking-wider mb-1">QUEUED</div>
+          <div class="text-[10px] text-muted-bright tracking-wider mb-1">QUEUED</div>
           <div class="text-2xl font-bold text-text tabular-nums">{queuedCount}</div>
         </div>
         <div class="p-3 border-r border-border">
-          <div class="text-[10px] text-muted tracking-wider mb-1">ACTIVE</div>
+          <div class="text-[10px] text-muted-bright tracking-wider mb-1">ACTIVE</div>
           <div class="text-2xl font-bold {appState.activeCount > 0 ? 'text-accent' : 'text-text'} tabular-nums">{appState.activeCount}</div>
         </div>
         <div class="p-3">
-          <div class="text-[10px] text-muted tracking-wider mb-1">FAILED</div>
+          <div class="text-[10px] text-muted-bright tracking-wider mb-1">FAILED</div>
           <div class="text-2xl font-bold {failedCount > 0 ? 'text-danger' : 'text-muted'} tabular-nums">{failedCount}</div>
         </div>
       </div>
@@ -117,8 +117,8 @@
 
     <!-- Cost budgets -->
     <section class="border-2 border-border">
-      <div class="px-3 py-1.5 border-b border-border bg-surface-active">
-        <span class="text-[10px] font-bold tracking-[0.2em] text-muted-bright">COST BUDGETS</span>
+      <div class="px-3 py-1.5 border-b border-border bg-surface-active border-l-4 border-l-accent">
+        <span class="text-[10px] font-bold tracking-[0.2em] text-text">COST BUDGETS</span>
       </div>
       <div class="p-3 space-y-3">
         {#each [
@@ -148,16 +148,16 @@
 
     <!-- Throughput -->
     <section class="border-2 border-border">
-      <div class="px-3 py-1.5 border-b border-border bg-surface-active">
-        <span class="text-[10px] font-bold tracking-[0.2em] text-muted-bright">THROUGHPUT</span>
+      <div class="px-3 py-1.5 border-b border-border bg-surface-active border-l-4 border-l-accent">
+        <span class="text-[10px] font-bold tracking-[0.2em] text-text">THROUGHPUT</span>
       </div>
       <div class="grid grid-cols-2 gap-0">
         <div class="p-3 border-r border-border">
-          <div class="text-[10px] text-muted tracking-wider mb-1">DONE TODAY</div>
+          <div class="text-[10px] text-muted-bright tracking-wider mb-1">DONE TODAY</div>
           <div class="text-2xl font-bold text-success tabular-nums">{doneToday}</div>
         </div>
         <div class="p-3">
-          <div class="text-[10px] text-muted tracking-wider mb-1">SUCCESS RATE</div>
+          <div class="text-[10px] text-muted-bright tracking-wider mb-1">SUCCESS RATE</div>
           <div class="text-2xl font-bold {successRate >= 80 ? 'text-success' : successRate >= 50 ? 'text-warning' : 'text-danger'} tabular-nums">
             {successRate}<span class="text-sm">%</span>
           </div>
@@ -165,11 +165,11 @@
       </div>
       <div class="px-3 pb-3 grid grid-cols-2 gap-0 border-t border-border">
         <div class="pt-3 border-r border-border pr-3">
-          <div class="text-[10px] text-muted tracking-wider mb-1">TOTAL TICKETS</div>
+          <div class="text-[10px] text-muted-bright tracking-wider mb-1">TOTAL TICKETS</div>
           <div class="text-xl font-bold text-text tabular-nums">{totalTickets}</div>
         </div>
         <div class="pt-3 pl-3">
-          <div class="text-[10px] text-muted tracking-wider mb-1">WEEKLY COST</div>
+          <div class="text-[10px] text-muted-bright tracking-wider mb-1">WEEKLY COST</div>
           <div class="text-xl font-bold text-text tabular-nums">{formatCost(appState.weeklyCost)}</div>
         </div>
       </div>

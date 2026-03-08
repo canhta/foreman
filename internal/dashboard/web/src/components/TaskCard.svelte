@@ -111,7 +111,7 @@
       <!-- Files -->
       {#if task.FilesToModify?.length}
         <div class="px-3 py-1.5 border-b border-border">
-          <div class="text-muted text-[10px] tracking-wider mb-1">FILES</div>
+          <div class="text-muted-bright text-[10px] tracking-wider mb-1">FILES</div>
           <div class="space-y-0.5">
             {#each task.FilesToModify as f}
               <div class="text-text/70 text-[10px] truncate">· {f}</div>
@@ -123,7 +123,7 @@
       <!-- Acceptance criteria -->
       {#if task.AcceptanceCriteria?.length}
         <div class="px-3 py-1.5 border-b border-border">
-          <div class="text-muted text-[10px] tracking-wider mb-1">ACCEPTANCE CRITERIA</div>
+          <div class="text-muted-bright text-[10px] tracking-wider mb-1">ACCEPTANCE CRITERIA</div>
           <div class="space-y-1">
             {#each task.AcceptanceCriteria as criterion}
               <div class="flex items-start gap-1.5">
@@ -140,7 +140,7 @@
       <!-- Recent events -->
       {#if taskEvents.length > 0}
         <div class="px-3 py-1.5">
-          <div class="text-muted text-[10px] tracking-wider mb-1">ACTIVITY</div>
+          <div class="text-muted-bright text-[10px] tracking-wider mb-1">ACTIVITY</div>
           <div class="space-y-0.5">
             {#each taskEvents as evt}
               <div class="flex gap-2 py-0.5 text-[10px]">

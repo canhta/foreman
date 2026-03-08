@@ -64,7 +64,7 @@
 <section class="flex flex-col h-full bg-surface w-full">
   <!-- Header -->
   <div class="px-3 py-2 border-b-2 border-border flex items-center justify-between">
-    <span class="text-xs font-bold tracking-[0.2em] text-muted-bright">TICKETS</span>
+    <span class="text-xs font-bold tracking-[0.2em] text-text">TICKETS</span>
     <span class="text-xs text-muted bg-surface-active px-2 py-0.5 border border-border">{filteredTickets.length}</span>
   </div>
 
@@ -149,8 +149,8 @@
 
     {#if filteredTickets.length === 0}
       <div class="px-3 py-8 text-center">
-        <div class="text-muted text-xs tracking-wider mb-1">NO TICKETS</div>
-        <div class="text-muted/50 text-[10px]">{appState.filter !== 'all' ? 'Try a different filter' : 'Waiting for work...'}</div>
+        <div class="text-muted-bright text-xs tracking-wider mb-1">NO TICKETS</div>
+        <div class="text-muted text-[10px]">{appState.filter !== 'all' ? 'Try a different filter' : 'Waiting for work...'}</div>
       </div>
     {/if}
   </div>

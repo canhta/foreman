@@ -38,7 +38,7 @@
 <div class="flex-1 overflow-y-auto">
   <!-- Header -->
   <div class="px-4 py-2 border-b-2 border-border bg-surface sticky top-0">
-    <span class="text-xs font-bold tracking-[0.2em] text-muted-bright">OPERATIONS CENTER</span>
+    <span class="text-xs font-bold tracking-[0.2em] text-text">OPERATIONS CENTER</span>
   </div>
 
   <div class="p-4 space-y-4">
@@ -74,25 +74,25 @@
 
     <!-- Today's stats -->
     <section class="border-2 border-border">
-      <div class="px-3 py-1.5 border-b border-border bg-surface-active flex items-center justify-between">
-        <span class="text-[10px] font-bold tracking-[0.2em] text-muted-bright">TODAY</span>
-        <span class="text-[10px] text-muted">{todayStr}</span>
+      <div class="px-3 py-1.5 border-b border-border bg-surface-active border-l-4 border-l-accent flex items-center justify-between">
+        <span class="text-[10px] font-bold tracking-[0.2em] text-text">TODAY</span>
+        <span class="text-[10px] text-muted-bright">{todayStr}</span>
       </div>
       <div class="grid grid-cols-4 gap-0">
         <div class="p-3 border-r border-border">
-          <div class="text-[10px] text-muted tracking-wider mb-1">TOTAL</div>
+          <div class="text-[10px] text-muted-bright tracking-wider mb-1">TOTAL</div>
           <div class="text-2xl font-bold text-text tabular-nums">{todayTickets.length}</div>
         </div>
         <div class="p-3 border-r border-border">
-          <div class="text-[10px] text-muted tracking-wider mb-1">ACTIVE</div>
+          <div class="text-[10px] text-muted-bright tracking-wider mb-1">ACTIVE</div>
           <div class="text-2xl font-bold {todayActive > 0 ? 'text-accent' : 'text-muted'} tabular-nums">{todayActive}</div>
         </div>
         <div class="p-3 border-r border-border">
-          <div class="text-[10px] text-muted tracking-wider mb-1">MERGED</div>
+          <div class="text-[10px] text-muted-bright tracking-wider mb-1">MERGED</div>
           <div class="text-2xl font-bold {todayDone > 0 ? 'text-success' : 'text-muted'} tabular-nums">{todayDone}</div>
         </div>
         <div class="p-3">
-          <div class="text-[10px] text-muted tracking-wider mb-1">FAILED</div>
+          <div class="text-[10px] text-muted-bright tracking-wider mb-1">FAILED</div>
           <div class="text-2xl font-bold {todayFailed > 0 ? 'text-danger' : 'text-muted'} tabular-nums">{todayFailed}</div>
         </div>
       </div>
@@ -109,8 +109,8 @@
 
     <!-- This week cost chart -->
     <section class="border-2 border-border">
-      <div class="px-3 py-1.5 border-b border-border bg-surface-active flex items-center justify-between">
-        <span class="text-[10px] font-bold tracking-[0.2em] text-muted-bright">THIS WEEK</span>
+      <div class="px-3 py-1.5 border-b border-border bg-surface-active border-l-4 border-l-accent flex items-center justify-between">
+        <span class="text-[10px] font-bold tracking-[0.2em] text-text">THIS WEEK</span>
         <span class="text-[10px] text-accent font-bold">{formatCost(appState.weeklyCost)}</span>
       </div>
       <div class="p-3 space-y-1.5">
@@ -138,8 +138,8 @@
     <!-- Team -->
     {#if appState.teamStats.length > 0}
       <section class="border-2 border-border">
-        <div class="px-3 py-1.5 border-b border-border bg-surface-active flex items-center justify-between">
-          <span class="text-[10px] font-bold tracking-[0.2em] text-muted-bright">TEAM</span>
+        <div class="px-3 py-1.5 border-b border-border bg-surface-active border-l-4 border-l-accent flex items-center justify-between">
+          <span class="text-[10px] font-bold tracking-[0.2em] text-text">TEAM</span>
           <span class="text-[10px] text-muted">{appState.teamStats.length} submitters</span>
         </div>
         <div>
@@ -160,8 +160,8 @@
     <!-- Recent PRs -->
     {#if appState.recentPRs.length > 0}
       <section class="border-2 border-border">
-        <div class="px-3 py-1.5 border-b border-border bg-surface-active">
-          <span class="text-[10px] font-bold tracking-[0.2em] text-muted-bright">RECENT PRS</span>
+        <div class="px-3 py-1.5 border-b border-border bg-surface-active border-l-4 border-l-accent">
+          <span class="text-[10px] font-bold tracking-[0.2em] text-text">RECENT PRS</span>
         </div>
         <div>
           {#each appState.recentPRs as pr}

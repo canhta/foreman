@@ -36,7 +36,7 @@
 <div class="space-y-3">
   <!-- Header row -->
   <div class="flex items-center justify-between border-b border-border pb-2">
-    <span class="text-[10px] font-bold tracking-[0.2em] text-muted-bright">COST BREAKDOWN</span>
+    <span class="text-[10px] font-bold tracking-[0.2em] text-text">COST BREAKDOWN</span>
     <span class="text-sm font-bold text-text">{formatCost(ticket?.CostUSD || 0)}</span>
   </div>
 
@@ -60,19 +60,19 @@
   <!-- Summary stats -->
   <div class="border-t border-border pt-2 grid grid-cols-2 gap-2 text-[10px]">
     <div>
-      <div class="text-muted tracking-wider">MODEL</div>
+      <div class="text-muted-bright tracking-wider">MODEL</div>
       <div class="text-text mt-0.5 truncate">{summary.model}</div>
     </div>
     <div>
-      <div class="text-muted tracking-wider">TOKENS</div>
+      <div class="text-muted-bright tracking-wider">TOKENS</div>
       <div class="text-text mt-0.5">{formatTokens(summary.totalTokens)}</div>
     </div>
     <div>
-      <div class="text-muted tracking-wider">CALLS</div>
+      <div class="text-muted-bright tracking-wider">CALLS</div>
       <div class="text-text mt-0.5">{summary.totalCalls}</div>
     </div>
     <div>
-      <div class="text-muted tracking-wider">RETRIED</div>
+      <div class="text-muted-bright tracking-wider">RETRIED</div>
       <div class="{summary.retried > 0 ? 'text-warning' : 'text-text'} mt-0.5">{summary.retried}</div>
     </div>
   </div>

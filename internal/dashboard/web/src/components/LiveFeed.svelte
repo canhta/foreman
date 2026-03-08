@@ -22,7 +22,7 @@
   <!-- Header -->
   <div class="flex items-center px-2 border-b-2 border-border" style="min-height:40px">
     {#if !appState.feedCollapsed}
-      <span class="text-[10px] font-bold tracking-[0.2em] text-muted-bright flex-1">LIVE FEED</span>
+      <span class="text-[10px] font-bold tracking-[0.2em] text-text flex-1">LIVE FEED</span>
     {/if}
     <button
       class="text-muted hover:text-accent transition-colors text-xs {appState.feedCollapsed ? 'mx-auto' : ''}"
@@ -69,7 +69,7 @@
       {/each}
 
       {#if appState.events.length === 0}
-        <div class="px-2 py-4 text-center text-muted text-[10px] tracking-wider">WAITING...</div>
+        <div class="px-2 py-4 text-center text-muted-bright text-[10px] tracking-wider">WAITING...</div>
       {/if}
     </div>
   {:else}

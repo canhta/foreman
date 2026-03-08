@@ -2,37 +2,37 @@
 
 @theme {
   /* Backgrounds */
-  --color-bg: #070707;
-  --color-surface: #0d0d0d;
-  --color-surface-hover: #161616;
-  --color-surface-active: #1f1f1f;
+  --color-bg: #0a0a0a;
+  --color-surface: #121212;
+  --color-surface-hover: #1c1c1c;
+  --color-surface-active: #242424;
 
   /* Borders */
-  --color-border: #1e1e1e;
-  --color-border-strong: #2e2e2e;
-  --color-border-bright: #444444;
+  --color-border: #2a2a2a;
+  --color-border-strong: #3c3c3c;
+  --color-border-bright: #585858;
 
   /* Accent — electric yellow */
   --color-accent: #FFE600;
-  --color-accent-dim: #7A6B00;
-  --color-accent-bg: rgba(255, 230, 0, 0.05);
-  --color-accent-bg-strong: rgba(255, 230, 0, 0.10);
+  --color-accent-dim: #9A8200;
+  --color-accent-bg: rgba(255, 230, 0, 0.07);
+  --color-accent-bg-strong: rgba(255, 230, 0, 0.14);
 
   /* Text */
-  --color-text: #EBEBEB;
-  --color-muted: #545454;
-  --color-muted-bright: #808080;
+  --color-text: #F0F0F0;
+  --color-muted: #6e6e6e;
+  --color-muted-bright: #9a9a9a;
 
   /* Status */
-  --color-danger: #FF2222;
+  --color-danger: #FF3B3B;
   --color-danger-dim: #7A0000;
-  --color-danger-bg: rgba(255, 34, 34, 0.06);
-  --color-success: #00E060;
+  --color-danger-bg: rgba(255, 59, 59, 0.10);
+  --color-success: #00E868;
   --color-success-dim: #006B2E;
-  --color-success-bg: rgba(0, 224, 96, 0.06);
-  --color-warning: #FF9A00;
+  --color-success-bg: rgba(0, 232, 104, 0.10);
+  --color-warning: #FFAA20;
   --color-warning-dim: #7A4200;
-  --color-warning-bg: rgba(255, 154, 0, 0.06);
+  --color-warning-bg: rgba(255, 170, 32, 0.10);
 
   /* Typography */
   --font-family-mono: "JetBrains Mono", "SF Mono", "Fira Code", "Cascadia Code", ui-monospace, monospace;

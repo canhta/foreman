@@ -40,7 +40,7 @@
     <!-- Daemon state -->
     <span class="flex items-center gap-1.5 shrink-0">
       <span class="w-1.5 h-1.5 {dotBg} {appState.daemonState === 'running' && appState.wsConnected ? 'animate-pulse' : ''}"></span>
-      <span class="text-muted-bright">{label}</span>
+      <span class="text-text">{label}</span>
     </span>
 
     <!-- WA status -->
