@@ -75,6 +75,8 @@ func NewServer(db DashboardDB, emitter EventSubscriber, statusProvider DaemonSta
 			api.handleGetLlmCalls(w, r)
 		case strings.HasSuffix(path, "/retry"):
 			api.handleRetryTicket(w, r)
+		case strings.HasSuffix(path, "/reply"):
+			api.handleReplyToTicket(w, r)
 		default:
 			if r.Method == http.MethodDelete {
 				api.handleDeleteTicket(w, r)

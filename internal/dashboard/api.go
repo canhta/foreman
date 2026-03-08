@@ -44,6 +44,7 @@ type DashboardDB interface {
 	GetTicketSummaries(ctx context.Context, filter models.TicketFilter) ([]models.TicketSummary, error)
 	GetGlobalEvents(ctx context.Context, limit, offset int) ([]models.EventRecord, error)
 	DeleteTicket(ctx context.Context, id string) error
+	AppendTicketDescription(ctx context.Context, id, text string) error
 	GetTaskContextStats(ctx context.Context, taskID string) (TaskContextStats, error)
 	UpdateTaskContextStats(ctx context.Context, taskID string, stats TaskContextStats) error
 }
@@ -469,6 +470,55 @@ func (a *API) handleTaskContext(w http.ResponseWriter, r *http.Request) {
 		FilesTouched:   stats.FilesTouched,
 		CacheHits:      stats.CacheHits,
 	})
+}
+
+func (a *API) handleReplyToTicket(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	id := extractPathParam(r.URL.Path, "/api/tickets/")
+	if idx := strings.Index(id, "/"); idx != -1 {
+		id = id[:idx]
+	}
+	if id == "" {
+		http.Error(w, "missing ticket id", http.StatusBadRequest)
+		return
+	}
+
+	var body struct {
+		Message string `json:"message"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	body.Message = strings.TrimSpace(body.Message)
+	if body.Message == "" {
+		http.Error(w, "message is required", http.StatusBadRequest)
+		return
+	}
+
+	ticket, err := a.db.GetTicket(r.Context(), id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if ticket == nil {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+
+	if err := a.db.AppendTicketDescription(r.Context(), id, body.Message); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if err := a.db.UpdateTicketStatus(r.Context(), id, models.TicketStatusQueued); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "queued", "ticket_id": id})
 }
 
 func (a *API) handleDeleteTicket(w http.ResponseWriter, r *http.Request) {

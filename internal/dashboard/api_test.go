@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -80,6 +81,10 @@ func (m *mockDashboardDB) UpdateTicketStatus(_ context.Context, _ string, _ mode
 }
 
 func (m *mockDashboardDB) DeleteTicket(_ context.Context, _ string) error { return nil }
+
+func (m *mockDashboardDB) AppendTicketDescription(_ context.Context, _ string, _ string) error {
+	return nil
+}
 
 func (m *mockDashboardDB) GetTaskContextStats(_ context.Context, taskID string) (TaskContextStats, error) {
 	if m.contextStats != nil {
@@ -865,6 +870,10 @@ func (m *mockErrorDB) DeleteTicket(_ context.Context, _ string) error {
 	return fmt.Errorf("db error")
 }
 
+func (m *mockErrorDB) AppendTicketDescription(_ context.Context, _ string, _ string) error {
+	return fmt.Errorf("db error")
+}
+
 func (m *mockErrorDB) UpdateTicketStatus(_ context.Context, _ string, _ models.TicketStatus) error {
 	return fmt.Errorf("db error")
 }
@@ -1119,5 +1128,62 @@ func TestAPISetChannelHealth_MultipleChannels(t *testing.T) {
 	tg := channels["telegram"].(map[string]interface{})
 	if tg["connected"] != false {
 		t.Errorf("expected telegram connected=false")
+	}
+}
+
+// --- handleReplyToTicket ---
+
+func TestAPIReplyToTicket_Success(t *testing.T) {
+	dbm := &mockDashboardDB{
+		tickets: []models.Ticket{
+			{ID: "t1", Title: "Test", Status: models.TicketStatusClarificationNeeded},
+		},
+	}
+	api := NewAPI(dbm, nil, nil, models.CostConfig{}, "1.0.0")
+	body := strings.NewReader(`{"message":"here is the clarification"}`)
+	req := httptest.NewRequestWithContext(t.Context(), "POST", "/api/tickets/t1/reply", body)
+	rec := httptest.NewRecorder()
+	api.handleReplyToTicket(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp["status"] != "queued" {
+		t.Errorf("expected status=queued, got %v", resp["status"])
+	}
+}
+
+func TestAPIReplyToTicket_MethodNotAllowed(t *testing.T) {
+	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/tickets/t1/reply", nil)
+	rec := httptest.NewRecorder()
+	api.handleReplyToTicket(rec, req)
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405, got %d", rec.Code)
+	}
+}
+
+func TestAPIReplyToTicket_EmptyMessage(t *testing.T) {
+	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
+	body := strings.NewReader(`{"message":""}`)
+	req := httptest.NewRequestWithContext(t.Context(), "POST", "/api/tickets/t1/reply", body)
+	rec := httptest.NewRecorder()
+	api.handleReplyToTicket(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestAPIReplyToTicket_TicketNotFound(t *testing.T) {
+	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
+	body := strings.NewReader(`{"message":"reply text"}`)
+	req := httptest.NewRequestWithContext(t.Context(), "POST", "/api/tickets/nonexistent/reply", body)
+	rec := httptest.NewRecorder()
+	api.handleReplyToTicket(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
 	}
 }
