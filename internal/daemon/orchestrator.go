@@ -324,94 +324,138 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 	}
 	o.emitEvent(ctx, ticket.ID, "repo_ready", "info", "Repository ready")
 
-	// Check ticket clarity (if enabled).
-	if o.config.EnableClarification {
-		clear, err := o.clarityChecker.CheckTicketClarity(&ticket)
-		if err != nil {
-			returnErr = fmt.Errorf("check ticket clarity: %w", err)
+	// Detect smart retry: existing done tasks mean we skip planning and reuse the branch.
+	priorTasks, priorErr := o.db.ListTasks(ctx, ticket.ID)
+	isRetry := priorErr == nil && hasDoneTasks(priorTasks)
+
+	var dbTasks []models.Task
+	var codebasePatterns string
+	branchName := o.config.BranchPrefix + ticket.ExternalID
+
+	if isRetry {
+		log.Info().Msg("smart retry detected: skipping planning, resuming from existing tasks")
+		dbTasks = priorTasks
+		// CreateBranch handles existing branches via git checkout fallback.
+		if err := o.git.CreateBranch(ctx, o.config.WorkDir, branchName); err != nil {
+			returnErr = fmt.Errorf("checkout branch %s: %w", branchName, err)
 			return returnErr
 		}
-		if !clear {
-			log.Info().Msg("ticket needs clarification")
-			if err := o.db.UpdateTicketStatus(ctx, ticket.ID, models.TicketStatusClarificationNeeded); err != nil {
-				returnErr = fmt.Errorf("update status to clarification_needed: %w", err)
-				return returnErr
-			}
-			if o.config.ClarificationLabel != "" {
-				if err := o.tracker.AddLabel(ctx, ticket.ExternalID, o.config.ClarificationLabel); err != nil {
-					log.Warn().Err(err).Msg("failed to add clarification label")
+		filesToReserve := collectTaskFilesToModify(dbTasks)
+		if reserveErr := o.scheduler.TryReserve(ctx, ticket.ID, filesToReserve); reserveErr != nil {
+			var conflictErr *FileConflictError
+			if errors.As(reserveErr, &conflictErr) {
+				log.Info().Str("conflicts", conflictErr.Error()).Msg("file conflict on retry, requeueing ticket")
+				if dbErr := o.db.UpdateTicketStatus(ctx, ticket.ID, models.TicketStatusQueued); dbErr != nil {
+					returnErr = fmt.Errorf("requeue after conflict: %w", dbErr)
+					return returnErr
 				}
+				returnErr = nil
+				return nil
 			}
-			if err := o.tracker.AddComment(ctx, ticket.ExternalID,
-				"Foreman needs more detail to proceed. Please add a clearer description or acceptance criteria."); err != nil {
-				log.Warn().Err(err).Msg("failed to add clarification comment")
-			}
-			o.notify(ctx, ticket, fmt.Sprintf("Question about ticket #%s: needs more detail to proceed.", ticket.ID))
-			// Not an error — will be retried after clarification.
-			returnErr = nil
-			return nil
+			returnErr = fmt.Errorf("reserve files: %w", reserveErr)
+			return returnErr
 		}
-	}
+	} else {
+		// Normal path: clarity check → branch → plan → tasks → reserve.
 
-	// Create feature branch.
-	branchName := o.config.BranchPrefix + ticket.ExternalID
-	if err := o.git.CreateBranch(ctx, o.config.WorkDir, branchName); err != nil {
-		returnErr = fmt.Errorf("create branch %s: %w", branchName, err)
-		return returnErr
-	}
-
-	// Plan the ticket.
-	o.emitEvent(ctx, ticket.ID, "planning_started", "info", "Planning ticket...")
-	planResult, err := o.planner.Plan(ctx, o.config.WorkDir, &ticket)
-	if err != nil {
-		returnErr = fmt.Errorf("planning: %w", err)
-		return returnErr
-	}
-
-	if planResult.Status != "OK" {
-		returnErr = fmt.Errorf("planner returned non-OK status: %s — %s", planResult.Status, planResult.Message)
-		return returnErr
-	}
-	o.emitEvent(ctx, ticket.ID, "planning_done", "info", fmt.Sprintf("Plan ready: %d tasks", len(planResult.Tasks)))
-
-	// Convert PlannedTask -> models.Task and persist.
-	tasks := make([]models.Task, len(planResult.Tasks))
-	for i, pt := range planResult.Tasks {
-		tasks[i] = models.Task{
-			Title:               pt.Title,
-			Description:         pt.Description,
-			FilesToModify:       pt.FilesToModify,
-			FilesToRead:         pt.FilesToRead,
-			TestAssertions:      pt.TestAssertions,
-			AcceptanceCriteria:  pt.AcceptanceCriteria,
-			DependsOn:           pt.DependsOn,
-			EstimatedComplexity: pt.EstimatedComplexity,
-			Status:              models.TaskStatusPending,
-			Sequence:            i + 1,
-		}
-	}
-
-	if createErr := o.db.CreateTasks(ctx, ticket.ID, tasks); createErr != nil {
-		returnErr = fmt.Errorf("create tasks: %w", createErr)
-		return returnErr
-	}
-
-	// Reserve files via scheduler.
-	filesToReserve := collectFilesToModify(planResult.Tasks)
-	if reserveErr := o.scheduler.TryReserve(ctx, ticket.ID, filesToReserve); reserveErr != nil {
-		var conflictErr *FileConflictError
-		if errors.As(reserveErr, &conflictErr) {
-			log.Info().Str("conflicts", conflictErr.Error()).Msg("file conflict, requeueing ticket")
-			if dbErr := o.db.UpdateTicketStatus(ctx, ticket.ID, models.TicketStatusQueued); dbErr != nil {
-				returnErr = fmt.Errorf("requeue after conflict: %w", dbErr)
+		// Check ticket clarity (if enabled).
+		if o.config.EnableClarification {
+			clear, err := o.clarityChecker.CheckTicketClarity(&ticket)
+			if err != nil {
+				returnErr = fmt.Errorf("check ticket clarity: %w", err)
 				return returnErr
 			}
-			// Not an error — will retry next cycle.
-			returnErr = nil
-			return nil
+			if !clear {
+				log.Info().Msg("ticket needs clarification")
+				if err := o.db.UpdateTicketStatus(ctx, ticket.ID, models.TicketStatusClarificationNeeded); err != nil {
+					returnErr = fmt.Errorf("update status to clarification_needed: %w", err)
+					return returnErr
+				}
+				if o.config.ClarificationLabel != "" {
+					if err := o.tracker.AddLabel(ctx, ticket.ExternalID, o.config.ClarificationLabel); err != nil {
+						log.Warn().Err(err).Msg("failed to add clarification label")
+					}
+				}
+				if err := o.tracker.AddComment(ctx, ticket.ExternalID,
+					"Foreman needs more detail to proceed. Please add a clearer description or acceptance criteria."); err != nil {
+					log.Warn().Err(err).Msg("failed to add clarification comment")
+				}
+				o.notify(ctx, ticket, fmt.Sprintf("Question about ticket #%s: needs more detail to proceed.", ticket.ID))
+				// Not an error — will be retried after clarification.
+				returnErr = nil
+				return nil
+			}
 		}
-		returnErr = fmt.Errorf("reserve files: %w", reserveErr)
-		return returnErr
+
+		// Create feature branch.
+		if err := o.git.CreateBranch(ctx, o.config.WorkDir, branchName); err != nil {
+			returnErr = fmt.Errorf("create branch %s: %w", branchName, err)
+			return returnErr
+		}
+
+		// Plan the ticket.
+		o.emitEvent(ctx, ticket.ID, "planning_started", "info", "Planning ticket...")
+		planResult, err := o.planner.Plan(ctx, o.config.WorkDir, &ticket)
+		if err != nil {
+			returnErr = fmt.Errorf("planning: %w", err)
+			return returnErr
+		}
+
+		if planResult.Status != "OK" {
+			returnErr = fmt.Errorf("planner returned non-OK status: %s — %s", planResult.Status, planResult.Message)
+			return returnErr
+		}
+		o.emitEvent(ctx, ticket.ID, "planning_done", "info", fmt.Sprintf("Plan ready: %d tasks", len(planResult.Tasks)))
+
+		// Convert PlannedTask -> models.Task and persist.
+		tasks := make([]models.Task, len(planResult.Tasks))
+		for i, pt := range planResult.Tasks {
+			tasks[i] = models.Task{
+				Title:               pt.Title,
+				Description:         pt.Description,
+				FilesToModify:       pt.FilesToModify,
+				FilesToRead:         pt.FilesToRead,
+				TestAssertions:      pt.TestAssertions,
+				AcceptanceCriteria:  pt.AcceptanceCriteria,
+				DependsOn:           pt.DependsOn,
+				EstimatedComplexity: pt.EstimatedComplexity,
+				Status:              models.TaskStatusPending,
+				Sequence:            i + 1,
+			}
+		}
+
+		if createErr := o.db.CreateTasks(ctx, ticket.ID, tasks); createErr != nil {
+			returnErr = fmt.Errorf("create tasks: %w", createErr)
+			return returnErr
+		}
+
+		// Reserve files via scheduler.
+		filesToReserve := collectFilesToModify(planResult.Tasks)
+		if reserveErr := o.scheduler.TryReserve(ctx, ticket.ID, filesToReserve); reserveErr != nil {
+			var conflictErr *FileConflictError
+			if errors.As(reserveErr, &conflictErr) {
+				log.Info().Str("conflicts", conflictErr.Error()).Msg("file conflict, requeueing ticket")
+				if dbErr := o.db.UpdateTicketStatus(ctx, ticket.ID, models.TicketStatusQueued); dbErr != nil {
+					returnErr = fmt.Errorf("requeue after conflict: %w", dbErr)
+					return returnErr
+				}
+				// Not an error — will retry next cycle.
+				returnErr = nil
+				return nil
+			}
+			returnErr = fmt.Errorf("reserve files: %w", reserveErr)
+			return returnErr
+		}
+
+		codebasePatterns = formatCodebasePatterns(planResult.CodebasePatterns)
+
+		// Reload tasks from DB to get assigned IDs.
+		var reloadErr error
+		dbTasks, reloadErr = o.db.ListTasks(ctx, ticket.ID)
+		if reloadErr != nil {
+			returnErr = fmt.Errorf("list tasks: %w", reloadErr)
+			return returnErr
+		}
 	}
 
 	// Status: planning -> implementing
@@ -420,22 +464,14 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 		return returnErr
 	}
 
-	o.notify(ctx, ticket, fmt.Sprintf("Implementing %d tasks for ticket #%s...", len(tasks), ticket.ID))
-	o.emitEvent(ctx, ticket.ID, "implementing_started", "info", fmt.Sprintf("Starting implementation of %d tasks", len(tasks)))
-
-	// Reload tasks from DB to get assigned IDs.
-	dbTasks, err := o.db.ListTasks(ctx, ticket.ID)
-	if err != nil {
-		returnErr = fmt.Errorf("list tasks: %w", err)
-		return returnErr
-	}
+	o.notify(ctx, ticket, fmt.Sprintf("Implementing %d tasks for ticket #%s...", len(dbTasks), ticket.ID))
+	o.emitEvent(ctx, ticket.ID, "implementing_started", "info", fmt.Sprintf("Starting implementation of %d tasks", len(dbTasks)))
 
 	// Create a shared DiscoveryBoard for this ticket invocation (ARCH-S02).
 	// All parallel tasks share the same board so discoveries propagate across them.
 	discoveryBoard := models.NewDiscoveryBoard()
 
 	// Build task runner via factory.
-	codebasePatterns := formatCodebasePatterns(planResult.CodebasePatterns)
 	dagRunner := o.runnerFactory.Create(TaskRunnerFactoryInput{
 		TicketID:                   ticket.ID,
 		Models:                     o.config.Models,
@@ -784,6 +820,32 @@ func findFirstFailure(tasks []models.Task, results map[string]TaskResult) (title
 		}
 	}
 	return "", ""
+}
+
+// hasDoneTasks reports whether any task in the slice has status Done.
+func hasDoneTasks(tasks []models.Task) bool {
+	for _, t := range tasks {
+		if t.Status == models.TaskStatusDone {
+			return true
+		}
+	}
+	return false
+}
+
+// collectTaskFilesToModify collects unique FilesToModify from existing DB tasks.
+// Used in the retry path where no PlanResult is available.
+func collectTaskFilesToModify(tasks []models.Task) []string {
+	seen := make(map[string]bool)
+	var files []string
+	for _, t := range tasks {
+		for _, f := range t.FilesToModify {
+			if !seen[f] {
+				seen[f] = true
+				files = append(files, f)
+			}
+		}
+	}
+	return files
 }
 
 // Compile-time check.

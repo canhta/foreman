@@ -370,9 +370,11 @@ func (m *orchMockPRCreator) CreatePR(_ context.Context, _ git.PrRequest) (*git.P
 type orchMockPlanner struct {
 	result *PlanResult
 	err    error
+	called bool
 }
 
 func (m *orchMockPlanner) Plan(_ context.Context, _ string, _ *models.Ticket) (*PlanResult, error) {
+	m.called = true
 	if m.err != nil {
 		return nil, m.err
 	}
@@ -405,10 +407,12 @@ func (m *orchMockRunnerFactory) Create(_ TaskRunnerFactoryInput) TaskRunner {
 }
 
 type orchMockTaskRunner struct {
-	results map[string]TaskResult
+	results    map[string]TaskResult
+	ranTaskIDs []string
 }
 
 func (m *orchMockTaskRunner) Run(_ context.Context, taskID string) TaskResult {
+	m.ranTaskIDs = append(m.ranTaskIDs, taskID)
 	if res, ok := m.results[taskID]; ok {
 		return res
 	}
@@ -793,6 +797,46 @@ func TestProcessTicket_PRTaskSummary_IncludesRecoveredTasks(t *testing.T) {
 	// path is covered by TestProcessTicket_AllTasksAlreadyCompletedOnRecovery.
 	last := f.db.lastStatus("t-summary-recover")
 	assert.Equal(t, models.TicketStatusAwaitingMerge, last)
+}
+
+func TestProcessTicket_SmartRetry(t *testing.T) {
+	f := newOrchFixture()
+
+	// Seed DB with one done task and one pending task (failed task reset to pending by smartRetrier).
+	f.db.tasks = []models.Task{
+		{ID: "task-done", Title: "Task Done", Status: models.TaskStatusDone, Sequence: 1, FilesToModify: []string{"a.go"}},
+		{ID: "task-retry", Title: "Task Retry", Status: models.TaskStatusPending, Sequence: 2, FilesToModify: []string{"b.go"}},
+	}
+	// Simulate dag_state seeded by smartRetrier.
+	f.db.dagState = &db.DAGState{
+		TicketID:       "t-retry",
+		CompletedTasks: []string{"task-done"},
+	}
+	f.runner.results["task-retry"] = TaskResult{TaskID: "task-retry", Status: models.TaskStatusDone}
+
+	ticket := models.Ticket{
+		ID:         "t-retry",
+		ExternalID: "GH-99",
+		Title:      "Smart retry ticket",
+	}
+
+	err := f.orch.ProcessTicket(context.Background(), ticket)
+	require.NoError(t, err)
+
+	// Planner must NOT have been called.
+	assert.False(t, f.planner.called, "planner should not run in retry mode")
+	assert.Empty(t, f.db.createdTasks, "CreateTasks should not be called in retry mode")
+
+	// Only task-retry should have been executed (task-done filtered by dag recovery).
+	assert.Contains(t, f.runner.ranTaskIDs, "task-retry")
+	assert.NotContains(t, f.runner.ranTaskIDs, "task-done")
+
+	// PR still created.
+	assert.True(t, f.prCreator.called, "PR should still be created after retry")
+
+	// Ticket reaches awaiting_merge.
+	seq := f.db.statusSequence("t-retry")
+	assert.Equal(t, models.TicketStatusAwaitingMerge, seq[len(seq)-1])
 }
 
 // TestBuildTaskSummaries_RecoveredTasksShowDone verifies that buildTaskSummaries
