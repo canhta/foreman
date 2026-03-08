@@ -18,11 +18,16 @@ import (
 type TaskContextStatsDB = TaskContextStats
 
 type mockDashboardDB struct {
-	tickets      []models.Ticket
-	events       []models.EventRecord
-	teamStats    []models.TeamStat
-	summaries    []models.TicketSummary
-	contextStats map[string]TaskContextStatsDB
+	tickets           []models.Ticket
+	events            []models.EventRecord
+	teamStats         []models.TeamStat
+	summaries         []models.TicketSummary
+	contextStats      map[string]TaskContextStatsDB
+	savedDAGState     *db.DAGState
+	taskStatusUpdates []struct {
+		id     string
+		status models.TaskStatus
+	}
 }
 
 func (m *mockDashboardDB) ValidateAuthToken(_ context.Context, _ string) (bool, error) {
@@ -72,7 +77,16 @@ func (m *mockDashboardDB) GetMonthlyCost(_ context.Context, yearMonth string) (f
 	return 250.0, nil
 }
 
-func (m *mockDashboardDB) UpdateTaskStatus(_ context.Context, _ string, _ models.TaskStatus) error {
+func (m *mockDashboardDB) UpdateTaskStatus(_ context.Context, id string, status models.TaskStatus) error {
+	m.taskStatusUpdates = append(m.taskStatusUpdates, struct {
+		id     string
+		status models.TaskStatus
+	}{id, status})
+	return nil
+}
+
+func (m *mockDashboardDB) SaveDAGState(_ context.Context, _ string, state db.DAGState) error {
+	m.savedDAGState = &state
 	return nil
 }
 

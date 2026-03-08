@@ -39,6 +39,7 @@ type DashboardDB interface {
 	GetMonthlyCost(ctx context.Context, yearMonth string) (float64, error)
 	UpdateTaskStatus(ctx context.Context, id string, status models.TaskStatus) error
 	UpdateTicketStatus(ctx context.Context, id string, status models.TicketStatus) error
+	SaveDAGState(ctx context.Context, ticketID string, state db.DAGState) error
 	GetTeamStats(ctx context.Context, since time.Time) ([]models.TeamStat, error)
 	GetRecentPRs(ctx context.Context, limit int) ([]models.Ticket, error)
 	GetTicketSummaries(ctx context.Context, filter models.TicketFilter) ([]models.TicketSummary, error)
