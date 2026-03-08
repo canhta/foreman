@@ -213,11 +213,12 @@ func SummarizeHistory(ctx context.Context, provider llm.LlmProvider, model strin
 	sb.WriteString("## Goal\n## Accomplished\n## Remaining\n## Relevant Files (comma-separated, or \"none\" if not applicable)\n")
 
 	req := models.LlmRequest{
-		Model:        model,
-		SystemPrompt: "You are a precise technical summarizer. Return only the filled-in template. Do not add prose outside the section headers.",
-		UserPrompt:   sb.String(),
-		MaxTokens:    500,
-		Temperature:  0.1,
+		Model:             model,
+		SystemPrompt:      "You are a precise technical summarizer. Return only the filled-in template. Do not add prose outside the section headers.",
+		UserPrompt:        sb.String(),
+		MaxTokens:         500,
+		Temperature:       0.1,
+		CacheSystemPrompt: true,
 	}
 
 	resp, err := provider.Complete(ctx, req)

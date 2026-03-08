@@ -49,6 +49,7 @@ type SkillStep struct {
 	Args           []string               `yaml:"args,omitempty"`
 	TimeoutSecs    int                    `yaml:"timeout_secs,omitempty"`
 	MaxTurns       int                    `yaml:"max_turns,omitempty"`
+	MaxTokens      int                    `yaml:"max_tokens,omitempty"`
 	AllowFailure   bool                   `yaml:"allow_failure,omitempty"`
 }
 

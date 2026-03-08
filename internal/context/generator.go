@@ -132,7 +132,7 @@ func (g *Generator) generateOnline(ctx context.Context, workDir string, opts Gen
 		Model:        g.model,
 		SystemPrompt: systemPrompt,
 		UserPrompt:   userPrompt.String(),
-		MaxTokens:    4096,
+		MaxTokens:    8192,
 		Temperature:  0.3,
 	}
 

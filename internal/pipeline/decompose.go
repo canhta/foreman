@@ -255,7 +255,7 @@ Return a JSON object with this schema:
 		SystemPrompt: "You are a technical project manager. Decompose tickets into focused, implementable child tickets.",
 		UserPrompt:   prompt,
 		Stage:        "decomposition",
-		MaxTokens:    4096,
+		MaxTokens:    8192,
 		Temperature:  0.2,
 	})
 	if err != nil {

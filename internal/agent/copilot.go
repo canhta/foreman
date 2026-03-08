@@ -87,7 +87,7 @@ func (r *CopilotRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 		output = *result.Data.Content
 	}
 
-	return AgentResult{Output: output, Usage: usage}, nil
+	return enrichResult(AgentResult{Output: output, Usage: usage}), nil
 }
 
 func (r *CopilotRunner) HealthCheck(ctx context.Context) error {

@@ -64,10 +64,11 @@ CONCERNS:
 - <concern 2>
 
 If no concerns, write "CONCERNS:\n- none"`,
-		UserPrompt:  sb.String(),
-		Stage:       "plan_confidence",
-		MaxTokens:   512,
-		Temperature: 0.0,
+		UserPrompt:        sb.String(),
+		Stage:             "plan_confidence",
+		MaxTokens:         512,
+		Temperature:       0.0,
+		CacheSystemPrompt: true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("plan confidence LLM call: %w", err)

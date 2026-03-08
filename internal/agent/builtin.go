@@ -47,6 +47,8 @@ type BuiltinConfig struct {
 	DefaultAllowedTools []string
 	MaxTurnsDefault     int
 	ContextWindowBudget int // optional override; defaults to contextWindowBudget
+	// MaxTokens is the maximum number of output tokens per LLM call. 0 uses the default (8192).
+	MaxTokens int
 	// ReflectionInterval is the number of turns after which a self-reflection
 	// message is injected (REQ-LOOP-001). 0 uses the default (5). -1 disables.
 	ReflectionInterval int
@@ -191,14 +193,19 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 			}
 			r.registry.SetParentBudgetAndDepth(remaining, req.AgentDepth)
 		}
+		maxTokens := r.config.MaxTokens
+		if maxTokens == 0 {
+			maxTokens = 8192
+		}
 		llmReq := models.LlmRequest{
 			Model:        r.model,
 			SystemPrompt: systemPrompt,
-			MaxTokens:    4096,
+			MaxTokens:    maxTokens,
 			Temperature:  0.2,
 			Messages:     messages,
 			Tools:        toolDefs,
 			OutputSchema: outputSchema,
+			Thinking:     req.Thinking,
 		}
 
 		resp, err := r.provider.Complete(ctx, llmReq)

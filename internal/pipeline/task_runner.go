@@ -216,7 +216,7 @@ func (r *PipelineTaskRunner) RunTask(ctx context.Context, task *models.Task) err
 			Model:          r.config.Models.Implementer,
 			Feedback:       feedback.Render(),
 			PromptVersion:  r.promptVersion("implementer"),
-			MaxTokens:      4096,
+			MaxTokens:      8192,
 			Attempt:        attempt,
 			RetryErrorType: currentRetryErrorType,
 		})

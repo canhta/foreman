@@ -48,12 +48,12 @@ connection_retry_delay_secs = 30
 fallback_provider = ""
 
 [models]
-planner = "anthropic:claude-sonnet-4-5-20250929"
-implementer = "anthropic:claude-sonnet-4-5-20250929"
-spec_reviewer = "anthropic:claude-haiku-4-5-20251001"
-quality_reviewer = "anthropic:claude-haiku-4-5-20251001"
-final_reviewer = "anthropic:claude-sonnet-4-5-20250929"
-clarifier = "anthropic:claude-haiku-4-5-20251001"
+planner = "anthropic:claude-sonnet-4-6"
+implementer = "anthropic:claude-sonnet-4-6"
+spec_reviewer = "anthropic:claude-haiku-4-5"
+quality_reviewer = "anthropic:claude-haiku-4-5"
+final_reviewer = "anthropic:claude-sonnet-4-6"
+clarifier = "anthropic:claude-haiku-4-5"
 
 [cost]
 max_cost_per_ticket_usd = 15.0
@@ -124,7 +124,7 @@ timeout_secs_default = 120
 
 [skills.agent_runner.builtin]
 default_allowed_tools = ["Read", "Glob", "Grep"]
-# model = "claude-3-5-sonnet-20241022"  # optional: override model for all builtin agent sessions (REQ-LOOP-005)
+# model = "claude-sonnet-4-6"           # optional: override model for all builtin agent sessions (REQ-LOOP-005)
                                          # when unset, falls back to the pipeline implementer model
 
 [skills.agent_runner.claudecode]
@@ -148,7 +148,7 @@ timeout_secs_default = 180
 
 # [[agents]]
 # name = "security-reviewer"
-# model = "anthropic:claude-sonnet-4-5-20250929"
+# model = "anthropic:claude-sonnet-4-6"
 # system_prompt = "You are a security reviewer. Check for OWASP Top 10 issues."
 # allowed_tools = ["Read", "Glob", "Grep", "GetErrors"]
 # max_turns = 8
@@ -157,7 +157,7 @@ timeout_secs_default = 180
 
 # [[agents]]
 # name = "docs-checker"
-# model = "anthropic:claude-haiku-4-5-20251001"
+# model = "anthropic:claude-haiku-4-5"
 # system_prompt = "Verify that public functions have documentation."
 # allowed_tools = ["Read", "Glob", "Grep"]
 # max_turns = 5

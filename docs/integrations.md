@@ -114,12 +114,12 @@ To trigger processing, add `"foreman-ready"` to `labels`. Foreman writes status 
 
 | Role | Model | Rationale |
 |---|---|---|
-| `planner` | `claude-sonnet-4-5-20250929` | Requires strong reasoning for decomposition |
-| `implementer` | `claude-sonnet-4-5-20250929` | Primary coding role — use the best model |
-| `spec_reviewer` | `claude-haiku-4-5-20251001` | Lighter task; cost savings |
-| `quality_reviewer` | `claude-haiku-4-5-20251001` | Lighter task; cost savings |
-| `final_reviewer` | `claude-sonnet-4-5-20250929` | Full-diff review needs reasoning |
-| `clarifier` | `claude-haiku-4-5-20251001` | Simple question generation |
+| `planner` | `claude-sonnet-4-6` | Requires strong reasoning for decomposition |
+| `implementer` | `claude-sonnet-4-6` | Primary coding role — use the best model |
+| `spec_reviewer` | `claude-haiku-4-5` | Lighter task; cost savings |
+| `quality_reviewer` | `claude-haiku-4-5` | Lighter task; cost savings |
+| `final_reviewer` | `claude-sonnet-4-6` | Full-diff review needs reasoning |
+| `clarifier` | `claude-haiku-4-5` | Simple question generation |
 
 ---
 
@@ -143,7 +143,7 @@ Route to any model available on OpenRouter, including models from Anthropic, Ope
 
 ```toml
 [models]
-implementer = "openrouter:anthropic/claude-sonnet-4-5-20250929"
+implementer = "openrouter:anthropic/claude-sonnet-4-6"
 ```
 
 ---
@@ -246,12 +246,12 @@ api_key = "${ANTHROPIC_API_KEY}"
 api_key = "${OPENAI_API_KEY}"
 
 [models]
-planner          = "anthropic:claude-sonnet-4-5-20250929"
-implementer      = "anthropic:claude-sonnet-4-5-20250929"
+planner          = "anthropic:claude-sonnet-4-6"
+implementer      = "anthropic:claude-sonnet-4-6"
 spec_reviewer    = "openai:gpt-4o"
 quality_reviewer = "openai:gpt-4o"
-final_reviewer   = "anthropic:claude-sonnet-4-5-20250929"
-clarifier        = "anthropic:claude-haiku-4-5-20251001"
+final_reviewer   = "anthropic:claude-sonnet-4-6"
+clarifier        = "anthropic:claude-haiku-4-5"
 
 # Fall back to OpenAI if Anthropic is down
 [llm.outage]

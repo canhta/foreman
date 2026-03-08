@@ -79,7 +79,7 @@ Output format:
 If you cannot confidently resolve the conflict, say "CANNOT_RESOLVE" and explain why.`,
 		UserPrompt: sb.String(),
 		Stage:      "rebase_resolve",
-		MaxTokens:  4096,
+		MaxTokens:  8192,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("conflict resolution LLM call: %w", err)

@@ -6,6 +6,7 @@ import (
 
 	"github.com/canhta/foreman/internal/agent/agentconst"
 	"github.com/canhta/foreman/internal/agent/mcp"
+	"github.com/canhta/foreman/internal/models"
 )
 
 // AgentRunner abstracts any external agent SDK or CLI that can execute
@@ -53,6 +54,9 @@ type AgentRequest struct {
 	AllowedTools    []string
 	OutputSchema    json.RawMessage
 	MCPServers      []mcp.MCPServerConfig
+	// Thinking configures adaptive or extended thinking for the builtin runner.
+	// ClaudeCode and Copilot runners ignore this field (thinking is model-managed).
+	Thinking        *models.ThinkingConfig
 	MaxTurns        int
 	TimeoutSecs     int
 	AgentDepth      int

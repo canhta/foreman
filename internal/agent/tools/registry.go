@@ -32,6 +32,7 @@ type ToolHooks struct {
 type Registry struct {
 	hooks           ToolHooks
 	tools           map[string]Tool
+	mcpMgr          *mcp.Manager
 	runFn           RunFn
 	allowedCommands []string
 	// parentBudget and parentDepth are set by the builtin runner before each run
@@ -48,11 +49,13 @@ func NewRegistry(gitProvider git.GitProvider, cmdRunner runner.CommandRunner, ho
 }
 
 // NewRegistryWithMCP creates a Registry with an optional MCP Manager wired into
-// the ListMCPTools tool.  All other parameters behave the same as NewRegistry.
+// the ListMCPTools tool and direct MCP tool execution.
+// All other parameters behave the same as NewRegistry.
 func NewRegistryWithMCP(gitProvider git.GitProvider, cmdRunner runner.CommandRunner, hooks ToolHooks, mcpMgr *mcp.Manager) *Registry {
 	r := &Registry{
-		tools: make(map[string]Tool),
-		hooks: hooks,
+		tools:  make(map[string]Tool),
+		hooks:  hooks,
+		mcpMgr: mcpMgr,
 	}
 	registerFS(r)
 	registerGit(r, gitProvider)
@@ -70,9 +73,23 @@ func (r *Registry) Register(t Tool) {
 }
 
 // Execute runs the named tool, firing pre/post hooks.
+// If the tool is not registered locally but is an MCP tool (mcp_ prefix),
+// it is routed to the MCP manager.
 func (r *Registry) Execute(ctx context.Context, workDir, name string, input json.RawMessage) (string, error) {
 	t, ok := r.tools[name]
 	if !ok {
+		if r.mcpMgr != nil && r.mcpMgr.IsMCPTool(name) {
+			if r.hooks.PreToolUse != nil {
+				if err := r.hooks.PreToolUse(ctx, name, input); err != nil {
+					return "", err
+				}
+			}
+			out, err := r.mcpMgr.CallTool(ctx, name, input)
+			if r.hooks.PostToolUse != nil {
+				r.hooks.PostToolUse(ctx, name, out, err)
+			}
+			return out, err
+		}
 		return "", fmt.Errorf("unknown tool: %s", name)
 	}
 	if r.hooks.PreToolUse != nil {

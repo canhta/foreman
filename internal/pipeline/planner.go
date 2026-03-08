@@ -28,7 +28,7 @@ type HandoffStorer interface {
 }
 
 const (
-	plannerMaxTokens   = 4096
+	plannerMaxTokens   = 8192
 	plannerTemperature = 0.2
 )
 

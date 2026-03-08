@@ -203,12 +203,12 @@ Route each pipeline role to a specific provider and model. This lets you use che
 ```toml
 [models]
 # Format: "provider:model_name"
-planner          = "anthropic:claude-sonnet-4-5-20250929"
-implementer      = "anthropic:claude-sonnet-4-5-20250929"
-spec_reviewer    = "anthropic:claude-haiku-4-5-20251001"
-quality_reviewer = "anthropic:claude-haiku-4-5-20251001"
-final_reviewer   = "anthropic:claude-sonnet-4-5-20250929"
-clarifier        = "anthropic:claude-haiku-4-5-20251001"
+planner          = "anthropic:claude-sonnet-4-6"
+implementer      = "anthropic:claude-sonnet-4-6"
+spec_reviewer    = "anthropic:claude-haiku-4-5"
+quality_reviewer = "anthropic:claude-haiku-4-5"
+final_reviewer   = "anthropic:claude-sonnet-4-6"
+clarifier        = "anthropic:claude-haiku-4-5"
 ```
 
 ---
@@ -230,8 +230,8 @@ Default pricing is bundled for common models. Override when provider pricing cha
 
 ```toml
 [cost.pricing]
-"anthropic:claude-sonnet-4-5-20250929" = { input = 3.00,  output = 15.00 }
-"anthropic:claude-haiku-4-5-20251001"  = { input = 0.80,  output = 4.00  }
+"anthropic:claude-sonnet-4-6" = { input = 3.00,  output = 15.00 }
+"anthropic:claude-haiku-4-5"  = { input = 0.80,  output = 4.00  }
 "openai:gpt-4o"                         = { input = 2.50,  output = 10.00 }
 "openai:o3-mini"                        = { input = 1.10,  output = 4.40  }
 ```
@@ -462,7 +462,7 @@ max_turns             = 15
 max_context_tokens    = 100000
 reflection_interval   = 5      # Run a self-reflection turn every N tool rounds (0 = disabled)
 model                 = ""     # Override model; empty = use [models].implementer
-                               # e.g. "anthropic:claude-haiku-4-5-20251001" for cheaper agent tasks
+                               # e.g. "anthropic:claude-haiku-4-5" for cheaper agent tasks
 ```
 
 ### Claude Code (pipeline agent)

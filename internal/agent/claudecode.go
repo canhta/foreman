@@ -134,7 +134,7 @@ func parseSDKResultMessage(stdout string) (AgentResult, error) {
 		return AgentResult{}, fmt.Errorf("claudecode: agent error (%s): %s", msg.Subtype, errMsg)
 	}
 
-	return AgentResult{
+	return enrichResult(AgentResult{
 		Output:     msg.Result,
 		Structured: msg.StructuredOutput,
 		Usage: AgentUsage{
@@ -144,7 +144,7 @@ func parseSDKResultMessage(stdout string) (AgentResult, error) {
 			NumTurns:     msg.NumTurns,
 			DurationMs:   msg.DurationMs,
 		},
-	}, nil
+	}), nil
 }
 
 func (r *ClaudeCodeRunner) HealthCheck(ctx context.Context) error {

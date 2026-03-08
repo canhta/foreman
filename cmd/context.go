@@ -157,7 +157,7 @@ func newContextUpdateCmd() *cobra.Command {
 						SystemPrompt: "You are updating an AGENTS.md file for Foreman, an autonomous coding daemon. Incorporate the new observations into the existing file. Keep the same structure. Only add or modify sections where observations provide new information. Output the complete updated AGENTS.md.",
 						UserPrompt:   fmt.Sprintf("## Current AGENTS.md\n\n%s\n\n## New Observations\n\n%s", cleaned, obsSummary.String()),
 						Model:        cfg.Models.Planner,
-						MaxTokens:    4096,
+						MaxTokens:    8192,
 						Temperature:  0.2,
 					})
 					if llmErr == nil {

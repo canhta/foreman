@@ -167,7 +167,7 @@ Returns all recorded LLM calls for a ticket.
     "task_id": "task-uuid",
     "role": "implementer",
     "provider": "anthropic",
-    "model": "claude-sonnet-4-5-20250929",
+    "model": "claude-sonnet-4-6",
     "attempt": 1,
     "tokens_input": 12000,
     "tokens_output": 2500,

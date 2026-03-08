@@ -175,7 +175,7 @@ func TestSQLiteDB_RecordLlmCall_CacheTokens(t *testing.T) {
 
 	call := &models.LlmCallRecord{
 		ID: "llm-cache", TicketID: "t-cache", Role: "implementer",
-		Provider: "anthropic", Model: "claude-3-5-sonnet", Attempt: 1,
+		Provider: "anthropic", Model: "claude-sonnet-4-6", Attempt: 1,
 		TokensInput: 500, TokensOutput: 100, CostUSD: 0.005, DurationMs: 300,
 		Status:              "success",
 		CacheReadTokens:     800,

@@ -133,10 +133,14 @@ func (e *Engine) executeLLMCall(ctx context.Context, step SkillStep, sCtx *Skill
 		prompt = fmt.Sprintf("Execute skill step: %s", step.ID)
 	}
 
+	maxTokens := step.MaxTokens
+	if maxTokens == 0 {
+		maxTokens = 8192
+	}
 	req := models.LlmRequest{
 		Model:      step.Model,
 		UserPrompt: prompt,
-		MaxTokens:  4096,
+		MaxTokens:  maxTokens,
 	}
 	if t := step.Thinking; t != nil && (t.Enabled || t.Adaptive) {
 		req.Thinking = &models.ThinkingConfig{
@@ -240,6 +244,13 @@ func (e *Engine) executeAgentSDK(ctx context.Context, step SkillStep, sCtx *Skil
 		TimeoutSecs:   step.TimeoutSecs,
 		FallbackModel: step.FallbackModel,
 		OnProgress:    buildAgentOnProgress(ctx, sCtx, step.ID),
+	}
+	if t := step.Thinking; t != nil && (t.Enabled || t.Adaptive) {
+		req.Thinking = &models.ThinkingConfig{
+			Enabled:      t.Enabled,
+			Adaptive:     t.Adaptive,
+			BudgetTokens: t.BudgetTokens,
+		}
 	}
 
 	// Marshal OutputSchema map → json.RawMessage

@@ -44,13 +44,14 @@ func (impl *Implementer) Execute(ctx context.Context, input ImplementerInput) (*
 	userPrompt := buildImplementerUserPrompt(input)
 
 	resp, err := impl.llm.Complete(ctx, models.LlmRequest{
-		Model:         input.Model,
-		SystemPrompt:  systemPrompt,
-		UserPrompt:    userPrompt,
-		PromptVersion: input.PromptVersion,
-		Stage:         "implementing",
-		MaxTokens:     input.MaxTokens,
-		Temperature:   0.0,
+		Model:             input.Model,
+		SystemPrompt:      systemPrompt,
+		UserPrompt:        userPrompt,
+		PromptVersion:     input.PromptVersion,
+		Stage:             "implementing",
+		MaxTokens:         input.MaxTokens,
+		Temperature:       0.0,
+		CacheSystemPrompt: true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("implementer LLM call: %w", err)
