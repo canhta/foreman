@@ -2,6 +2,8 @@ import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import tailwindcss from '@tailwindcss/vite';
 
+const backendPort = process.env.FOREMAN_DASHBOARD_PORT || '8080';
+
 export default defineConfig({
   plugins: [svelte(), tailwindcss()],
   build: {
@@ -10,8 +12,8 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/api': 'http://localhost:8080',
-      '/ws': { target: 'ws://localhost:8080', ws: true },
+      '/api': `http://127.0.0.1:${backendPort}`,
+      '/ws': { target: `ws://127.0.0.1:${backendPort}`, ws: true },
     },
   },
 });

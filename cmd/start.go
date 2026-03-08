@@ -117,6 +117,8 @@ func (f *taskRunnerFactory) Create(input daemon.TaskRunnerFactoryInput) daemon.T
 }
 
 func newStartCmd() *cobra.Command {
+	var dashboardPort int
+
 	cmd := &cobra.Command{
 		Use:   "start",
 		Short: "Start the Foreman daemon",
@@ -330,13 +332,10 @@ func newStartCmd() *cobra.Command {
 			// 11. Dashboard in background.
 			if cfg.Dashboard.Enabled {
 				port := cfg.Dashboard.Port
-				if port == 0 {
-					port = 3333
+				if dashboardPort > 0 {
+					port = dashboardPort
 				}
 				host := cfg.Dashboard.Host
-				if host == "" {
-					host = "127.0.0.1"
-				}
 				srv := dashboard.NewServer(database, emitter, d, promReg, cfg.Cost, "0.1.0", host, port)
 				srv.SetDaemonController(d)
 				srv.SetPromptSnapshotQuerier(database)
@@ -366,6 +365,7 @@ func newStartCmd() *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().IntVar(&dashboardPort, "dashboard-port", 0, "Override dashboard port")
 	return cmd
 }
 

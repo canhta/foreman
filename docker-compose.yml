@@ -10,12 +10,13 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       FOREMAN_DASHBOARD_TOKEN: ${FOREMAN_DASHBOARD_TOKEN:-}
+      FOREMAN_DASHBOARD_HOST: "0.0.0.0"
     volumes:
       - ./.foreman:/root/.foreman
       - ./foreman.toml:/app/foreman.toml:ro
     command: ["start"]
     ports:
-      - "3333:3333"
+      - "8080:8080"
     healthcheck:
       test: ["CMD", "foreman", "doctor", "--quick"]
       interval: 30s

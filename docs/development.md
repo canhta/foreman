@@ -12,8 +12,8 @@ This guide covers setting up a development environment, the project's convention
 | Command | What it does |
 |---|---|
 | `make build` | Build dashboard assets, then build the `./foreman` binary |
-| `make web-build` | Build Svelte dashboard assets into `internal/dashboard/dist/` |
-| `make web-dev` | Start Vite dev server for dashboard frontend |
+| `make dashboard-build` | Build Svelte dashboard assets into `internal/dashboard/dist/` |
+| `make dashboard-dev` | Start Vite dev server for dashboard frontend |
 | `make test` | Run all tests with the race detector |
 | `make lint` | Run `go vet` + `golangci-lint` |
 | `make dev` | Hot-reload daemon on file changes (requires `make setup-dev`) |
@@ -72,8 +72,8 @@ cp foreman.example.toml foreman.toml
 | Command | Description |
 |---|---|
 | `make build` | Build dashboard assets, then build binary to `./foreman` |
-| `make web-build` | Build dashboard assets to `internal/dashboard/dist/` |
-| `make web-dev` | Run Vite dev server for dashboard frontend |
+| `make dashboard-build` | Build dashboard assets to `internal/dashboard/dist/` |
+| `make dashboard-dev` | Run Vite dev server for dashboard frontend |
 | `make test` | Run all tests with `-race` flag |
 | `make lint` | Run `go vet` + `golangci-lint` |
 | `make clean` | Remove `./foreman` binary |
@@ -100,9 +100,43 @@ go vet ./...
 ```bash
 ./foreman run          # process one ticket from the queue
 ./foreman doctor       # validate config and connectivity
-./foreman start        # start the background daemon
+./foreman start        # start the background daemon (dashboard on :8080)
 ./foreman status       # show daemon status
 ```
+
+### Dashboard Development (Two Terminals)
+
+The dashboard uses a split dev setup: Go serves the API, Vite serves the frontend with HMR.
+
+```bash
+# Terminal 1 — Go backend with hot reload (serves API on :8080)
+make dev
+
+# Terminal 2 — Vite frontend with HMR (serves UI on :5173, proxies /api + /ws → :8080)
+make dashboard-dev
+```
+
+Open **http://localhost:5173** in your browser during development.
+
+Both commands read the port from `PORT` (default `8080`). To use a custom port:
+
+```bash
+make dev PORT=9090
+make dashboard-dev PORT=9090
+```
+
+### Port Configuration Precedence
+
+The dashboard port is resolved in this order (highest wins):
+
+1. `--dashboard-port` CLI flag
+2. `FOREMAN_DASHBOARD_PORT` environment variable
+3. `[dashboard].port` in `foreman.toml`
+4. Default: `8080`
+
+The host follows a similar pattern: `FOREMAN_DASHBOARD_HOST` env var → `[dashboard].host` in TOML → default `127.0.0.1`.
+
+For Docker, `FOREMAN_DASHBOARD_HOST` is set to `0.0.0.0` in `docker-compose.yml` so the container is reachable from the host.
 
 ## Debug Mode & Hot Reload
 
@@ -126,6 +160,10 @@ make setup-dev
 
 # Start the daemon with hot reload (default)
 make dev
+
+# Start on a custom port (temporary override)
+make dev PORT=9090
+make dashboard-dev PORT=9090
 
 # Run a single ticket with hot reload
 make dev CMD="run LOCAL-1"

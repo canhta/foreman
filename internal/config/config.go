@@ -12,6 +12,7 @@ import (
 func LoadDefaults() (*models.Config, error) {
 	v := viper.New()
 	setDefaults(v)
+	bindEnvOverrides(v)
 
 	var cfg models.Config
 	if err := v.Unmarshal(&cfg); err != nil {
@@ -23,6 +24,7 @@ func LoadDefaults() (*models.Config, error) {
 func LoadFromFile(path string) (*models.Config, error) {
 	v := viper.New()
 	setDefaults(v)
+	bindEnvOverrides(v)
 
 	v.SetConfigFile(path)
 	if err := v.ReadInConfig(); err != nil {
@@ -51,7 +53,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("daemon.log_format", "json")
 
 	v.SetDefault("dashboard.enabled", true)
-	v.SetDefault("dashboard.port", 3333)
+	v.SetDefault("dashboard.port", 8080)
 	v.SetDefault("dashboard.host", "127.0.0.1")
 
 	v.SetDefault("tracker.provider", "local_file")
@@ -145,6 +147,13 @@ func setDefaults(v *viper.Viper) {
 
 	// Context assembly defaults (REQ-CTX-003)
 	v.SetDefault("context.context_feedback_boost", 1.5)
+}
+
+// bindEnvOverrides registers environment variable overrides.
+// Env vars take precedence over TOML values: FOREMAN_DASHBOARD_PORT, FOREMAN_DASHBOARD_HOST.
+func bindEnvOverrides(v *viper.Viper) {
+	_ = v.BindEnv("dashboard.port", "FOREMAN_DASHBOARD_PORT")
+	_ = v.BindEnv("dashboard.host", "FOREMAN_DASHBOARD_HOST")
 }
 
 func expandEnvVars(cfg *models.Config) {

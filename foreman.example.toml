@@ -15,8 +15,8 @@ lock_ttl_seconds = 3600
 
 [dashboard]
 enabled = true
-port = 3333
-host = "127.0.0.1"
+port = 8080           # override: FOREMAN_DASHBOARD_PORT or --dashboard-port
+host = "127.0.0.1"   # override: FOREMAN_DASHBOARD_HOST (use 0.0.0.0 for Docker)
 auth_token = "${FOREMAN_DASHBOARD_TOKEN}"
 
 [tracker]

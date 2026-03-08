@@ -342,7 +342,7 @@ Over 40 event types covering the full lifecycle: `ticket_picked_up`, `task_tdd_v
 ## Dashboard
 
 ### Web UI
-A built-in HTTP server (default port 3333) serves a single-page dashboard showing:
+A built-in HTTP server (default port 8080) serves a single-page dashboard showing:
 - Active, completed, and failed tickets
 - Per-ticket task breakdown with status indicators
 - Real-time cost tracking

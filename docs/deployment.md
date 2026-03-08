@@ -119,7 +119,7 @@ The script checks DNS resolution, installs nginx and certbot if needed, configur
 ## Observability
 
 - **Logs:** `docker compose logs -f` or `journalctl -u foreman -f`
-- **Dashboard:** `http://<server-ip>:3333` (or `https://<domain>` with SSL) — requires `FOREMAN_DASHBOARD_TOKEN`
+- **Dashboard:** `http://<server-ip>:8080` (or `https://<domain>` with SSL) — requires `FOREMAN_DASHBOARD_TOKEN`
 - **Active pipelines:** `foreman ps --all`
 - **Cost tracking:** `foreman cost today` / `foreman cost month` / `foreman cost ticket <ID>`
 - **Metrics:** Prometheus endpoint at `/api/metrics`
@@ -151,7 +151,7 @@ sudo systemctl restart foreman
 | Problem | What to check |
 |---------|---------------|
 | `foreman doctor` fails | Verify API keys are set and valid. Check network connectivity to api.anthropic.com and github.com. |
-| Dashboard not accessible | Ensure port 3333 is open in your firewall. Confirm `FOREMAN_DASHBOARD_TOKEN` is set. |
+| Dashboard not accessible | Ensure port 8080 is open in your firewall. Confirm `FOREMAN_DASHBOARD_TOKEN` is set. |
 | Daemon not picking up tickets | Check tracker configuration in `foreman.toml`. Verify `pickup_label` matches your issue labels. Run `foreman ps` to see current state. |
 | High costs | Run `foreman cost today` to inspect spend. Adjust token and cost limits in `foreman.toml`. |
 

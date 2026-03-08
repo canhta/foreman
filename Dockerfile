@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM node:20-bookworm AS web-builder
+FROM node:20-bookworm AS dashboard-builder
 WORKDIR /src/internal/dashboard/web
 
 COPY internal/dashboard/web/package*.json ./
@@ -25,7 +25,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-COPY --from=web-builder /src/internal/dashboard/dist /src/internal/dashboard/dist
+COPY --from=dashboard-builder /src/internal/dashboard/dist /src/internal/dashboard/dist
 RUN CGO_ENABLED=1 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /out/foreman ./main.go
 
 FROM debian:bookworm-slim AS runtime
@@ -37,6 +37,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 COPY --from=builder /out/foreman /usr/local/bin/foreman
+
+EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD ["foreman", "doctor", "--quick"]

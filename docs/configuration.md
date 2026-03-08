@@ -49,7 +49,7 @@ log_format = "json"             # json | pretty
 ```toml
 [dashboard]
 enabled    = true
-port       = 3333
+port       = 8080
 host       = "127.0.0.1"                   # Loopback only by default; use 0.0.0.0 with caution
 auth_token = "${FOREMAN_DASHBOARD_TOKEN}"  # Required; generate with: foreman token generate
 ```

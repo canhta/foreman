@@ -12,7 +12,7 @@ set -euo pipefail
 
 DOMAIN=""
 EMAIL=""
-UPSTREAM="127.0.0.1:3333"
+UPSTREAM="127.0.0.1:8080"
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -27,7 +27,7 @@ while [[ $# -gt 0 ]]; do
             echo "Options:"
             echo "  --domain     Domain name (required, must have DNS A record pointing here)"
             echo "  --email      Email for Let's Encrypt notifications (required)"
-            echo "  --upstream   Foreman dashboard address (default: 127.0.0.1:3333)"
+            echo "  --upstream   Foreman dashboard address (default: 127.0.0.1:8080)"
             exit 0
             ;;
         *) echo "Unknown argument: $1. Use --help for usage."; exit 1 ;;

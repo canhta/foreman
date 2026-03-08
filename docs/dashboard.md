@@ -9,7 +9,7 @@ The dashboard starts automatically with the daemon when `enabled = true`:
 ```toml
 [dashboard]
 enabled    = true
-port       = 3333
+port       = 8080
 host       = "127.0.0.1"
 auth_token = "${FOREMAN_DASHBOARD_TOKEN}"
 ```
@@ -20,7 +20,7 @@ Generate a token:
 ./foreman token generate
 ```
 
-Access the dashboard at `http://localhost:3333`. All endpoints require a bearer token.
+Access the dashboard at `http://localhost:8080`. All endpoints require a bearer token.
 
 > **Security note:** The default `host = "127.0.0.1"` binds to loopback only. Do not set `host = "0.0.0.0"` without placing the dashboard behind a reverse proxy with TLS.
 
@@ -44,13 +44,13 @@ Example (preferred):
 
 ```javascript
 const token = '<your-token>';
-const ws = new WebSocket('ws://localhost:3333/ws/events', [`bearer.${token}`]);
+const ws = new WebSocket('ws://localhost:8080/ws/events', [`bearer.${token}`]);
 ```
 
 Deprecated query-param form still works:
 
 ```
-ws://localhost:3333/ws/events?token=<your-token>
+ws://localhost:8080/ws/events?token=<your-token>
 ```
 
 ## REST API
@@ -380,7 +380,7 @@ Connect to `/ws/events` to receive real-time pipeline events as JSON objects.
 
 ```javascript
 const token = '<your-token>';
-const ws = new WebSocket('ws://localhost:3333/ws/events', [`bearer.${token}`]);
+const ws = new WebSocket('ws://localhost:8080/ws/events', [`bearer.${token}`]);
 
 ws.onmessage = (event) => {
   const evt = JSON.parse(event.data);
@@ -419,7 +419,7 @@ The `/api/metrics` endpoint exposes Prometheus-compatible metrics. It requires t
 scrape_configs:
   - job_name: foreman
     static_configs:
-      - targets: ['localhost:3333']
+      - targets: ['localhost:8080']
     metrics_path: /api/metrics
 ```
 
@@ -454,8 +454,8 @@ The web UI is a Svelte 5 + TypeScript single-page app built with Vite and Tailwi
 Developer commands:
 
 ```bash
-make web-dev          # run Vite dev server
-make web-build        # build web/dist assets
+make dashboard-dev    # run Vite dev server
+make dashboard-build  # build dashboard assets
 make build            # builds dashboard assets + foreman binary
 ```
 

@@ -72,7 +72,7 @@ api_key = "${ANTHROPIC_API_KEY}"
 
 [dashboard]
 enabled    = true
-port       = 3333
+port       = 8080
 auth_token = "${FOREMAN_DASHBOARD_TOKEN}"
 ```
 
@@ -104,7 +104,7 @@ flowchart TD
     F --> H["Label a ticket foreman-ready\nin your issue tracker"]
     G --> H
     H --> I(["Foreman picks it up\nautomatically on next poll"])
-    I --> J["Monitor: ./foreman ps\nor open dashboard :3333"]
+    I --> J["Monitor: ./foreman ps\nor open dashboard :8080"]
 ```
 
 ### Health Check
@@ -163,7 +163,7 @@ The daemon polls your issue tracker at the configured interval (default: 60 seco
 ./foreman dashboard --port 8080  # Override port
 ```
 
-Or navigate to `http://localhost:3333` in your browser. Use the token from `FOREMAN_DASHBOARD_TOKEN` to authenticate.
+Or navigate to `http://localhost:8080` in your browser. Use the token from `FOREMAN_DASHBOARD_TOKEN` to authenticate.
 
 ## Running with Docker Compose
 
@@ -177,7 +177,7 @@ export GITHUB_TOKEN=ghp_...
 export FOREMAN_DASHBOARD_TOKEN=your-token
 ```
 
-The default `docker-compose.yml` maps the dashboard to port `3333`. The config file `foreman.example.toml` is mounted as `/app/foreman.toml` inside the container — replace it with your own `foreman.toml`.
+The default `docker-compose.yml` maps the dashboard to port `8080`. The config file `foreman.example.toml` is mounted as `/app/foreman.toml` inside the container — replace it with your own `foreman.toml`.
 
 ## WhatsApp Channel (Optional)
 

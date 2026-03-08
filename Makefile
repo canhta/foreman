@@ -1,12 +1,12 @@
-.PHONY: build test lint clean setup-hooks setup-dev coverage dev debug web-build web-dev web-lint web-test ci release docker
+.PHONY: build test lint clean setup-hooks setup-dev coverage dev debug dashboard-build dashboard-dev dashboard-lint dashboard-test ci release docker
 
 BINARY := foreman
 GOBIN  := $(shell go env GOPATH)/bin
 
-build: web-build
+build: dashboard-build
 	go build -o $(BINARY) .
 
-ci: build test lint web-test
+ci: build test lint dashboard-test
 
 # Install development tools (air + dlv). Run once after cloning.
 setup-dev:
@@ -17,9 +17,10 @@ setup-dev:
 # Hot-reload: rebuilds and restarts on file changes (requires air).
 # Run 'make setup-dev' once to install. Pass CMD to change sub-command:
 #   make dev CMD="run LOCAL-1"
-CMD ?= start
+PORT ?= 8080
+CMD ?= start --dashboard-port $(PORT)
 dev:
-	$(GOBIN)/air -- $(CMD)
+	FOREMAN_DASHBOARD_PORT=$(PORT) $(GOBIN)/air -- $(CMD)
 
 # Debug build + launch under Delve (requires dlv).
 # Run 'make setup-dev' once to install.
@@ -35,13 +36,13 @@ lint:
 	go vet ./...
 	golangci-lint run
 
-web-build:
+dashboard-build:
 	cd internal/dashboard/web && npm ci && npm run build
-web-dev:
-	cd internal/dashboard/web && npm run dev
-web-lint:
+dashboard-dev:
+	cd internal/dashboard/web && FOREMAN_DASHBOARD_PORT=$(PORT) npm run dev
+dashboard-lint:
 	cd internal/dashboard/web && npm ci && npm run lint
-web-test:
+dashboard-test:
 	cd internal/dashboard/web && npm ci && npm run test
 
 clean:
@@ -66,7 +67,7 @@ coverage:
 PLATFORMS := linux-amd64 linux-arm64 darwin-amd64 darwin-arm64 windows-amd64
 
 .PHONY: release
-release: web-build $(PLATFORMS)
+release: dashboard-build $(PLATFORMS)
 
 linux-amd64:
 	@mkdir -p dist
