@@ -65,6 +65,11 @@ export function setSearch(s: string) {
   search = s;
 }
 
+export function setFeedCollapsed(v: boolean) {
+  feedCollapsed = v;
+  localStorage.setItem('feed_collapsed', String(v));
+}
+
 // ── Data Fetching ──
 
 export async function loadStatus() {
