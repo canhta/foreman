@@ -8,8 +8,12 @@
   import DagView from './DagView.svelte';
   import ActivityStream from './ActivityStream.svelte';
   import CostBreakdown from './CostBreakdown.svelte';
+  import ConfirmDialog from './ConfirmDialog.svelte';
 
   let activeTab = $state<'tasks' | 'activity' | 'cost'>('tasks');
+  let confirmDialog = $state<{ open: boolean; title: string; message: string; confirmLabel: string; confirmClass: string; action: () => void }>({
+    open: false, title: '', message: '', confirmLabel: 'CONFIRM', confirmClass: 'bg-accent text-bg hover:bg-text', action: () => {},
+  });
 
   let isFailed = $derived(
     appState.ticketDetail ? FAIL_STATUSES.includes(appState.ticketDetail.Status) : false
@@ -31,13 +35,31 @@
   );
 
   function handleRetry() {
-    if (appState.selectedTicketId && confirm('Retry this ticket?')) retryTicket(appState.selectedTicketId);
+    if (!appState.selectedTicketId) return;
+    confirmDialog = {
+      open: true,
+      title: 'RETRY TICKET',
+      message: 'Re-queue this ticket and run it through the pipeline again?',
+      confirmLabel: '↺ RETRY',
+      confirmClass: 'bg-warning text-bg hover:bg-text',
+      action: () => retryTicket(appState.selectedTicketId!),
+    };
   }
 
   function handleDelete() {
-    if (appState.selectedTicketId && confirm('Permanently delete this ticket and all its data?'))
-      deleteTicketAction(appState.selectedTicketId);
+    if (!appState.selectedTicketId) return;
+    confirmDialog = {
+      open: true,
+      title: 'DELETE TICKET',
+      message: 'Permanently delete this ticket and all its data? This cannot be undone.',
+      confirmLabel: '✕ DELETE',
+      confirmClass: 'bg-danger text-bg hover:bg-text',
+      action: () => deleteTicketAction(appState.selectedTicketId!),
+    };
   }
+
+  function closeDialog() { confirmDialog = { ...confirmDialog, open: false }; }
+  function runDialog() { confirmDialog.action(); closeDialog(); }
 
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === 'Escape') { deselectTicket(); e.preventDefault(); }
@@ -169,3 +191,13 @@
     </div>
   </div>
 {/if}
+
+<ConfirmDialog
+  open={confirmDialog.open}
+  title={confirmDialog.title}
+  message={confirmDialog.message}
+  confirmLabel={confirmDialog.confirmLabel}
+  confirmClass={confirmDialog.confirmClass}
+  onconfirm={runDialog}
+  oncancel={closeDialog}
+/>

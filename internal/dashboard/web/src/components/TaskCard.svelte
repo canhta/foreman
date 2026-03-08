@@ -2,8 +2,11 @@
   import type { Task, EventRecord } from '../types';
   import { appState, retryTask } from '../state.svelte';
   import { taskIcon, formatCost, formatRelative } from '../format';
+  import ConfirmDialog from './ConfirmDialog.svelte';
 
   let { task, events = [] }: { task: Task; events?: EventRecord[] } = $props();
+
+  let confirmOpen = $state(false);
 
   let expanded = $derived(appState.expandedTasks[task.ID] ?? false);
 
@@ -38,7 +41,7 @@
 
   function handleRetry(e: MouseEvent) {
     e.stopPropagation();
-    if (confirm('Retry this task?')) retryTask(task.ID);
+    confirmOpen = true;
   }
 </script>
 
@@ -154,3 +157,13 @@
     </div>
   {/if}
 </div>
+
+<ConfirmDialog
+  open={confirmOpen}
+  title="RETRY TASK"
+  message="Re-run this task through the pipeline again?"
+  confirmLabel="↺ RETRY"
+  confirmClass="bg-warning text-bg hover:bg-text"
+  onconfirm={() => { retryTask(task.ID); confirmOpen = false; }}
+  oncancel={() => { confirmOpen = false; }}
+/>

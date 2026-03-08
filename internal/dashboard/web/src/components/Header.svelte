@@ -3,6 +3,7 @@
     appState, pauseDaemon, resumeDaemon, setActivePanel,
   } from '../state.svelte';
   import { formatCost } from '../format';
+  import ConfirmDialog from './ConfirmDialog.svelte';
 
   let dotBg = $derived(
     !appState.wsConnected ? 'bg-danger' :
@@ -18,12 +19,32 @@
       : formatCost(appState.dailyCost)
   );
 
+  let confirmDialog = $state<{ open: boolean; title: string; message: string; confirmLabel: string; confirmClass: string; action: () => void }>({
+    open: false, title: '', message: '', confirmLabel: 'CONFIRM', confirmClass: 'bg-accent text-bg hover:bg-text', action: () => {},
+  });
+
   function handlePause() {
-    if (confirm('Pause the daemon?')) pauseDaemon();
+    confirmDialog = {
+      open: true,
+      title: 'PAUSE DAEMON',
+      message: 'Stop processing tickets until manually resumed?',
+      confirmLabel: 'PAUSE',
+      confirmClass: 'bg-warning text-bg hover:bg-text',
+      action: pauseDaemon,
+    };
   }
   function handleResume() {
-    if (confirm('Resume the daemon?')) resumeDaemon();
+    confirmDialog = {
+      open: true,
+      title: 'START DAEMON',
+      message: 'Resume processing tickets?',
+      confirmLabel: 'START',
+      confirmClass: 'bg-success text-bg hover:bg-text',
+      action: resumeDaemon,
+    };
   }
+  function closeDialog() { confirmDialog = { ...confirmDialog, open: false }; }
+  function runDialog() { confirmDialog.action(); closeDialog(); }
 </script>
 
 <header class="flex items-stretch border-b-2 border-border bg-surface sticky top-0 z-50" style="height:40px">
@@ -86,3 +107,13 @@
     >SYS</button>
   </div>
 </header>
+
+<ConfirmDialog
+  open={confirmDialog.open}
+  title={confirmDialog.title}
+  message={confirmDialog.message}
+  confirmLabel={confirmDialog.confirmLabel}
+  confirmClass={confirmDialog.confirmClass}
+  onconfirm={runDialog}
+  oncancel={closeDialog}
+/>
