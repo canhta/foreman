@@ -454,8 +454,8 @@ The web UI is a Svelte 5 + TypeScript single-page app built with Vite and Tailwi
 Developer commands:
 
 ```bash
-make dashboard-dev    # run Vite dev server
-make dashboard-build  # build web/dist assets
+make web-dev          # run Vite dev server
+make web-build        # build web/dist assets
 make build            # builds dashboard assets + foreman binary
 ```
 

@@ -12,8 +12,8 @@ This guide covers setting up a development environment, the project's convention
 | Command | What it does |
 |---|---|
 | `make build` | Build dashboard assets, then build the `./foreman` binary |
-| `make dashboard-build` | Build Svelte dashboard assets into `internal/dashboard/dist/` |
-| `make dashboard-dev` | Start Vite dev server for dashboard frontend |
+| `make web-build` | Build Svelte dashboard assets into `internal/dashboard/dist/` |
+| `make web-dev` | Start Vite dev server for dashboard frontend |
 | `make test` | Run all tests with the race detector |
 | `make lint` | Run `go vet` + `golangci-lint` |
 | `make dev` | Hot-reload daemon on file changes (requires `make setup-dev`) |
@@ -72,8 +72,8 @@ cp foreman.example.toml foreman.toml
 | Command | Description |
 |---|---|
 | `make build` | Build dashboard assets, then build binary to `./foreman` |
-| `make dashboard-build` | Build dashboard assets to `internal/dashboard/dist/` |
-| `make dashboard-dev` | Run Vite dev server for dashboard frontend |
+| `make web-build` | Build dashboard assets to `internal/dashboard/dist/` |
+| `make web-dev` | Run Vite dev server for dashboard frontend |
 | `make test` | Run all tests with `-race` flag |
 | `make lint` | Run `go vet` + `golangci-lint` |
 | `make clean` | Remove `./foreman` binary |

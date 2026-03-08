@@ -1,7 +1,7 @@
 version: 2
 before:
   hooks:
-    - make dashboard-build
+    - make web-build
     - go mod tidy
 builds:
   - env:

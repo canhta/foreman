@@ -22,6 +22,8 @@ tmp_dir = "tmp"
   exclude_dir = [
     "tmp",
     "dist",
+    "internal/dashboard/web",
+    "internal/dashboard/dist",
     "docs",
     "skills",
     "tickets",

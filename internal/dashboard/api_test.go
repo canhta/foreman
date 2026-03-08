@@ -3,6 +3,7 @@ package dashboard
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -796,5 +797,327 @@ func TestAPIPromptVersions_MethodNotAllowed(t *testing.T) {
 
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("expected 405, got %d", rec.Code)
+	}
+}
+
+// --- handleDeleteTicket ---
+
+func TestAPIDeleteTicket_Success(t *testing.T) {
+	dbm := &mockDashboardDB{
+		tickets: []models.Ticket{{ID: "t1", Title: "Test"}},
+	}
+	api := NewAPI(dbm, nil, nil, models.CostConfig{}, "1.0.0")
+	req := httptest.NewRequestWithContext(t.Context(), "DELETE", "/api/tickets/t1", nil)
+	rec := httptest.NewRecorder()
+	api.handleDeleteTicket(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp["status"] != "deleted" {
+		t.Errorf("expected status=deleted, got %v", resp["status"])
+	}
+	if resp["ticket_id"] != "t1" {
+		t.Errorf("expected ticket_id=t1, got %v", resp["ticket_id"])
+	}
+}
+
+func TestAPIDeleteTicket_MethodNotAllowed(t *testing.T) {
+	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/tickets/t1", nil)
+	rec := httptest.NewRecorder()
+	api.handleDeleteTicket(rec, req)
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405, got %d", rec.Code)
+	}
+}
+
+func TestAPIDeleteTicket_MissingID(t *testing.T) {
+	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
+	req := httptest.NewRequestWithContext(t.Context(), "DELETE", "/api/tickets/", nil)
+	rec := httptest.NewRecorder()
+	api.handleDeleteTicket(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestAPIDeleteTicket_DBError(t *testing.T) {
+	dbm := &mockErrorDB{}
+	api := NewAPI(dbm, nil, nil, models.CostConfig{}, "1.0.0")
+	req := httptest.NewRequestWithContext(t.Context(), "DELETE", "/api/tickets/t1", nil)
+	rec := httptest.NewRecorder()
+	api.handleDeleteTicket(rec, req)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", rec.Code)
+	}
+}
+
+// mockErrorDB extends mockDashboardDB but returns errors from write operations.
+type mockErrorDB struct {
+	mockDashboardDB
+}
+
+func (m *mockErrorDB) DeleteTicket(_ context.Context, _ string) error {
+	return fmt.Errorf("db error")
+}
+
+func (m *mockErrorDB) UpdateTicketStatus(_ context.Context, _ string, _ models.TicketStatus) error {
+	return fmt.Errorf("db error")
+}
+
+func (m *mockErrorDB) UpdateTaskStatus(_ context.Context, _ string, _ models.TaskStatus) error {
+	return fmt.Errorf("db error")
+}
+
+func (m *mockErrorDB) GetTaskContextStats(_ context.Context, _ string) (TaskContextStats, error) {
+	return TaskContextStats{}, db.ErrNotFound
+}
+
+// --- handleListTickets status filter ---
+
+func TestAPIListTickets_InvalidStatus(t *testing.T) {
+	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/tickets?status=notavalidstatus", nil)
+	rec := httptest.NewRecorder()
+	api.handleListTickets(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid status filter, got %d", rec.Code)
+	}
+}
+
+func TestAPIListTickets_ValidStatusFilter(t *testing.T) {
+	dbm := &mockDashboardDB{
+		tickets: []models.Ticket{
+			{ID: "t1", Status: models.TicketStatusFailed},
+		},
+	}
+	api := NewAPI(dbm, nil, nil, models.CostConfig{}, "1.0.0")
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/tickets?status=failed", nil)
+	rec := httptest.NewRecorder()
+	api.handleListTickets(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+}
+
+// --- handleGetTicket missing ID ---
+
+func TestAPIGetTicket_MissingID(t *testing.T) {
+	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/tickets/", nil)
+	rec := httptest.NewRecorder()
+	api.handleGetTicket(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+// --- handleRetryTicket method check ---
+
+func TestAPIRetryTicket_MethodNotAllowed(t *testing.T) {
+	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/tickets/t1/retry", nil)
+	rec := httptest.NewRecorder()
+	api.handleRetryTicket(rec, req)
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405, got %d", rec.Code)
+	}
+}
+
+// --- handleRetryTask method/id checks ---
+
+func TestAPIRetryTask_MethodNotAllowed(t *testing.T) {
+	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/tasks/task-1/retry", nil)
+	rec := httptest.NewRecorder()
+	api.handleRetryTask(rec, req)
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405, got %d", rec.Code)
+	}
+}
+
+func TestAPIRetryTask_MissingID(t *testing.T) {
+	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
+	// Path trims "/api/tasks/" then "/retry" — empty string remains.
+	req := httptest.NewRequestWithContext(t.Context(), "POST", "/api/tasks//retry", nil)
+	rec := httptest.NewRecorder()
+	api.handleRetryTask(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestAPIRetryTask_DBError(t *testing.T) {
+	api := NewAPI(&mockErrorDB{}, nil, nil, models.CostConfig{}, "1.0.0")
+	req := httptest.NewRequestWithContext(t.Context(), "POST", "/api/tasks/task-1/retry", nil)
+	rec := httptest.NewRecorder()
+	api.handleRetryTask(rec, req)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", rec.Code)
+	}
+}
+
+// --- handleDaemonPause / handleDaemonResume method checks ---
+
+func TestAPIDaemonPause_MethodNotAllowed(t *testing.T) {
+	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/daemon/pause", nil)
+	rec := httptest.NewRecorder()
+	api.handleDaemonPause(rec, req)
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405, got %d", rec.Code)
+	}
+}
+
+func TestAPIDaemonResume_MethodNotAllowed(t *testing.T) {
+	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/daemon/resume", nil)
+	rec := httptest.NewRecorder()
+	api.handleDaemonResume(rec, req)
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405, got %d", rec.Code)
+	}
+}
+
+// --- handleTaskContext db.ErrNotFound ---
+
+func TestHandleTaskContext_NotFound(t *testing.T) {
+	api := NewAPI(&mockErrorDB{}, nil, nil, models.CostConfig{}, "1.0.0")
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/tasks/nonexistent/context", nil)
+	rec := httptest.NewRecorder()
+	api.handleTaskContext(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 when task not found, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// --- handleGlobalEvents pagination ---
+
+// mockGlobalEventsDB records the limit/offset values passed to GetGlobalEvents.
+type mockGlobalEventsDB struct {
+	mockDashboardDB
+	lastLimit  int
+	lastOffset int
+}
+
+func (m *mockGlobalEventsDB) GetGlobalEvents(_ context.Context, limit, offset int) ([]models.EventRecord, error) {
+	m.lastLimit = limit
+	m.lastOffset = offset
+	return m.events, nil
+}
+
+func TestAPIGetGlobalEvents_DefaultPagination(t *testing.T) {
+	dbm := &mockGlobalEventsDB{}
+	api := NewAPI(dbm, nil, nil, models.CostConfig{}, "1.0.0")
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/events", nil)
+	rec := httptest.NewRecorder()
+	api.handleGlobalEvents(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if dbm.lastLimit != 50 {
+		t.Errorf("expected default limit=50, got %d", dbm.lastLimit)
+	}
+	if dbm.lastOffset != 0 {
+		t.Errorf("expected default offset=0, got %d", dbm.lastOffset)
+	}
+}
+
+func TestAPIGetGlobalEvents_CustomPagination(t *testing.T) {
+	dbm := &mockGlobalEventsDB{}
+	api := NewAPI(dbm, nil, nil, models.CostConfig{}, "1.0.0")
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/events?limit=25&offset=10", nil)
+	rec := httptest.NewRecorder()
+	api.handleGlobalEvents(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if dbm.lastLimit != 25 {
+		t.Errorf("expected limit=25, got %d", dbm.lastLimit)
+	}
+	if dbm.lastOffset != 10 {
+		t.Errorf("expected offset=10, got %d", dbm.lastOffset)
+	}
+}
+
+func TestAPIGetGlobalEvents_LimitCappedAt100(t *testing.T) {
+	dbm := &mockGlobalEventsDB{}
+	api := NewAPI(dbm, nil, nil, models.CostConfig{}, "1.0.0")
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/events?limit=200", nil)
+	rec := httptest.NewRecorder()
+	api.handleGlobalEvents(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	// 200 exceeds the max (100), so the default (50) is kept.
+	if dbm.lastLimit != 50 {
+		t.Errorf("expected limit capped to default=50 for out-of-range value, got %d", dbm.lastLimit)
+	}
+}
+
+func TestAPIGetGlobalEvents_InvalidLimitIgnored(t *testing.T) {
+	dbm := &mockGlobalEventsDB{}
+	api := NewAPI(dbm, nil, nil, models.CostConfig{}, "1.0.0")
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/events?limit=notanumber", nil)
+	rec := httptest.NewRecorder()
+	api.handleGlobalEvents(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	// Non-numeric limit is ignored; default is used.
+	if dbm.lastLimit != 50 {
+		t.Errorf("expected default limit=50 for non-numeric input, got %d", dbm.lastLimit)
+	}
+}
+
+// --- handlePromptVersions querier error ---
+
+func TestAPIPromptVersions_QuerierError(t *testing.T) {
+	dbm := &mockDashboardDB{}
+	api := NewAPI(dbm, nil, nil, models.CostConfig{}, "1.0.0")
+	api.SetPromptSnapshotQuerier(&mockPromptQuerier{err: fmt.Errorf("db connection lost")})
+
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/prompts/versions", nil)
+	rec := httptest.NewRecorder()
+	api.handlePromptVersions(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 on querier error, got %d", rec.Code)
+	}
+}
+
+// --- SetChannelHealth multiple channels ---
+
+func TestAPISetChannelHealth_MultipleChannels(t *testing.T) {
+	api := NewAPI(&mockDashboardDB{}, nil, &mockDaemonStatus{running: true}, models.CostConfig{}, "1.0.0")
+	api.SetChannelHealth("whatsapp", &mockChannelHealth{connected: true})
+	api.SetChannelHealth("telegram", &mockChannelHealth{connected: false})
+
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/status", nil)
+	rec := httptest.NewRecorder()
+	api.handleStatus(rec, req)
+
+	var resp map[string]interface{}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	channels, ok := resp["channels"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected channels key in response")
+	}
+	if len(channels) != 2 {
+		t.Errorf("expected 2 channels, got %d", len(channels))
+	}
+	wa := channels["whatsapp"].(map[string]interface{})
+	if wa["connected"] != true {
+		t.Errorf("expected whatsapp connected=true")
+	}
+	tg := channels["telegram"].(map[string]interface{})
+	if tg["connected"] != false {
+		t.Errorf("expected telegram connected=false")
 	}
 }

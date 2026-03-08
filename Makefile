@@ -1,9 +1,9 @@
-.PHONY: build test lint clean setup-hooks setup-dev coverage dev debug dashboard-build dashboard-dev web-lint web-test ci release docker
+.PHONY: build test lint clean setup-hooks setup-dev coverage dev debug web-build web-dev web-lint web-test ci release docker
 
 BINARY := foreman
 GOBIN  := $(shell go env GOPATH)/bin
 
-build: dashboard-build
+build: web-build
 	go build -o $(BINARY) .
 
 ci: build test lint web-test
@@ -35,9 +35,9 @@ lint:
 	go vet ./...
 	golangci-lint run
 
-dashboard-build:
+web-build:
 	cd internal/dashboard/web && npm ci && npm run build
-dashboard-dev:
+web-dev:
 	cd internal/dashboard/web && npm run dev
 web-lint:
 	cd internal/dashboard/web && npm ci && npm run lint
@@ -66,7 +66,7 @@ coverage:
 PLATFORMS := linux-amd64 linux-arm64 darwin-amd64 darwin-arm64 windows-amd64
 
 .PHONY: release
-release: dashboard-build $(PLATFORMS)
+release: web-build $(PLATFORMS)
 
 linux-amd64:
 	@mkdir -p dist
