@@ -53,6 +53,18 @@ export let activePanel = $state<'tickets' | 'detail' | 'feed' | 'health'>('ticke
 export let filter = $state<'all' | 'active' | 'done' | 'fail'>('all');
 export let search = $state('');
 
+export function setActivePanel(panel: 'tickets' | 'detail' | 'feed' | 'health') {
+  activePanel = panel;
+}
+
+export function setFilter(f: 'all' | 'active' | 'done' | 'fail') {
+  filter = f;
+}
+
+export function setSearch(s: string) {
+  search = s;
+}
+
 // ── Data Fetching ──
 
 export async function loadStatus() {

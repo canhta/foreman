@@ -1,6 +1,6 @@
 <script lang="ts">
   import {
-    tickets, filter, search, selectedTicketId, selectTicket,
+    tickets, filter, search, selectedTicketId, selectTicket, setFilter, setSearch,
   } from '../state.svelte';
   import { ACTIVE_STATUSES, DONE_STATUSES, FAIL_STATUSES } from '../types';
   import type { TicketSummary } from '../types';
@@ -48,10 +48,10 @@
     if (e.key === 'j') { focusIndex = Math.min(focusIndex + 1, filteredTickets.length - 1); e.preventDefault(); }
     if (e.key === 'k') { focusIndex = Math.max(focusIndex - 1, 0); e.preventDefault(); }
     if (e.key === 'Enter' && focusIndex >= 0) { selectTicket(filteredTickets[focusIndex].ID); e.preventDefault(); }
-    if (e.key === '1') { filter = 'all'; e.preventDefault(); }
-    if (e.key === '2') { filter = 'active'; e.preventDefault(); }
-    if (e.key === '3') { filter = 'done'; e.preventDefault(); }
-    if (e.key === '4') { filter = 'fail'; e.preventDefault(); }
+    if (e.key === '1') { setFilter('all'); e.preventDefault(); }
+    if (e.key === '2') { setFilter('active'); e.preventDefault(); }
+    if (e.key === '3') { setFilter('done'); e.preventDefault(); }
+    if (e.key === '4') { setFilter('fail'); e.preventDefault(); }
   }
 </script>
 
@@ -65,7 +65,8 @@
   <div class="px-3 py-2 border-b border-border space-y-2">
     <input
       type="text"
-      bind:value={search}
+      value={search}
+      oninput={(e) => setSearch((e.target as HTMLInputElement).value)}
       placeholder="Search tickets..."
       class="w-full bg-bg border border-border px-2 py-1 text-xs text-text placeholder:text-muted focus:border-accent outline-none"
     />
@@ -73,7 +74,7 @@
       {#each [['all', 'ALL'], ['active', 'ACT'], ['done', 'DONE'], ['fail', 'FAIL']] as [key, label]}
         <button
           class="flex-1 text-xs py-1 border {filter === key ? 'border-accent text-accent' : 'border-border text-muted hover:text-text'}"
-          onclick={() => { filter = key as any; }}
+          onclick={() => setFilter(key as 'all' | 'active' | 'done' | 'fail')}
         >{label} {countByFilter(key)}</button>
       {/each}
     </div>

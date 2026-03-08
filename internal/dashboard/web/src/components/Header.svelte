@@ -2,7 +2,7 @@
   import {
     daemonState, wsConnected, whatsapp,
     dailyCost, dailyBudget, activeCount,
-    activePanel, pauseDaemon, resumeDaemon,
+    activePanel, pauseDaemon, resumeDaemon, setActivePanel,
   } from '../state.svelte';
   import { formatCost } from '../format';
 
@@ -33,7 +33,7 @@
 <header class="flex items-center justify-between px-4 py-2 border-b border-border bg-surface sticky top-0 z-50">
   <button
     class="text-accent font-bold text-lg tracking-wider hover:opacity-80 cursor-pointer"
-    onclick={() => { activePanel = 'tickets'; }}
+    onclick={() => setActivePanel('tickets')}
   >FOREMAN</button>
 
   <div class="flex items-center gap-3 text-sm">
@@ -60,7 +60,7 @@
 
     <button
       class="text-muted hover:text-accent text-xs hidden md:inline"
-      onclick={() => { activePanel = 'health'; }}
+      onclick={() => setActivePanel('health')}
     >SYSTEM</button>
   </div>
 </header>
