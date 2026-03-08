@@ -1210,6 +1210,24 @@ func TestDAGState_DeleteNonexistent_IsNoop(t *testing.T) {
 	require.NoError(t, db.DeleteDAGState(ctx, "nonexistent-ticket"))
 }
 
+func TestSQLiteDB_AppendTicketDescription(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	require.NoError(t, db.CreateTicket(ctx, &models.Ticket{
+		ID: "t-append", ExternalID: "X-append", Title: "t", Description: "original description",
+		Status: models.TicketStatusClarificationNeeded, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}))
+
+	require.NoError(t, db.AppendTicketDescription(ctx, "t-append", "clarification reply here"))
+
+	got, err := db.GetTicket(ctx, "t-append")
+	require.NoError(t, err)
+	assert.Contains(t, got.Description, "original description")
+	assert.Contains(t, got.Description, "clarification reply here")
+}
+
 // TestSQLiteDB_StoreCallDetails_NoFKRequired verifies that StoreCallDetails succeeds
 // with a call ID that has no corresponding row in llm_calls. The table must be a
 // standalone log table without a FK constraint.

@@ -67,6 +67,7 @@ type Database interface {
 	ListTickets(ctx context.Context, filter models.TicketFilter) ([]models.Ticket, error)
 	GetChildTickets(ctx context.Context, parentExternalID string) ([]models.Ticket, error)
 	SetLastCompletedTask(ctx context.Context, ticketID string, taskSeq int) error
+	AppendTicketDescription(ctx context.Context, id, text string) error
 
 	// Tasks
 	CreateTasks(ctx context.Context, ticketID string, tasks []models.Task) error

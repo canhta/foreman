@@ -78,6 +78,7 @@ func (m *orchMockDB) GetChildTickets(_ context.Context, _ string) ([]models.Tick
 	return nil, nil
 }
 func (m *orchMockDB) SetLastCompletedTask(_ context.Context, _ string, _ int) error { return nil }
+func (m *orchMockDB) AppendTicketDescription(_ context.Context, _, _ string) error  { return nil }
 func (m *orchMockDB) CreateTasks(_ context.Context, _ string, tasks []models.Task) error {
 	m.createdTasks = append(m.createdTasks, tasks...)
 	return nil

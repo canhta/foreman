@@ -156,6 +156,17 @@ func (s *SQLiteDB) UpdateTicketStatus(ctx context.Context, id string, status mod
 	return nil
 }
 
+func (s *SQLiteDB) AppendTicketDescription(ctx context.Context, id, text string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE tickets SET description = description || ? || ?, updated_at = ? WHERE id = ?`,
+		"\n\n---\n**Clarification reply:**\n", text, time.Now(), id,
+	)
+	if err != nil {
+		return fmt.Errorf("append ticket description: %w", err)
+	}
+	return nil
+}
+
 func (s *SQLiteDB) UpdateTicketStatusIfEquals(ctx context.Context, ticketID string, newStatus models.TicketStatus, requiredCurrentStatus models.TicketStatus) (bool, error) {
 	result, err := s.db.ExecContext(ctx,
 		`UPDATE tickets SET status = ?, updated_at = ? WHERE id = ? AND status = ?`,

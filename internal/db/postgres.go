@@ -100,6 +100,17 @@ func (p *PostgresDB) UpdateTicketStatus(ctx context.Context, id string, status m
 	return nil
 }
 
+func (p *PostgresDB) AppendTicketDescription(ctx context.Context, id, text string) error {
+	_, err := p.db.ExecContext(ctx,
+		`UPDATE tickets SET description = description || $1 || $2, updated_at = $3 WHERE id = $4`,
+		"\n\n---\n**Clarification reply:**\n", text, time.Now(), id,
+	)
+	if err != nil {
+		return fmt.Errorf("append ticket description: %w", err)
+	}
+	return nil
+}
+
 func (p *PostgresDB) UpdateTicketStatusIfEquals(ctx context.Context, ticketID string, newStatus models.TicketStatus, requiredCurrentStatus models.TicketStatus) (bool, error) {
 	result, err := p.db.ExecContext(ctx,
 		`UPDATE tickets SET status = $1, updated_at = $2 WHERE id = $3 AND status = $4`,
