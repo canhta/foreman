@@ -1,9 +1,9 @@
-.PHONY: build test lint clean setup-hooks setup-dev coverage dev debug
+.PHONY: build test lint clean setup-hooks setup-dev coverage dev debug dashboard-build dashboard-dev
 
 BINARY := foreman
 GOBIN  := $(shell go env GOPATH)/bin
 
-build:
+build: dashboard-build
 	go build -o $(BINARY) .
 
 # Install development tools (air + dlv). Run once after cloning.
@@ -32,6 +32,11 @@ test:
 lint:
 	go vet ./...
 	golangci-lint run
+
+dashboard-build:
+	cd internal/dashboard/web && npm ci && npm run build
+dashboard-dev:
+	cd internal/dashboard/web && npm run dev
 
 clean:
 	rm -f $(BINARY)

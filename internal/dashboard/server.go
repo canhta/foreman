@@ -16,7 +16,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-//go:embed web
+//go:embed dist
 var webFS embed.FS
 
 // Server is the HTTP server for the Foreman dashboard.
@@ -116,7 +116,7 @@ func NewServer(db DashboardDB, emitter EventSubscriber, statusProvider DaemonSta
 	mux.HandleFunc("/ws/events", api.handleWebSocket)
 
 	// Static frontend files embedded at build time
-	webContent, err := fs.Sub(webFS, "web")
+	webContent, err := fs.Sub(webFS, "dist")
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to load embedded web assets")
 	}
