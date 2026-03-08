@@ -99,9 +99,9 @@ func TestLimitRequestBody_POST_ExceedsLimit(t *testing.T) {
 	}
 }
 
-// --- dbTicketRetrier ---
+// --- smartRetrier ---
 
-func TestDbTicketRetrier_SetsStatusQueued(t *testing.T) {
+func TestSmartRetrier_SetsStatusQueued(t *testing.T) {
 	var capturedStatus models.TicketStatus
 	var capturedID string
 	dbm := &mockCaptureDB{
@@ -110,7 +110,7 @@ func TestDbTicketRetrier_SetsStatusQueued(t *testing.T) {
 			capturedStatus = status
 		},
 	}
-	retrier := &dbTicketRetrier{db: dbm}
+	retrier := &smartRetrier{db: dbm}
 	if err := retrier.RetryTicket(context.Background(), "ticket-42"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

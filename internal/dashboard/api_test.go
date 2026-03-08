@@ -12,6 +12,8 @@ import (
 
 	"github.com/canhta/foreman/internal/db"
 	"github.com/canhta/foreman/internal/models"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TaskContextStatsDB is a local alias for test readability.
@@ -1200,4 +1202,55 @@ func TestAPIReplyToTicket_TicketNotFound(t *testing.T) {
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", rec.Code)
 	}
+}
+
+// retryTestDB wraps mockDashboardDB to override ListTasks and track ticket status.
+type retryTestDB struct {
+	*mockDashboardDB
+	tasks        []models.Task
+	ticketStatus models.TicketStatus
+}
+
+func (r *retryTestDB) ListTasks(_ context.Context, _ string) ([]models.Task, error) {
+	return r.tasks, nil
+}
+
+func (r *retryTestDB) UpdateTicketStatus(ctx context.Context, id string, status models.TicketStatus) error {
+	r.ticketStatus = status
+	return r.mockDashboardDB.UpdateTicketStatus(ctx, id, status)
+}
+
+func TestSmartRetrier_ResetsTasksAndSavesDagState(t *testing.T) {
+	tasks := []models.Task{
+		{ID: "t-done", TicketID: "ticket-1", Status: models.TaskStatusDone},
+		{ID: "t-failed", TicketID: "ticket-1", Status: models.TaskStatusFailed},
+		{ID: "t-skip1", TicketID: "ticket-1", Status: models.TaskStatusSkipped},
+		{ID: "t-skip2", TicketID: "ticket-1", Status: models.TaskStatusSkipped},
+	}
+
+	mdb := &mockDashboardDB{}
+	retryDB := &retryTestDB{mockDashboardDB: mdb, tasks: tasks}
+	retrier := &smartRetrier{db: retryDB}
+
+	err := retrier.RetryTicket(context.Background(), "ticket-1")
+	require.NoError(t, err)
+
+	// dag_state saved with only the done task ID.
+	require.NotNil(t, mdb.savedDAGState)
+	assert.Equal(t, []string{"t-done"}, mdb.savedDAGState.CompletedTasks)
+
+	// failed and skipped tasks reset to pending.
+	pendingIDs := map[string]bool{}
+	for _, u := range mdb.taskStatusUpdates {
+		if u.status == models.TaskStatusPending {
+			pendingIDs[u.id] = true
+		}
+	}
+	assert.True(t, pendingIDs["t-failed"], "t-failed should be reset to pending")
+	assert.True(t, pendingIDs["t-skip1"], "t-skip1 should be reset to pending")
+	assert.True(t, pendingIDs["t-skip2"], "t-skip2 should be reset to pending")
+	assert.False(t, pendingIDs["t-done"], "t-done should NOT be reset")
+
+	// ticket re-queued.
+	assert.Equal(t, models.TicketStatusQueued, retryDB.ticketStatus)
 }

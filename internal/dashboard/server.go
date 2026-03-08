@@ -3,6 +3,7 @@ package dashboard
 import (
 	"context"
 	"embed"
+	"fmt"
 	"io/fs"
 	"net"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/canhta/foreman/internal/db"
 	"github.com/canhta/foreman/internal/models"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -27,11 +29,40 @@ type Server struct {
 	server *http.Server
 }
 
-// dbTicketRetrier resets a failed ticket to queued so the daemon picks it up.
-type dbTicketRetrier struct{ db DashboardDB }
+// smartRetrier performs a partial retry: it preserves already-done tasks by
+// seeding dag_state with their IDs, resets failed/skipped tasks to pending,
+// and re-queues the ticket so the daemon resumes from the failure point (ARCH-F05).
+type smartRetrier struct{ db DashboardDB }
 
-func (r *dbTicketRetrier) RetryTicket(ctx context.Context, id string) error {
-	return r.db.UpdateTicketStatus(ctx, id, models.TicketStatusQueued)
+func (r *smartRetrier) RetryTicket(ctx context.Context, ticketID string) error {
+	tasks, err := r.db.ListTasks(ctx, ticketID)
+	if err != nil {
+		return fmt.Errorf("list tasks: %w", err)
+	}
+
+	var doneIDs []string
+	for _, t := range tasks {
+		if t.Status == models.TaskStatusDone {
+			doneIDs = append(doneIDs, t.ID)
+		}
+	}
+
+	if len(doneIDs) > 0 {
+		state := db.DAGState{TicketID: ticketID, CompletedTasks: doneIDs}
+		if err := r.db.SaveDAGState(ctx, ticketID, state); err != nil {
+			return fmt.Errorf("save dag state: %w", err)
+		}
+	}
+
+	for _, t := range tasks {
+		if t.Status == models.TaskStatusFailed || t.Status == models.TaskStatusSkipped {
+			if err := r.db.UpdateTaskStatus(ctx, t.ID, models.TaskStatusPending); err != nil {
+				return fmt.Errorf("reset task %s: %w", t.ID, err)
+			}
+		}
+	}
+
+	return r.db.UpdateTicketStatus(ctx, ticketID, models.TicketStatusQueued)
 }
 
 // maxRequestBodyBytes is the maximum allowed request body size (1 MiB).
@@ -54,8 +85,8 @@ func limitRequestBody(next http.Handler) http.Handler {
 func NewServer(db DashboardDB, emitter EventSubscriber, statusProvider DaemonStatusProvider, reg *prometheus.Registry, costCfg models.CostConfig, version, host string, port int) *Server {
 	api := NewAPI(db, emitter, statusProvider, costCfg, version)
 
-	// Wire ticket retrier using DB — retry resets ticket to queued for daemon pickup.
-	api.SetTicketRetrier(&dbTicketRetrier{db: db})
+	// Wire ticket retrier using DB — retry preserves done tasks and re-queues for daemon pickup.
+	api.SetTicketRetrier(&smartRetrier{db: db})
 
 	mux := http.NewServeMux()
 
