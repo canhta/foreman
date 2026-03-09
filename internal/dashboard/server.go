@@ -128,6 +128,7 @@ func NewServer(db DashboardDB, emitter EventSubscriber, statusProvider DaemonSta
 	mux.Handle("/api/stats/recent-prs", auth(http.HandlerFunc(api.handleRecentPRs)))
 	mux.Handle("/api/ticket-summaries", auth(http.HandlerFunc(api.handleTicketSummaries)))
 	mux.Handle("/api/events", auth(http.HandlerFunc(api.handleGlobalEvents)))
+	mux.Handle("/api/config/summary", auth(http.HandlerFunc(api.handleConfigSummary)))
 	mux.Handle("/api/tasks/", auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/context") {
 			api.handleTaskContext(w, r)

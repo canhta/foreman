@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -169,6 +170,161 @@ func NewAPI(db DashboardDB, emitter EventSubscriber, statusProvider DaemonStatus
 		version:        version,
 		startedAt:      time.Now(),
 	}
+}
+
+// configSummary is the JSON response for GET /api/config/summary.
+type configSummary struct {
+	LLM         configLLM         `json:"llm"`
+	Tracker     configTracker     `json:"tracker"`
+	Git         configGit         `json:"git"`
+	AgentRunner configAgentRunner `json:"agent_runner"`
+	Cost        configCost        `json:"cost"`
+	Daemon      configDaemon      `json:"daemon"`
+	Database    configDatabase    `json:"database"`
+	MCP         configMCP         `json:"mcp"`
+	RateLimit   configRateLimit   `json:"rate_limit"`
+}
+
+type configLLM struct {
+	Provider string            `json:"provider"`
+	Models   map[string]string `json:"models"`
+	APIKey   string            `json:"api_key"`
+}
+
+type configTracker struct {
+	Provider     string `json:"provider"`
+	PollInterval string `json:"poll_interval"`
+}
+
+type configGit struct {
+	Provider     string `json:"provider"`
+	CloneURL     string `json:"clone_url"`
+	BranchPrefix string `json:"branch_prefix"`
+}
+
+type configAgentRunner struct {
+	Provider string `json:"provider"`
+	MaxTurns int    `json:"max_turns"`
+}
+
+type configCost struct {
+	DailyBudget     float64 `json:"daily_budget"`
+	MonthlyBudget   float64 `json:"monthly_budget"`
+	PerTicketBudget float64 `json:"per_ticket_budget"`
+	AlertThreshold  int     `json:"alert_threshold"`
+}
+
+type configDaemon struct {
+	MaxParallelTickets int    `json:"max_parallel_tickets"`
+	MaxParallelTasks   int    `json:"max_parallel_tasks"`
+	WorkDir            string `json:"work_dir"`
+	LogLevel           string `json:"log_level"`
+}
+
+type configDatabase struct {
+	Driver string `json:"driver"`
+	Path   string `json:"path"`
+}
+
+type configMCP struct {
+	Servers []string `json:"servers"`
+}
+
+type configRateLimit struct {
+	RequestsPerMinute int `json:"requests_per_minute"`
+}
+
+// redactKey returns a redacted version of an API key for display purposes.
+func redactKey(key string) string {
+	if key == "" {
+		return "(not set)"
+	}
+	if len(key) <= 8 {
+		return "****"
+	}
+	return key[:7] + "..." + key[len(key)-4:]
+}
+
+func (a *API) handleConfigSummary(w http.ResponseWriter, r *http.Request) {
+	if a.configProvider == nil {
+		http.Error(w, "config not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	cfg := a.configProvider.GetConfig()
+
+	modelsMap := map[string]string{
+		"planner":          cfg.Models.Planner,
+		"implementer":      cfg.Models.Implementer,
+		"spec_reviewer":    cfg.Models.SpecReviewer,
+		"quality_reviewer": cfg.Models.QualityReviewer,
+		"final_reviewer":   cfg.Models.FinalReviewer,
+	}
+
+	apiKey := ""
+	switch cfg.LLM.DefaultProvider {
+	case "anthropic":
+		apiKey = redactKey(cfg.LLM.Anthropic.APIKey)
+	case "openai":
+		apiKey = redactKey(cfg.LLM.OpenAI.APIKey)
+	case "openrouter":
+		apiKey = redactKey(cfg.LLM.OpenRouter.APIKey)
+	}
+
+	dbPath := cfg.Database.SQLite.Path
+	if cfg.Database.Driver == "postgres" {
+		dbPath = redactKey(cfg.Database.Postgres.URL)
+	}
+
+	mcpServers := make([]string, 0, len(cfg.MCP.Servers))
+	for _, s := range cfg.MCP.Servers {
+		mcpServers = append(mcpServers, s.Name)
+	}
+
+	summary := configSummary{
+		LLM: configLLM{
+			Provider: cfg.LLM.DefaultProvider,
+			Models:   modelsMap,
+			APIKey:   apiKey,
+		},
+		Tracker: configTracker{
+			Provider:     cfg.Tracker.Provider,
+			PollInterval: fmt.Sprintf("%ds", cfg.Daemon.PollIntervalSecs),
+		},
+		Git: configGit{
+			Provider:     cfg.Git.Provider,
+			CloneURL:     cfg.Git.CloneURL,
+			BranchPrefix: cfg.Git.BranchPrefix,
+		},
+		AgentRunner: configAgentRunner{
+			Provider: cfg.AgentRunner.Provider,
+			MaxTurns: cfg.AgentRunner.MaxTurnsDefault,
+		},
+		Cost: configCost{
+			DailyBudget:     cfg.Cost.MaxCostPerDayUSD,
+			MonthlyBudget:   cfg.Cost.MaxCostPerMonthUSD,
+			PerTicketBudget: cfg.Cost.MaxCostPerTicketUSD,
+			AlertThreshold:  cfg.Cost.AlertThresholdPct,
+		},
+		Daemon: configDaemon{
+			MaxParallelTickets: cfg.Daemon.MaxParallelTickets,
+			MaxParallelTasks:   cfg.Daemon.MaxParallelTasks,
+			WorkDir:            cfg.Daemon.WorkDir,
+			LogLevel:           cfg.Daemon.LogLevel,
+		},
+		Database: configDatabase{
+			Driver: cfg.Database.Driver,
+			Path:   dbPath,
+		},
+		MCP: configMCP{
+			Servers: mcpServers,
+		},
+		RateLimit: configRateLimit{
+			RequestsPerMinute: cfg.RateLimit.RequestsPerMinute,
+		},
+	}
+
+	writeJSON(w, http.StatusOK, summary)
 }
 
 func (a *API) handleStatus(w http.ResponseWriter, r *http.Request) {
