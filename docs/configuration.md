@@ -405,7 +405,7 @@ provider = "whatsapp"   # Currently only "whatsapp" is supported; omit to disabl
 
 [channel.whatsapp]
 session_db      = "~/.foreman/whatsapp.db"   # SQLite session storage for whatsmeow
-pairing_mode    = ""                          # "phone" | "qr" — login method (used by `foreman channel login`)
+pairing_mode    = "code"                      # "code" | "qr" — login method (used by `foreman channel login`)
 dm_policy       = "allowlist"                 # allowlist | pairing
 allowed_numbers = ["+84123456789"]            # E.164 phone numbers allowed to send commands/tickets
 ```

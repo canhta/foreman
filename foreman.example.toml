@@ -207,7 +207,7 @@ reflection_interval = 5      # Self-reflection turn every N tool rounds (0 = dis
 #
 # [channel.whatsapp]
 # session_db      = "~/.foreman/whatsapp.db"
-# pairing_mode    = "phone"          # phone | qr
+# pairing_mode    = "code"           # code | qr
 # dm_policy       = "allowlist"      # allowlist | pairing
 # allowed_numbers = ["+84123456789"] # E.164 format
 

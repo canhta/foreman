@@ -28,7 +28,7 @@ func newChannelLoginCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "login",
 		Short: "Link a WhatsApp account to Foreman",
-		RunE: func(_ *cobra.Command, _ []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg, _, err := loadConfigAndDB()
 			if err != nil {
 				return err
@@ -40,13 +40,18 @@ func newChannelLoginCmd() *cobra.Command {
 			}
 			sessionDB = expandHomePath(sessionDB)
 
+			// Fall back to config pairing_mode when --mode is not explicitly set.
+			if !cmd.Flags().Changed("mode") && cfg.Channel.WhatsApp.PairingMode != "" {
+				mode = cfg.Channel.WhatsApp.PairingMode
+			}
+
 			ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 			defer cancel()
 
 			switch mode {
 			case "qr":
 				return whatsapp.LoginWithQR(ctx, sessionDB)
-			default:
+			default: // "code" (default)
 				if phone == "" {
 					return fmt.Errorf("--phone is required for pairing code mode")
 				}
