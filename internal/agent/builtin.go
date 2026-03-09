@@ -260,6 +260,10 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 				for _, tc := range resp.ToolCalls {
 					if tc.Name == "structured_output" {
 						log.Info().Int("turn", turn+1).Msg("builtin: structured_output tool called, capturing result")
+						if err := ValidateStructuredOutput(req.OutputSchema, string(tc.Input)); err != nil {
+							log.Warn().Err(err).Msg("builtin: structured_output input is not valid JSON")
+							return AgentResult{}, fmt.Errorf("structured output validation failed: %w", err)
+						}
 						return enrichResult(AgentResult{
 							Output:     resp.Content,
 							Structured: json.RawMessage(tc.Input),
