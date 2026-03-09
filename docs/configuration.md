@@ -100,6 +100,11 @@ status_done        = "Done"
 status_blocked     = "Blocked"
 ```
 
+Create a Jira API token at:
+`https://id.atlassian.com/manage-profile/security/api-tokens`
+
+Use your Atlassian account email for `email` and store the token in `JIRA_API_TOKEN`.
+
 ### Linear
 
 ```toml
@@ -141,6 +146,15 @@ token = "${GITHUB_TOKEN}"
 token    = "${GITLAB_TOKEN}"
 base_url = "https://gitlab.com"   # Override for self-hosted GitLab
 ```
+
+If your repository is private and requires a specific SSH key, configure your shell before starting Foreman:
+
+```bash
+export GIT_SSH_COMMAND='ssh -i ~/.ssh/id_ed25519_foreman -o IdentitiesOnly=yes'
+```
+
+Then use an SSH clone URL in config, for example:
+`clone_url = "git@github.com:SETA-International-Vietnam/SessionUp.git"`
 
 ---
 

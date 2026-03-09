@@ -3,14 +3,18 @@ package channel
 import (
 	"context"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/canhta/foreman/internal/models"
+	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 )
 
 // RouterDB is the subset of db.Database needed by ChannelRouter.
 type RouterDB interface {
 	PairingDB
+	CreateTicket(ctx context.Context, t *models.Ticket) error
 	FindActiveClarification(ctx context.Context, senderID string) (*models.Ticket, error)
 	UpdateTicketStatus(ctx context.Context, id string, status models.TicketStatus) error
 	AppendTicketDescription(ctx context.Context, id, text string) error
@@ -140,7 +144,41 @@ func (r *ChannelRouter) handleClarificationReply(ctx context.Context, msg Inboun
 }
 
 func (r *ChannelRouter) handleNewTicket(ctx context.Context, msg InboundMessage) error {
-	r.logger.Info().Str("sender", msg.SenderID).Msg("new ticket from channel")
-	// Ticket creation will be wired in daemon integration when we have the full DB.
+	if r.db == nil {
+		r.logger.Error().Str("sender", msg.SenderID).Msg("cannot create ticket: router has no DB")
+		_ = r.channel.Send(ctx, msg.SenderID, "System not ready — ticket could not be created.")
+		return nil
+	}
+
+	title := msg.Body
+	if i := strings.IndexAny(title, "\n\r"); i > 0 {
+		title = title[:i]
+	}
+	if len(title) > 120 {
+		title = title[:120]
+	}
+
+	now := time.Now()
+	ticket := &models.Ticket{
+		ID:              uuid.New().String(),
+		Title:           title,
+		Description:     msg.Body,
+		Status:          models.TicketStatusQueued,
+		ChannelSenderID: msg.SenderID,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}
+
+	if err := r.db.CreateTicket(ctx, ticket); err != nil {
+		r.logger.Error().Err(err).Str("sender", msg.SenderID).Msg("failed to create ticket from channel message")
+		_ = r.channel.Send(ctx, msg.SenderID, "Sorry, failed to create ticket. Please try again.")
+		return err
+	}
+
+	r.logger.Info().Str("sender", msg.SenderID).Str("ticket", ticket.ID).Msg("ticket created from channel message")
+	reply := fmt.Sprintf("Ticket #%s created — I'll get to work on it.", ticket.ID)
+	if err := r.channel.Send(ctx, msg.SenderID, reply); err != nil {
+		r.logger.Error().Err(err).Msg("failed to send ticket confirmation")
+	}
 	return nil
 }

@@ -44,10 +44,16 @@ func (m *mockChannel) lastSent() *sentMessage {
 type mockRouterDB struct {
 	mockPairingDB
 	tickets       []models.Ticket
+	created       []*models.Ticket
 	appendedID    string
 	appendedText  string
 	updatedID     string
 	updatedStatus models.TicketStatus
+}
+
+func (m *mockRouterDB) CreateTicket(_ context.Context, t *models.Ticket) error {
+	m.created = append(m.created, t)
+	return nil
 }
 
 func (m *mockRouterDB) FindActiveClarification(_ context.Context, senderID string) (*models.Ticket, error) {
@@ -167,5 +173,43 @@ func TestRouter_ClarificationReply(t *testing.T) {
 	}
 	if msg.message != "Updated ticket #ticket-123, resuming..." {
 		t.Errorf("sent = %q, want %q", msg.message, "Updated ticket #ticket-123, resuming...")
+	}
+}
+
+func TestRouter_NewTicket(t *testing.T) {
+	ch := &mockChannel{}
+	allowlist := NewAllowlist([]string{"+84111111111"})
+	db := &mockRouterDB{mockPairingDB: *newMockPairingDB()}
+	router := NewRouter(ch, db, NewClassifier(nil), allowlist, nil, nil, zerolog.Nop())
+
+	err := router.HandleMessage(context.Background(), InboundMessage{
+		SenderID:  "84111111111@s.whatsapp.net",
+		Body:      "Add dark mode to the settings page",
+		Timestamp: time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+
+	if len(db.created) != 1 {
+		t.Fatalf("expected 1 ticket created, got %d", len(db.created))
+	}
+	ticket := db.created[0]
+	if ticket.Title != "Add dark mode to the settings page" {
+		t.Errorf("title = %q", ticket.Title)
+	}
+	if ticket.ChannelSenderID != "84111111111@s.whatsapp.net" {
+		t.Errorf("ChannelSenderID = %q", ticket.ChannelSenderID)
+	}
+	if ticket.Status != models.TicketStatusQueued {
+		t.Errorf("status = %q", ticket.Status)
+	}
+
+	msg := ch.lastSent()
+	if msg == nil {
+		t.Fatal("expected a confirmation message")
+	}
+	if msg.recipientID != "84111111111@s.whatsapp.net" {
+		t.Errorf("reply to = %q", msg.recipientID)
 	}
 }

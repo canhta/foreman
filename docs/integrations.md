@@ -53,6 +53,7 @@ For the full TOML reference for every integration, see [Configuration](configura
 **Setup:**
 
 1. Create a Jira API token at `https://id.atlassian.com/manage-profile/security/api-tokens`.
+   - In Atlassian Account: `Security` -> `API tokens` -> `Create API token`.
 2. Create a `foreman-ready` label in your Jira project.
 3. Map the four status names (`status_in_progress`, `status_in_review`, `status_done`, `status_blocked`) to the exact names in your Jira workflow.
 
@@ -172,6 +173,32 @@ implementer = "local:llama3.2"
 ---
 
 ## Git and PR Hosting
+
+### SSH Authentication for Private Repositories
+
+When your git host requires SSH and a non-default private key:
+
+1. Ensure the key exists and has safe permissions:
+   ```bash
+   ls -l ~/.ssh/id_ed25519_foreman
+   chmod 600 ~/.ssh/id_ed25519_foreman
+   ```
+2. Add the public key (`~/.ssh/id_ed25519_foreman.pub`) to your git host account or deploy keys.
+3. Use an SSH clone URL in `[git]` config:
+   ```toml
+   [git]
+   clone_url = "git@github.com:your-org/your-repo.git"
+   ```
+4. Export `GIT_SSH_COMMAND` before running Foreman:
+   ```bash
+   export GIT_SSH_COMMAND='ssh -i ~/.ssh/id_ed25519_foreman -o IdentitiesOnly=yes'
+   ```
+5. Validate connectivity:
+   ```bash
+   ssh -i ~/.ssh/id_ed25519_foreman -T git@github.com
+   ```
+
+If host key verification prompts appear on first connection, run the SSH test command once interactively, then retry `foreman doctor`.
 
 ### GitHub
 

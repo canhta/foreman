@@ -84,6 +84,14 @@ export ANTHROPIC_API_KEY=sk-ant-...
 export FOREMAN_DASHBOARD_TOKEN=$(./foreman token generate)
 ```
 
+If your repository is private and uses SSH deploy keys, set git to use a specific key:
+
+```bash
+export GIT_SSH_COMMAND='ssh -i ~/.ssh/id_ed25519_foreman -o IdentitiesOnly=yes'
+```
+
+For a complete setup guide for SSH and Jira credentials, see [Integrations](integrations.md#jira-cloud-and-server).
+
 For a complete config reference, see [Configuration](configuration.md).
 
 ## First Run

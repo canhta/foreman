@@ -97,13 +97,23 @@ func TestRouter_FullFlow(t *testing.T) {
 	}
 	ch.mu.Unlock()
 
-	// Test 4: New ticket from allowed sender (no DB, just logs)
+	// Test 4: New ticket from allowed sender — no DB wired, expect graceful error reply.
+	ch.mu.Lock()
+	ch.sent = nil
+	ch.mu.Unlock()
+
 	err = router.HandleMessage(ctx, channel.InboundMessage{
 		SenderID:  "84111111111@s.whatsapp.net",
 		Body:      "Build a login page with OAuth support",
 		Timestamp: time.Now(),
 	})
 	if err != nil {
-		t.Fatalf("HandleMessage new ticket: %v", err)
+		t.Fatalf("HandleMessage new ticket (no db): %v", err)
 	}
+
+	ch.mu.Lock()
+	if len(ch.sent) != 1 {
+		t.Errorf("expected error reply when db is nil, got %d messages", len(ch.sent))
+	}
+	ch.mu.Unlock()
 }
