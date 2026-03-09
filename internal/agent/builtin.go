@@ -96,7 +96,8 @@ func NewBuiltinRunner(
 
 // subagentRunFn is injected into the registry for SubagentTool.
 // It receives remainingBudget and agentDepth from the subagent tool's enforcement logic.
-func (r *BuiltinRunner) subagentRunFn(ctx context.Context, task, workDir string, toolNames []string, maxTurns, remainingBudget, agentDepth int) (string, error) {
+// mode optionally selects a pre-configured agent mode (empty means default).
+func (r *BuiltinRunner) subagentRunFn(ctx context.Context, task, workDir, mode string, toolNames []string, maxTurns, remainingBudget, agentDepth int) (string, error) {
 	result, err := r.Run(ctx, AgentRequest{
 		Prompt:          task,
 		WorkDir:         workDir,
@@ -104,6 +105,7 @@ func (r *BuiltinRunner) subagentRunFn(ctx context.Context, task, workDir string,
 		MaxTurns:        maxTurns,
 		RemainingBudget: remainingBudget,
 		AgentDepth:      agentDepth,
+		Mode:            mode,
 		// No ContextProvider for subagents — baseline context only
 	})
 	if err != nil {

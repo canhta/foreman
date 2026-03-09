@@ -154,7 +154,7 @@ func (t *subagentTool) Description() string {
 	return "Delegate a bounded subtask to a fresh agent with a restricted tool set. Returns the agent's final output."
 }
 func (t *subagentTool) Schema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"task":{"type":"string","description":"Prompt for the subagent"},"tools":{"type":"array","items":{"type":"string"},"description":"Tool names the subagent may use (subset of current tools)"},"max_turns":{"type":"integer","description":"Max turns for subagent (default 5, max 10)"}},"required":["task"]}`)
+	return json.RawMessage(`{"type":"object","properties":{"task":{"type":"string","description":"Prompt for the subagent"},"tools":{"type":"array","items":{"type":"string"},"description":"Tool names the subagent may use (subset of current tools)"},"max_turns":{"type":"integer","description":"Max turns for subagent (default 5, max 10)"},"task_id":{"type":"string","description":"Optional task ID for tracking and resumption"},"mode":{"type":"string","description":"Optional agent mode (e.g. plan, explore, build)"}},"required":["task"]}`)
 }
 func (t *subagentTool) Execute(ctx context.Context, workDir string, input json.RawMessage) (string, error) {
 	runFn := t.registry.GetRunFn()
@@ -165,6 +165,8 @@ func (t *subagentTool) Execute(ctx context.Context, workDir string, input json.R
 		Task     string   `json:"task"`
 		Tools    []string `json:"tools"`
 		MaxTurns int      `json:"max_turns"`
+		TaskID   string   `json:"task_id"`
+		Mode     string   `json:"mode"`
 	}
 	if err := json.Unmarshal(input, &in); err != nil {
 		return "", fmt.Errorf("subagent: %w", err)
@@ -195,9 +197,14 @@ func (t *subagentTool) Execute(ctx context.Context, workDir string, input json.R
 		maxTurns = parentBudget
 	}
 
-	result, err := runFn(ctx, in.Task, workDir, in.Tools, maxTurns, parentBudget, parentDepth+1)
+	result, err := runFn(ctx, in.Task, workDir, in.Mode, in.Tools, maxTurns, parentBudget, parentDepth+1)
 	if err != nil {
 		return "", fmt.Errorf("subagent: %w", err)
+	}
+
+	// If a task_id was provided, include it in the output for reference.
+	if in.TaskID != "" {
+		return fmt.Sprintf("[task_id: %s]\n%s", in.TaskID, result), nil
 	}
 	return result, nil
 }

@@ -17,7 +17,8 @@ import (
 // Using a function reference breaks the circular Registry ↔ BuiltinRunner dependency.
 // remainingBudget is the parent's remaining turn budget (0 = unconstrained).
 // agentDepth is the current nesting depth of the calling agent.
-type RunFn func(ctx context.Context, task, workDir string, toolNames []string, maxTurns, remainingBudget, agentDepth int) (string, error)
+// mode selects a pre-configured agent mode (e.g. "plan", "explore", "build"); empty means default.
+type RunFn func(ctx context.Context, task, workDir, mode string, toolNames []string, maxTurns, remainingBudget, agentDepth int) (string, error)
 
 // ToolHooks are optional callbacks fired around every tool execution.
 type ToolHooks struct {

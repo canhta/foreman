@@ -426,7 +426,7 @@ func TestSubagent_InheritsBudget(t *testing.T) {
 	// Subagent requests max_turns=20 but should be capped to min(20, 3) = 3
 	var capturedMaxTurns int
 	reg := tools.NewRegistry(nil, nil, tools.ToolHooks{})
-	reg.SetRunFn(func(_ context.Context, _ string, _ string, _ []string, maxTurns, remainingBudget, agentDepth int) (string, error) {
+	reg.SetRunFn(func(_ context.Context, _ string, _ string, _ string, _ []string, maxTurns, remainingBudget, agentDepth int) (string, error) {
 		capturedMaxTurns = maxTurns
 		return "subagent done", nil
 	})
@@ -452,7 +452,7 @@ func TestSubagent_FailsWhenBudgetExhausted(t *testing.T) {
 	// RemainingBudget < 0 means the parent budget is exhausted.
 	// The subagent tool should return an error (fed back as tool error, not fatal).
 	reg := tools.NewRegistry(nil, nil, tools.ToolHooks{})
-	reg.SetRunFn(func(_ context.Context, _ string, _ string, _ []string, _, _, _ int) (string, error) {
+	reg.SetRunFn(func(_ context.Context, _ string, _ string, _ string, _ []string, _, _, _ int) (string, error) {
 		t.Error("subagent RunFn should not be called when budget is exhausted")
 		return "", nil
 	})
@@ -475,7 +475,7 @@ func TestSubagent_FailsWhenBudgetExhausted(t *testing.T) {
 func TestSubagent_EnforcesMaxDepth(t *testing.T) {
 	// AgentDepth at max: subagent call should fail with depth error
 	reg := tools.NewRegistry(nil, nil, tools.ToolHooks{})
-	reg.SetRunFn(func(_ context.Context, _ string, _ string, _ []string, _, _, _ int) (string, error) {
+	reg.SetRunFn(func(_ context.Context, _ string, _ string, _ string, _ []string, _, _, _ int) (string, error) {
 		t.Error("subagent RunFn should not be called when max depth is reached")
 		return "", nil
 	})
