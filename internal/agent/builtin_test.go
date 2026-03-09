@@ -574,3 +574,89 @@ func TestBuiltinRunner_DetectsDuplicateToolCalls(t *testing.T) {
 		t.Errorf("expected a deduplication warning to be injected into the conversation, but none found.\nReceived prompts: %v", mockLLM.receivedPrompt)
 	}
 }
+
+// --- Task 3+4: Structured output integration tests ---
+
+// mockStructuredOutputLLM simulates an LLM that calls the structured_output tool.
+// On the first call it checks whether structured_output is in the tools list, then
+// returns a tool_use for structured_output. On the second call it returns end_turn.
+type mockStructuredOutputLLM struct {
+	capturedTools []models.ToolDef
+	calls         int
+}
+
+func (m *mockStructuredOutputLLM) Complete(_ context.Context, req models.LlmRequest) (*models.LlmResponse, error) {
+	m.calls++
+	if m.calls == 1 {
+		m.capturedTools = req.Tools
+		return &models.LlmResponse{
+			StopReason: models.StopReasonToolUse,
+			ToolCalls: []models.ToolCall{
+				{
+					ID:    "so_1",
+					Name:  "structured_output",
+					Input: json.RawMessage(`{"status":"APPROVED","issues":[]}`),
+				},
+			},
+			TokensInput: 100, TokensOutput: 50, Model: req.Model,
+		}, nil
+	}
+	return &models.LlmResponse{
+		Content:    "done",
+		StopReason: models.StopReasonEndTurn,
+		TokensInput: 50, TokensOutput: 10, Model: req.Model,
+	}, nil
+}
+func (m *mockStructuredOutputLLM) ProviderName() string                { return "mock" }
+func (m *mockStructuredOutputLLM) HealthCheck(_ context.Context) error { return nil }
+
+func TestBuiltinRunner_StructuredOutputToolInjected(t *testing.T) {
+	schema := json.RawMessage(`{
+		"type": "object",
+		"properties": {
+			"status": {"type": "string"},
+			"issues": {"type": "array", "items": {"type": "string"}}
+		},
+		"required": ["status"]
+	}`)
+
+	mockLLM := &mockStructuredOutputLLM{}
+	runner := NewBuiltinRunner(mockLLM, "test-model", BuiltinConfig{MaxTurnsDefault: 10}, nil, nil)
+
+	result, err := runner.Run(context.Background(), AgentRequest{
+		Prompt:       "Analyze this code.",
+		WorkDir:      t.TempDir(),
+		OutputSchema: schema,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify structured_output tool was injected
+	found := false
+	for _, tool := range mockLLM.capturedTools {
+		if tool.Name == "structured_output" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected structured_output tool in tools sent to LLM, got: %v", mockLLM.capturedTools)
+	}
+
+	// Verify structured output was captured in AgentResult
+	if result.Structured == nil {
+		t.Fatal("expected Structured to be non-nil")
+	}
+	raw, ok := result.Structured.(json.RawMessage)
+	if !ok {
+		t.Fatalf("expected Structured to be json.RawMessage, got %T", result.Structured)
+	}
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		t.Fatalf("failed to unmarshal structured output: %v", err)
+	}
+	if parsed["status"] != "APPROVED" {
+		t.Errorf("expected status APPROVED, got %v", parsed["status"])
+	}
+}

@@ -135,6 +135,13 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 		toolDefs = r.registry.Defs(toolNames)
 	}
 
+	// When OutputSchema is set, inject the structured_output tool so the LLM
+	// can signal completion with a schema-validated JSON payload.
+	if req.OutputSchema != nil {
+		toolDefs = append(toolDefs, BuildStructuredOutputTool(req.OutputSchema))
+		systemPrompt += "\n\nYou MUST use the structured_output tool to provide your final answer."
+	}
+
 	maxTurns := req.MaxTurns
 	if maxTurns == 0 {
 		maxTurns = r.config.MaxTurnsDefault
@@ -247,6 +254,21 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 		}
 
 		if resp.StopReason == models.StopReasonToolUse && len(resp.ToolCalls) > 0 {
+			// Structured output interception: if the LLM calls structured_output,
+			// capture its input and return immediately — no further turns needed.
+			if req.OutputSchema != nil {
+				for _, tc := range resp.ToolCalls {
+					if tc.Name == "structured_output" {
+						log.Info().Int("turn", turn+1).Msg("builtin: structured_output tool called, capturing result")
+						return enrichResult(AgentResult{
+							Output:     resp.Content,
+							Structured: json.RawMessage(tc.Input),
+							Usage:      usage,
+						}), nil
+					}
+				}
+			}
+
 			messages = append(messages, models.Message{
 				Role:      "assistant",
 				Content:   resp.Content,
