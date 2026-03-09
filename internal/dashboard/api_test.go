@@ -149,6 +149,36 @@ func (m *mockInvalidAuthDB) ValidateAuthToken(_ context.Context, _ string) (bool
 	return false, nil
 }
 
+type emittedEvent struct {
+	ticketID  string
+	taskID    string
+	eventType string
+	severity  string
+	message   string
+	metadata  map[string]string
+}
+
+type mockRetryEventEmitter struct {
+	emitted []emittedEvent
+}
+
+func (m *mockRetryEventEmitter) Subscribe() chan *models.EventRecord {
+	return make(chan *models.EventRecord)
+}
+
+func (m *mockRetryEventEmitter) Unsubscribe(_ chan *models.EventRecord) {}
+
+func (m *mockRetryEventEmitter) Emit(_ context.Context, ticketID, taskID, eventType, severity, message string, metadata map[string]string) {
+	m.emitted = append(m.emitted, emittedEvent{
+		ticketID:  ticketID,
+		taskID:    taskID,
+		eventType: eventType,
+		severity:  severity,
+		message:   message,
+		metadata:  metadata,
+	})
+}
+
 func TestAPIGetStatus(t *testing.T) {
 	db := &mockDashboardDB{}
 	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
@@ -568,6 +598,37 @@ func TestAPIRetryTicket_Wired(t *testing.T) {
 	}
 	if retrier.retriedID != "t1" {
 		t.Errorf("expected retriedID=t1, got %s", retrier.retriedID)
+	}
+}
+
+func TestAPIRetryTicket_EmitsActivityEvent(t *testing.T) {
+	retrier := &mockTicketRetrier{}
+	emitter := &mockRetryEventEmitter{}
+	api := NewAPI(&mockDashboardDB{}, emitter, nil, models.CostConfig{}, "1.0.0")
+	api.SetTicketRetrier(retrier)
+
+	req := httptest.NewRequestWithContext(t.Context(), "POST", "/api/tickets/t1/retry", nil)
+	rec := httptest.NewRecorder()
+	api.handleRetryTicket(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if len(emitter.emitted) != 1 {
+		t.Fatalf("expected 1 emitted event, got %d", len(emitter.emitted))
+	}
+	evt := emitter.emitted[0]
+	if evt.ticketID != "t1" {
+		t.Errorf("expected ticketID=t1, got %s", evt.ticketID)
+	}
+	if evt.eventType != "ticket_retried" {
+		t.Errorf("expected eventType=ticket_retried, got %s", evt.eventType)
+	}
+	if evt.severity != "info" {
+		t.Errorf("expected severity=info, got %s", evt.severity)
+	}
+	if evt.message != "Retry requested from dashboard" {
+		t.Errorf("unexpected message: %s", evt.message)
 	}
 }
 

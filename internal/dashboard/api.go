@@ -56,6 +56,12 @@ type EventSubscriber interface {
 	Unsubscribe(ch chan *models.EventRecord)
 }
 
+// EventPublisher is an optional capability implemented by telemetry.EventEmitter.
+// API handlers use this when available to add entries to the activity feed.
+type EventPublisher interface {
+	Emit(ctx context.Context, ticketID, taskID, eventType, severity, message string, metadata map[string]string)
+}
+
 // DaemonStatusProvider is an optional interface for exposing daemon runtime state.
 // Pass nil when running the dashboard without an attached daemon.
 type DaemonStatusProvider interface {
@@ -378,6 +384,7 @@ func (a *API) handleRetryTicket(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	a.emitEvent(r.Context(), id, "", "ticket_retried", "info", "Retry requested from dashboard", nil)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "retrying", "ticket_id": id})
 }
 
@@ -613,6 +620,17 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+func (a *API) emitEvent(ctx context.Context, ticketID, taskID, eventType, severity, message string, metadata map[string]string) {
+	if a.emitter == nil {
+		return
+	}
+	publisher, ok := a.emitter.(EventPublisher)
+	if !ok {
+		return
+	}
+	publisher.Emit(ctx, ticketID, taskID, eventType, severity, message, metadata)
 }
 
 func extractPathParam(path, prefix string) string {
