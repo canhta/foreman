@@ -402,6 +402,21 @@ func (p *PostgresDB) RecordLlmCall(ctx context.Context, call *models.LlmCallReco
 			return fmt.Errorf("update ticket cost: %w", err)
 		}
 	}
+	// Atomically update cost_daily so dashboard cost queries stay in sync.
+	date := call.CreatedAt.Format("2006-01-02")
+	_, err = tx.ExecContext(ctx,
+		`INSERT INTO cost_daily (date, total_usd, total_input_tokens, total_output_tokens, llm_call_count)
+		 VALUES ($1, $2, $3, $4, 1)
+		 ON CONFLICT (date) DO UPDATE SET
+		   total_usd = cost_daily.total_usd + EXCLUDED.total_usd,
+		   total_input_tokens = cost_daily.total_input_tokens + EXCLUDED.total_input_tokens,
+		   total_output_tokens = cost_daily.total_output_tokens + EXCLUDED.total_output_tokens,
+		   llm_call_count = cost_daily.llm_call_count + 1`,
+		date, call.CostUSD, call.TokensInput, call.TokensOutput,
+	)
+	if err != nil {
+		return fmt.Errorf("update daily cost: %w", err)
+	}
 	return tx.Commit()
 }
 

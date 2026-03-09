@@ -647,6 +647,56 @@ func TestSQLiteDB_GetDailyCost(t *testing.T) {
 	assert.Equal(t, 0.0, cost)
 }
 
+func TestSQLiteDB_RecordLlmCall_UpdatesDailyCost(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	now := time.Now()
+	date := now.Format("2006-01-02")
+
+	// Create ticket and task for FK constraints.
+	require.NoError(t, db.CreateTicket(ctx, &models.Ticket{
+		ID: "t-1", ExternalID: "X-1", Title: "t", Description: "d",
+		Status: models.TicketStatusQueued, CreatedAt: now, UpdatedAt: now,
+	}))
+	require.NoError(t, db.CreateTasks(ctx, "t-1", []models.Task{
+		{ID: "task-1", TicketID: "t-1", Sequence: 1, Title: "Do it", Description: "d"},
+	}))
+
+	// Record first LLM call.
+	call1 := &models.LlmCallRecord{
+		ID: "call-1", TicketID: "t-1", TaskID: "task-1",
+		Role: "implementing", Provider: "claudecode", Model: "claude-sonnet-4-6",
+		AgentRunner: "claudecode", TokensInput: 1000, TokensOutput: 500,
+		CostUSD: 0.05, Status: "success", CreatedAt: now,
+	}
+	require.NoError(t, db.RecordLlmCall(ctx, call1))
+
+	// Daily cost should reflect the call.
+	cost, err := db.GetDailyCost(ctx, date)
+	require.NoError(t, err)
+	assert.InDelta(t, 0.05, cost, 0.001)
+
+	// Record a second call — cost should accumulate.
+	call2 := &models.LlmCallRecord{
+		ID: "call-2", TicketID: "t-1", TaskID: "task-1",
+		Role: "implementing", Provider: "claudecode", Model: "claude-sonnet-4-6",
+		AgentRunner: "claudecode", TokensInput: 2000, TokensOutput: 1000,
+		CostUSD: 0.10, Status: "success", CreatedAt: now,
+	}
+	require.NoError(t, db.RecordLlmCall(ctx, call2))
+
+	cost, err = db.GetDailyCost(ctx, date)
+	require.NoError(t, err)
+	assert.InDelta(t, 0.15, cost, 0.001)
+
+	// Monthly should also work.
+	monthly, err := db.GetMonthlyCost(ctx, now.Format("2006-01"))
+	require.NoError(t, err)
+	assert.InDelta(t, 0.15, monthly, 0.001)
+}
+
 func TestSQLiteDB_CreateAndValidateAuthToken(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()

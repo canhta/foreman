@@ -485,6 +485,22 @@ func (s *SQLiteDB) RecordLlmCall(ctx context.Context, call *models.LlmCallRecord
 			return fmt.Errorf("update ticket cost: %w", err)
 		}
 	}
+	// Atomically update cost_daily so dashboard cost queries stay in sync.
+	date := call.CreatedAt.Format("2006-01-02")
+	_, err = tx.ExecContext(ctx,
+		`INSERT INTO cost_daily (date, total_usd, total_input_tokens, total_output_tokens, llm_call_count)
+		 VALUES (?, ?, ?, ?, 1)
+		 ON CONFLICT(date) DO UPDATE SET
+		   total_usd = total_usd + ?,
+		   total_input_tokens = total_input_tokens + ?,
+		   total_output_tokens = total_output_tokens + ?,
+		   llm_call_count = llm_call_count + 1`,
+		date, call.CostUSD, call.TokensInput, call.TokensOutput,
+		call.CostUSD, call.TokensInput, call.TokensOutput,
+	)
+	if err != nil {
+		return fmt.Errorf("update daily cost: %w", err)
+	}
 	return tx.Commit()
 }
 
