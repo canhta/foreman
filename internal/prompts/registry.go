@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/flosch/pongo2/v6"
 )
 
 // EntryKind distinguishes the type of prompt entry.
@@ -192,4 +194,39 @@ func (r *Registry) List(kind EntryKind) []*Entry {
 		return result[i].Name < result[j].Name
 	})
 	return result
+}
+
+// Render resolves includes and renders template variables for an entry.
+func (r *Registry) Render(kind EntryKind, name string, vars map[string]any) (string, error) {
+	entry, err := r.Get(kind, name)
+	if err != nil {
+		return "", err
+	}
+	return r.RenderEntry(entry, vars)
+}
+
+// RenderEntry renders a single entry with the given variables.
+func (r *Registry) RenderEntry(entry *Entry, vars map[string]any) (string, error) {
+	// Build a pongo2 template set rooted at baseDir so {% include %} works
+	loader, err := pongo2.NewLocalFileSystemLoader(r.baseDir)
+	if err != nil {
+		return "", fmt.Errorf("create template loader: %w", err)
+	}
+	tplSet := pongo2.NewSet("prompts", loader)
+
+	tpl, err := tplSet.FromString(entry.RawContent)
+	if err != nil {
+		return "", fmt.Errorf("parse template %s: %w", entry.Name, err)
+	}
+
+	ctx := pongo2.Context{}
+	for k, v := range vars {
+		ctx[k] = v
+	}
+
+	result, err := tpl.Execute(ctx)
+	if err != nil {
+		return "", fmt.Errorf("render %s: %w", entry.Name, err)
+	}
+	return result, nil
 }

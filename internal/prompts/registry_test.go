@@ -124,3 +124,56 @@ func TestRegistryList(t *testing.T) {
 	skills := reg.List(KindSkill)
 	assert.Len(t, skills, 1)
 }
+
+func TestRegistryRender(t *testing.T) {
+	dir := setupTestFixtures(t)
+	reg, err := Load(dir)
+	require.NoError(t, err)
+
+	result, err := reg.Render(KindRole, "planner", map[string]any{
+		"ticket_title": "Add user auth",
+	})
+	require.NoError(t, err)
+	assert.Contains(t, result, "**Add user auth**")
+	assert.Contains(t, result, "Decompose this ticket")
+}
+
+func TestRegistryRenderWithIncludes(t *testing.T) {
+	dir := setupTestFixtures(t)
+
+	// Create a role that includes a fragment
+	mkdirp(t, filepath.Join(dir, "roles", "coder"))
+	writeFile(t, filepath.Join(dir, "roles", "coder", "ROLE.md"), `---
+name: coder
+description: "Coder with TDD"
+includes:
+  - fragments/tdd-rules.md
+---
+
+You are a coder.
+
+{% include "fragments/tdd-rules.md" %}
+
+## Task
+**{{ task_title }}**
+`)
+
+	reg, err := Load(dir)
+	require.NoError(t, err)
+
+	result, err := reg.Render(KindRole, "coder", map[string]any{
+		"task_title": "Fix the bug",
+	})
+	require.NoError(t, err)
+	assert.Contains(t, result, "Write tests FIRST")
+	assert.Contains(t, result, "**Fix the bug**")
+}
+
+func TestRegistryRenderNotFound(t *testing.T) {
+	dir := setupTestFixtures(t)
+	reg, err := Load(dir)
+	require.NoError(t, err)
+
+	_, err = reg.Render(KindRole, "missing", nil)
+	assert.Error(t, err)
+}
