@@ -68,6 +68,11 @@ type DaemonConfig struct {
 	TaskTimeoutMinutes     int    `mapstructure:"task_timeout_minutes"`
 	MergeCheckIntervalSecs int    `mapstructure:"merge_check_interval_secs"`
 	LockTTLSeconds         int    `mapstructure:"lock_ttl_seconds"`
+	// EnvFiles maps worktree-relative destination paths to absolute source paths
+	// on disk (outside the repo). Each file is copied into every task worktree
+	// and all vars are loaded into the process environment.
+	// Example: {".env": "~/.foreman/envs/myproject.env"}
+	EnvFiles map[string]string `mapstructure:"env_files"`
 }
 
 type DashboardConfig struct {

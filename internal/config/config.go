@@ -193,6 +193,9 @@ func expandEnvVars(cfg *models.Config) {
 	cfg.Git.GitHub.Token = expandEnv(cfg.Git.GitHub.Token)
 	cfg.Git.GitLab.Token = expandEnv(cfg.Git.GitLab.Token)
 	cfg.Daemon.WorkDir = expandTilde(cfg.Daemon.WorkDir)
+	for dest, src := range cfg.Daemon.EnvFiles {
+		cfg.Daemon.EnvFiles[dest] = expandTilde(src)
+	}
 	cfg.Database.SQLite.Path = expandTilde(cfg.Database.SQLite.Path)
 }
 
