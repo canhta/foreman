@@ -151,12 +151,13 @@ For private repositories, use an SSH clone URL and run `foreman setup-ssh` once 
 
 ```bash
 ./foreman setup-ssh
-# Prints the public key — paste it into GitHub → repo → Settings → Deploy Keys
+# Prints the public key — add it to your GitHub account:
+# https://github.com/settings/ssh/new
 # Then verify:
 ./foreman doctor
 ```
 
-Foreman automatically detects `~/.foreman/ssh/id_ed25519` and injects it as `GIT_SSH_COMMAND` for every git operation. Nothing is written to `~/.ssh/config` — the key is used exclusively by Foreman.
+Adding the key to your **GitHub account** (not repo deploy keys) grants access to all repos your account can reach, including private org repos. Nothing is written to `~/.ssh/config` — the key is used exclusively by Foreman via `GIT_SSH_COMMAND`.
 
 SSH clone URL format:
 ```toml

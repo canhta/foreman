@@ -34,15 +34,18 @@ GIT_SSH_COMMAND — your ~/.ssh/config and ssh-agent are not modified.`,
 		fmt.Fprintln(w, "SSH key ready:")
 		fmt.Fprintf(w, "  Private key : %s\n", kp.PrivateKeyPath)
 		fmt.Fprintf(w, "  Public key  : %s\n\n", kp.PublicKeyPath)
-		fmt.Fprintln(w, "Public key (paste this into GitHub → repo → Settings → Deploy Keys):")
+		fmt.Fprintln(w, "Public key (add this to your GitHub account SSH keys):")
 		fmt.Fprintln(w)
 		fmt.Fprintln(w, kp.PublicKeyLine)
 		fmt.Fprintln(w)
 		fmt.Fprintln(w, "Steps:")
 		fmt.Fprintln(w, "  1. Copy the public key above")
-		fmt.Fprintln(w, "  2. Open: https://github.com/<org>/<repo>/settings/keys/new")
-		fmt.Fprintln(w, "  3. Title: Foreman, paste the key, allow write access if needed")
+		fmt.Fprintln(w, "  2. Open: https://github.com/settings/ssh/new")
+		fmt.Fprintln(w, "  3. Title: Foreman, paste the key, click Add SSH key")
 		fmt.Fprintln(w, "  4. Run: foreman doctor   (to verify SSH connectivity)")
+		fmt.Fprintln(w)
+		fmt.Fprintln(w, "Note: adding to your account grants access to all repos your account")
+		fmt.Fprintln(w, "      can reach, including private org repos — no per-repo deploy key needed.")
 
 		// Optionally copy to clipboard on macOS / Linux.
 		if copied := tryClipboard(kp.PublicKeyLine); copied {

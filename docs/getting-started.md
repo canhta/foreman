@@ -90,7 +90,7 @@ If your repository is private (GitHub org or personal), run the SSH setup comman
 ./foreman setup-ssh
 ```
 
-This generates a dedicated keypair at `~/.foreman/ssh/id_ed25519`, prints the public key, and tells you exactly where to paste it in GitHub. Foreman automatically uses this key for all git operations — no manual `GIT_SSH_COMMAND` export needed.
+This generates a dedicated keypair at `~/.foreman/ssh/id_ed25519` and prints the public key. Add it to your **GitHub account** SSH keys at `https://github.com/settings/ssh/new` — this grants access to all repos your account can reach, including private org repos. Foreman automatically uses this key for all git operations via `GIT_SSH_COMMAND`.
 
 For a complete setup guide for SSH and Jira credentials, see [Integrations](integrations.md#jira-cloud-and-server).
 
