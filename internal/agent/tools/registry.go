@@ -35,6 +35,7 @@ type Registry struct {
 	mcpMgr          *mcp.Manager
 	runFn           RunFn
 	allowedCommands []string
+	todoStore       *TodoStore
 	// parentBudget and parentDepth are set by the builtin runner before each run
 	// so the subagent tool can enforce budget and depth constraints.
 	parentBudget int
@@ -52,10 +53,12 @@ func NewRegistry(gitProvider git.GitProvider, cmdRunner runner.CommandRunner, ho
 // the ListMCPTools tool and direct MCP tool execution.
 // All other parameters behave the same as NewRegistry.
 func NewRegistryWithMCP(gitProvider git.GitProvider, cmdRunner runner.CommandRunner, hooks ToolHooks, mcpMgr *mcp.Manager) *Registry {
+	todoStore := NewTodoStore()
 	r := &Registry{
-		tools:  make(map[string]Tool),
-		hooks:  hooks,
-		mcpMgr: mcpMgr,
+		tools:     make(map[string]Tool),
+		hooks:     hooks,
+		mcpMgr:    mcpMgr,
+		todoStore: todoStore,
 	}
 	registerFS(r)
 	registerGit(r, gitProvider)
@@ -63,6 +66,8 @@ func NewRegistryWithMCP(gitProvider git.GitProvider, cmdRunner runner.CommandRun
 	registerExec(r, cmdRunner, mcpMgr)
 	r.Register(&batchTool{reg: r})
 	registerLSP(r)
+	r.Register(&todoWriteTool{store: todoStore})
+	r.Register(&todoReadTool{store: todoStore})
 	return r
 }
 
