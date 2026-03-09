@@ -26,6 +26,9 @@ type GitHubPRCreator struct {
 
 // NewGitHubPRCreator creates a GitHub PR client.
 func NewGitHubPRCreator(baseURL, token, owner, repo string) *GitHubPRCreator {
+	if baseURL == "" {
+		baseURL = "https://api.github.com"
+	}
 	return &GitHubPRCreator{
 		baseURL: baseURL,
 		token:   token,

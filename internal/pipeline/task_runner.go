@@ -138,6 +138,14 @@ func (r *PipelineTaskRunner) runPostLintHook(ctx context.Context, task *models.T
 			TaskID:   task.ID,
 			Stage:    "post_lint",
 		},
+		Models: map[string]string{
+			"Planner":         r.config.Models.Planner,
+			"Implementer":     r.config.Models.Implementer,
+			"SpecReviewer":    r.config.Models.SpecReviewer,
+			"QualityReviewer": r.config.Models.QualityReviewer,
+			"FinalReviewer":   r.config.Models.FinalReviewer,
+			"Clarifier":       r.config.Models.Clarifier,
+		},
 	}
 	for _, hr := range r.config.HookRunner.RunHook(ctx, "post_lint", sCtx) {
 		if hr.Error != nil {
@@ -366,7 +374,11 @@ func (r *PipelineTaskRunner) runSpecReview(
 	}
 
 	if !result.Approved {
-		feedback.AddSpecFeedback(result.IssuesText())
+		issuesText := result.IssuesText()
+		if issuesText == "" {
+			issuesText = "Spec review rejected: no specific issues were parsed from the reviewer output"
+		}
+		feedback.AddSpecFeedback(issuesText)
 		return &reviewRejectedError{reviewer: "spec"}
 	}
 	return nil
@@ -392,7 +404,11 @@ func (r *PipelineTaskRunner) runQualityReview(
 	}
 
 	if !result.Approved {
-		feedback.AddQualityFeedback(result.IssuesText())
+		issuesText := result.IssuesText()
+		if issuesText == "" {
+			issuesText = "Quality review rejected: no specific issues were parsed from the reviewer output"
+		}
+		feedback.AddQualityFeedback(issuesText)
 		return &reviewRejectedError{reviewer: "quality"}
 	}
 	return nil

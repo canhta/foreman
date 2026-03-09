@@ -226,6 +226,14 @@ func (o *Orchestrator) runSkillHook(ctx context.Context, ticket models.Ticket, h
 			TicketID: ticket.ID,
 			Stage:    hookName,
 		},
+		Models: map[string]string{
+			"Planner":         o.config.Models.Planner,
+			"Implementer":     o.config.Models.Implementer,
+			"SpecReviewer":    o.config.Models.SpecReviewer,
+			"QualityReviewer": o.config.Models.QualityReviewer,
+			"FinalReviewer":   o.config.Models.FinalReviewer,
+			"Clarifier":       o.config.Models.Clarifier,
+		},
 	}
 	// Wire EventEmitter only when non-nil to avoid non-nil interface with nil pointer.
 	if o.emitter != nil {

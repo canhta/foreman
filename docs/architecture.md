@@ -7,24 +7,24 @@ Foreman is a single Go binary structured as a daemon with a pluggable, interface
 ```mermaid
 flowchart TD
     subgraph ext["External Systems"]
-        Tracker["Issue Tracker\njira · github · linear · local"]
-        GitHost["Git Host\ngithub — clone, push, PRs"]
-        LLMProv["LLM Provider\nanthropic · openai · openrouter · local"]
+        Tracker["Issue Tracker<br/>jira · github · linear · local"]
+        GitHost["Git Host<br/>github — clone, push, PRs"]
+        LLMProv["LLM Provider<br/>anthropic · openai · openrouter · local"]
     end
 
     subgraph foreman["Foreman Daemon"]
         direction TB
-        D["Scheduler\n24/7 poll · goroutine pool\nfile reservations · crash recovery"]
-        MC["Merge Checker\n(background goroutine)"]
+        D["Scheduler<br/>24/7 poll · goroutine pool<br/>file reservations · crash recovery"]
+        MC["Merge Checker<br/>(background goroutine)"]
 
         subgraph pipelines["Parallel Pipelines  (up to max_parallel_tickets)"]
-            PA["Pipeline\nTicket A"]
-            PB["Pipeline\nTicket B"]
+            PA["Pipeline<br/>Ticket A"]
+            PB["Pipeline<br/>Ticket B"]
             PC["..."]
         end
 
-        DB[("SQLite / PostgreSQL\ntickets · tasks · llm_calls\nhandoffs · reservations · events")]
-        DASH["Dashboard\nHTTP · REST · WebSocket · Auth"]
+        DB[("SQLite / PostgreSQL<br/>tickets · tasks · llm_calls<br/>handoffs · reservations · events")]
+        DASH["Dashboard<br/>HTTP · REST · WebSocket · Auth"]
 
         D -- spawn --> pipelines
         D <--> DB
@@ -241,7 +241,7 @@ Within each ticket, tasks execute in parallel via a coordinator/worker-pool DAG 
 
 ```mermaid
 flowchart TD
-    COORD["Coordinator Goroutine\nOwns: adjacency list · in-degree map · results\nZero mutexes on DAG state"]
+    COORD["Coordinator Goroutine<br/>Owns: adjacency list · in-degree map · results<br/>Zero mutexes on DAG state"]
 
     subgraph workers["Worker Pool  (max_parallel_tasks = 3)"]
         W1["Worker 1"]
@@ -253,9 +253,9 @@ flowchart TD
     RC --> workers
     workers -- "send result" --> RS(["resultChan"])
     RS --> COORD
-    COORD -- "decrement in-degree\npush newly-ready tasks" --> COORD
+    COORD -- "decrement in-degree / push newly-ready tasks" --> COORD
 
-    FAIL(["task fails"]) -- "BFS prune\nmark transitive dependents skipped" --> COORD
+    FAIL(["task fails"]) -- "BFS prune — mark transitive dependents skipped" --> COORD
 
     style COORD fill:#dbeafe,stroke:#3b82f6
     style workers fill:#dcfce7,stroke:#16a34a

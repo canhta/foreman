@@ -125,18 +125,18 @@ The builtin runner injects project context through two mechanisms:
 ```mermaid
 flowchart LR
     subgraph L1["Layer 1 — Pre-assembly  (all runners)"]
-        A["AGENTS.md\n(repo root or .foreman/context.md)"]
+        A["AGENTS.md<br/>(repo root or .foreman/context.md)"]
         B["Path-scoped .foreman-rules.md files"]
         C["Ticket + task metadata"]
     end
 
     subgraph L2["Layer 2 — Reactive injection  (builtin runner only)"]
-        D["Progress patterns from DB\n(conventions from earlier tasks\nin the same ticket)"]
-        E["Directory-specific rules\nfor newly-accessed paths"]
+        D["Progress patterns from DB<br/>(conventions from earlier tasks<br/>in the same ticket)"]
+        E["Directory-specific rules<br/>for newly-accessed paths"]
     end
 
-    L1 -- "prepended to SystemPrompt\nbefore first LLM call" --> SYS["System Prompt\n(sent with every turn)"]
-    L2 -- "injected as context message\nafter each file-touching tool call\n(Read · Edit · Write · GetDiff)" --> MID["Mid-turn Context\n(injected once per path, deduped)"]
+    L1 -- "prepended to SystemPrompt before first LLM call" --> SYS["System Prompt<br/>(sent with every turn)"]
+    L2 -- "injected as context message after each file-touching tool call" --> MID["Mid-turn Context<br/>(injected once per path, deduped)"]
 ```
 
 **Layer 1 — Pre-assembly (all runners):** Before any runner is called, the skills engine pre-assembles:

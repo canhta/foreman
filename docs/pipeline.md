@@ -50,19 +50,19 @@ The **full processing pipeline** for a normal (non-decomposed) ticket follows th
 
 ```mermaid
 flowchart TD
-    START([Ticket picked up]) --> DECOMP{Decomposition\ncheck}
-    DECOMP -- oversized --> DECOMPOSE[LLM generates\n3-6 child tickets]
-    DECOMPOSE --> DECOMPOSED([decomposed\nwaits for children])
+    START([Ticket picked up]) --> DECOMP{Decomposition check}
+    DECOMP -- oversized --> DECOMPOSE["LLM generates<br/>3-6 child tickets"]
+    DECOMPOSE --> DECOMPOSED([decomposed — waits for children])
 
-    DECOMP -- fits in one PR --> RESERVE{File reservation\ncheck}
-    RESERVE -- conflict --> REQUEUE([re-queue on\nnext poll cycle])
-    RESERVE -- free --> CLARIFY{Clarification\ncheck}
+    DECOMP -- fits in one PR --> RESERVE{File reservation check}
+    RESERVE -- conflict --> REQUEUE([re-queue on next poll cycle])
+    RESERVE -- free --> CLARIFY{Clarification check}
 
-    CLARIFY -- ambiguous --> ASKQ[Post clarification\ncomment + label]
+    CLARIFY -- ambiguous --> ASKQ["Post clarification<br/>comment + label"]
     ASKQ -- author responds --> PLAN
     ASKQ -- timeout --> BLOCKED([blocked])
 
-    CLARIFY -- clear --> PLAN[Planning\nLLM call]
+    CLARIFY -- clear --> PLAN[Planning LLM call]
     PLAN --> VALIDATE{Plan validation}
     VALIDATE -- fail retry --> PLAN
     VALIDATE -- fail 2nd time --> FAILED([failed])
@@ -72,15 +72,15 @@ flowchart TD
         T1["Task 1"] & T2["Task 2"] & T3["..."]
     end
 
-    TASKS --> REBASE[Rebase onto\ndefault branch]
-    REBASE -- conflict --> AUTORESOLVE[LLM auto-resolve\nconflicts]
+    TASKS --> REBASE["Rebase onto<br/>default branch"]
+    REBASE -- conflict --> AUTORESOLVE["LLM auto-resolve<br/>conflicts"]
     AUTORESOLVE --> FULLTESTS
     REBASE -- clean --> FULLTESTS{Full test suite}
     FULLTESTS -- fail --> FAILED2([failed])
-    FULLTESTS -- pass --> FINALREV[Final Review\nLLM call]
+    FULLTESTS -- pass --> FINALREV[Final Review LLM call]
 
     FINALREV --> PREPR(["pre_pr hooks"])
-    PREPR --> CREATEPR[Create PR\n+ sync to tracker]
+    PREPR --> CREATEPR["Create PR<br/>+ sync to tracker"]
     CREATEPR --> POSTPR(["post_pr hooks"])
     POSTPR --> AWAIT([awaiting_merge])
 ```
@@ -111,18 +111,18 @@ Decomposition is disabled by default (`decompose.enabled = false`). See [Configu
 
 ```mermaid
 flowchart TD
-    P["Parent Ticket"] --> HEUR{"NeedsDecomposition?\nword count · scope keywords\nvague + long"}
+    P["Parent Ticket"] --> HEUR{"NeedsDecomposition?<br/>word count · scope keywords<br/>vague + long"}
     HEUR -- no --> NORMAL[Normal pipeline]
-    HEUR -- yes --> LLM["LLM: generate 3-6\nchild ticket specs"]
-    LLM --> C1["Child 1\nforeman-ready-pending"]
-    LLM --> C2["Child 2\nforeman-ready-pending"]
+    HEUR -- yes --> LLM["LLM: generate 3-6<br/>child ticket specs"]
+    LLM --> C1["Child 1<br/>foreman-ready-pending"]
+    LLM --> C2["Child 2<br/>foreman-ready-pending"]
     LLM --> CN["..."]
-    C1 & C2 & CN --> APPROVE["Awaiting human approval\n(label changed to foreman-ready)"]
-    APPROVE --> PIPES["Each child runs its\nown independent pipeline"]
-    PIPES --> CHECK{"All children\nmerged?"}
+    C1 & C2 & CN --> APPROVE["Awaiting human approval<br/>(label changed to foreman-ready)"]
+    APPROVE --> PIPES["Each child runs its<br/>own independent pipeline"]
+    PIPES --> CHECK{"All children<br/>merged?"}
     CHECK -- no --> WAIT([waiting...])
     WAIT --> CHECK
-    CHECK -- yes --> DONE["Parent → done\nclosed in tracker"]
+    CHECK -- yes --> DONE["Parent → done<br/>closed in tracker"]
 ```
 
 ### 1. Clarification Check
@@ -180,30 +180,31 @@ Each task moves through a fixed series of gates with targeted retry feedback at 
 
 ```mermaid
 flowchart TD
-    START([Task ready]) --> SCAN[Secrets Scan\nassemble context]
-    SCAN --> IMPL["Implement\nwrite tests + implementation\n(SEARCH/REPLACE blocks)"]
+    START([Task ready]) --> SCAN["Secrets Scan<br/>assemble context"]
+    SCAN --> IMPL["Implement<br/>write tests + implementation<br/>(SEARCH/REPLACE blocks)"]
 
-    IMPL --> RED{"TDD — RED phase\napply tests only\nrun test suite"}
-    RED -- "compile / runtime error\n(invalid RED)" --> IMPL
-    RED -- "assertion failure\n(valid RED)" --> GREEN
+    IMPL --> RED{"TDD — RED phase<br/>apply tests only<br/>run test suite"}
+    RED -- "compile/runtime error (invalid RED)" --> IMPL
+    RED -- "assertion failure (valid RED)" --> GREEN
 
-    GREEN["Apply implementation\nfiles"] --> GREENCHECK{"TDD — GREEN phase\nrun test suite"}
+    GREEN["Apply implementation<br/>files"] --> GREENCHECK{"TDD — GREEN phase<br/>run test suite"}
     GREENCHECK -- "tests fail" --> IMPL
     GREENCHECK -- "tests pass" --> LINT
 
-    LINT{"Lint + Tests"} -- "fail  (max 2 retries)" --> IMPL
-    LINT -- "pass" --> POSTLINT(["post_lint hook"])
+    LINT{"Lint + Tests"} -- "fail (max 2 retries)" --> IMPL
+    LINT -- "pass" --> SPEC
 
-    POSTLINT --> SPEC{"Spec Review — LLM\nDoes diff satisfy\nacceptance criteria?"}
-    SPEC -- "fail — criterion violations\n(max 2 cycles)" --> IMPL
+    SPEC{"Spec Review — LLM<br/>Does diff satisfy<br/>acceptance criteria?"} -- "fail (max 2 cycles)" --> IMPL
     SPEC -- "pass" --> QUAL
 
-    QUAL{"Quality Review — LLM\nCorrectness · security\nperformance · maintainability"} -- "fail\n(max 1 cycle)" --> IMPL
-    QUAL -- "pass" --> COMMIT[Commit to working branch\nupdate last_completed_task_seq]
-    COMMIT --> DEPCHECK[Dependency change check\nreinstall if manifests changed]
+    QUAL{"Quality Review — LLM<br/>Correctness · security<br/>performance · maintainability"} -- "fail (max 1 cycle)" --> IMPL
+    QUAL -- "pass" --> COMMIT["Commit to working branch<br/>update last_completed_task_seq"]
+
+    COMMIT --> POSTLINT(["post_lint hook"])
+    POSTLINT --> DEPCHECK["Dependency change check<br/>reinstall if manifests changed"]
     DEPCHECK --> END([Task complete])
 
-    IMPL -- "LLM call cap reached\nmax_llm_calls_per_task = 8" --> TASKFAIL([Task failed])
+    IMPL -- "LLM call cap reached (max_llm_calls_per_task = 8)" --> TASKFAIL([Task failed])
 
     style POSTLINT fill:#fef9c3,stroke:#ca8a04
     style TASKFAIL fill:#fee2e2,stroke:#dc2626

@@ -2,12 +2,14 @@
 package skills
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"text/template"
 
 	"github.com/rs/zerolog/log"
 
@@ -133,12 +135,22 @@ func (e *Engine) executeLLMCall(ctx context.Context, step SkillStep, sCtx *Skill
 		prompt = fmt.Sprintf("Execute skill step: %s", step.ID)
 	}
 
+	model := step.Model
+	if strings.Contains(model, "{{") && sCtx != nil {
+		if tmpl, err := template.New("model").Parse(model); err == nil {
+			var buf bytes.Buffer
+			if err := tmpl.Execute(&buf, sCtx); err == nil {
+				model = buf.String()
+			}
+		}
+	}
+
 	maxTokens := step.MaxTokens
 	if maxTokens == 0 {
 		maxTokens = 8192
 	}
 	req := models.LlmRequest{
-		Model:      step.Model,
+		Model:      model,
 		UserPrompt: prompt,
 		MaxTokens:  maxTokens,
 	}
