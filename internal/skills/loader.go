@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/canhta/foreman/internal/prompts"
 )
 
 // Skill is a YAML workflow definition.
@@ -102,6 +104,45 @@ func LoadSkill(path string) (*Skill, error) {
 	}
 
 	return &skill, nil
+}
+
+// LoadFromRegistry converts registry skill entries into Skill structs
+// compatible with the existing engine.
+func LoadFromRegistry(reg *prompts.Registry) ([]*Skill, error) {
+	var skills []*Skill
+	for _, entry := range reg.List(prompts.KindSkill) {
+		steps, err := reg.SkillSteps(entry.Name)
+		if err != nil {
+			return nil, fmt.Errorf("load steps for %s: %w", entry.Name, err)
+		}
+
+		trigger, _ := entry.Metadata["trigger"].(string)
+
+		skill := &Skill{
+			ID:          entry.Name,
+			Description: entry.Description,
+			Trigger:     trigger,
+		}
+		for _, s := range steps {
+			skill.Steps = append(skill.Steps, SkillStep{
+				ID:            s.ID,
+				Type:          s.Type,
+				Content:       s.Prompt,
+				Model:         s.Model,
+				Command:       s.Command,
+				AllowedTools:  s.AllowedTools,
+				MaxTurns:      s.MaxTurns,
+				TimeoutSecs:   s.TimeoutSecs,
+				MaxTokens:     s.MaxTokens,
+				OutputFormat:  s.OutputFormat,
+				FallbackModel: s.FallbackModel,
+				SkillRef:      s.SkillRef,
+				AllowFailure:  s.AllowFailure,
+			})
+		}
+		skills = append(skills, skill)
+	}
+	return skills, nil
 }
 
 // LoadSkillsDir loads all .yml/.yaml files from a directory.
