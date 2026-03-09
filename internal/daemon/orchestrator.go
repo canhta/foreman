@@ -358,6 +358,11 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 	if isRetry {
 		log.Info().Msg("smart retry detected: skipping planning, resuming from existing tasks")
 		dbTasks = priorTasks
+		// Clean any stale state left by the previous crashed run before
+		// re-checking out the ticket branch.
+		if err := o.git.CleanWorkingTree(ctx, o.config.WorkDir); err != nil {
+			log.Warn().Err(err).Msg("clean working tree failed on retry, continuing")
+		}
 		// CreateBranch handles existing branches via git checkout fallback.
 		if err := o.git.CreateBranch(ctx, o.config.WorkDir, branchName); err != nil {
 			returnErr = fmt.Errorf("checkout branch %s: %w", branchName, err)
@@ -411,7 +416,8 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 		}
 
 		// Reset workdir to a clean, up-to-date state on the default branch
-		// before creating the ticket branch.
+		// before creating the ticket branch. Clean happens first so that any
+		// modified tracked files don't block the branch switch.
 		if err := o.git.CleanWorkingTree(ctx, o.config.WorkDir); err != nil {
 			log.Warn().Err(err).Msg("clean working tree failed, continuing")
 		}
