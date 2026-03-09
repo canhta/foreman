@@ -58,6 +58,8 @@
 
   let badge = $derived(statusBadge());
 
+  let liveProgress = $derived(appState.activeTaskProgress[task.ID]);
+
   function handleRetry(e: MouseEvent) {
     e.stopPropagation();
     confirmOpen = true;
@@ -127,6 +129,30 @@
           <span>{formatRelative(task.StartedAt)}</span>
         {/if}
       </div>
+
+      <!-- Live execution progress -->
+      {#if isActive && liveProgress}
+        <div class="px-3 py-2 border-b border-border bg-accent-bg">
+          <div class="flex items-center gap-2 text-xs">
+            <span class="text-accent animate-pulse">►</span>
+            <span class="text-text">TURN {liveProgress.turn}/{liveProgress.maxTurns}</span>
+            {#if liveProgress.runner}
+              <span class="text-[10px] border px-1 py-0.5 leading-none {runnerBadgeCls(liveProgress.runner)}">{liveProgress.runner}</span>
+            {/if}
+            {#if liveProgress.model}
+              <span class="text-[10px] text-muted-bright">{liveProgress.model.replace('claude-', '')}</span>
+            {/if}
+          </div>
+          {#if liveProgress.lastTool}
+            <div class="text-[10px] text-muted mt-1 pl-4">
+              Last tool: <span class="text-text">{liveProgress.lastTool}</span>
+              {#if liveProgress.lastToolTime}
+                <span class="text-muted"> {formatRelative(liveProgress.lastToolTime)}</span>
+              {/if}
+            </div>
+          {/if}
+        </div>
+      {/if}
 
       <!-- Error -->
       {#if task.ErrorMessage}
