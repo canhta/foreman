@@ -82,6 +82,9 @@ type TaskRunnerFactoryInput struct {
 	AgentRunner agent.AgentRunner
 	// AgentRunnerName identifies the runner ("claudecode", "copilot", "").
 	AgentRunnerName string
+	// EnvFiles maps worktree-relative dest paths to source paths on disk.
+	// Reloaded into process env and copied into each task worktree.
+	EnvFiles map[string]string
 }
 
 // PlanResult mirrors pipeline.PlannerResult without creating an import cycle.
@@ -148,6 +151,9 @@ type OrchestratorConfig struct {
 	// check runs. After every N completed tasks a lightweight LLM check fires.
 	// 0 disables the check (REQ-PIPE-006).
 	IntermediateReviewInterval int
+	// EnvFiles maps worktree-relative dest paths to source paths on disk.
+	// Reloaded into process env and copied into each task worktree.
+	EnvFiles map[string]string
 }
 
 // Orchestrator coordinates the full ticket-to-PR lifecycle.
@@ -521,6 +527,7 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 		PromptVersions:             o.config.PromptVersions,
 		HookRunner:                 o.hookRunner,
 		DiscoveryBoard:             discoveryBoard,
+		EnvFiles:                   o.config.EnvFiles,
 	})
 
 	// Build DAG tasks (resolve title->ID dependencies).

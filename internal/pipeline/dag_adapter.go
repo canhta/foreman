@@ -13,6 +13,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/canhta/foreman/internal/daemon"
+	"github.com/canhta/foreman/internal/envloader"
 	"github.com/canhta/foreman/internal/git"
 	"github.com/canhta/foreman/internal/models"
 )
@@ -31,6 +32,7 @@ type DAGTaskAdapter struct {
 	ticketBranch      string
 	lastReviewedSHA   string
 	config            TaskRunnerConfig
+	envFiles          map[string]string
 	completedCount    atomic.Int64
 	lastReviewedSHAMu sync.Mutex
 }
@@ -53,6 +55,7 @@ func NewDAGTaskAdapterWithConsistency(
 	gitProv git.GitProvider,
 	config TaskRunnerConfig,
 	ticketBranch string,
+	envFiles map[string]string,
 ) *DAGTaskAdapter {
 	return &DAGTaskAdapter{
 		runner:       runner,
@@ -63,6 +66,7 @@ func NewDAGTaskAdapterWithConsistency(
 		cdb:          cdb,
 		git:          gitProv,
 		config:       config,
+		envFiles:     envFiles,
 	}
 }
 
@@ -105,6 +109,15 @@ func (a *DAGTaskAdapter) Run(ctx context.Context, taskID string) daemon.TaskResu
 			worktreeBranch = ""
 		} else {
 			runnerToUse = a.runner.CloneWithWorkDir(worktreeDir)
+			// Reload env vars from disk and copy files into the worktree.
+			if len(a.envFiles) > 0 {
+				if err := envloader.Load(a.envFiles); err != nil {
+					log.Warn().Err(err).Str("task_id", taskID).Msg("env reload failed for worktree")
+				}
+				if err := envloader.CopyInto(a.envFiles, worktreeDir); err != nil {
+					log.Warn().Err(err).Str("task_id", taskID).Msg("env file copy into worktree failed")
+				}
+			}
 		}
 	}
 
