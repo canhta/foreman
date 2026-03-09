@@ -68,6 +68,42 @@ func (a *plannerAdapter) Plan(ctx context.Context, workDir string, ticket *model
 	}, nil
 }
 
+// agentPlannerAdapter wraps pipeline.AgentPlanner to satisfy daemon.TicketPlanner.
+type agentPlannerAdapter struct {
+	planner *pipeline.AgentPlanner
+}
+
+func (a *agentPlannerAdapter) Plan(ctx context.Context, workDir string, ticket *models.Ticket) (*daemon.PlanResult, error) {
+	result, err := a.planner.Plan(ctx, workDir, ticket)
+	if err != nil {
+		return nil, err
+	}
+	tasks := make([]daemon.PlannedTask, len(result.Tasks))
+	for i, t := range result.Tasks {
+		tasks[i] = daemon.PlannedTask{
+			Title:               t.Title,
+			Description:         t.Description,
+			AcceptanceCriteria:  t.AcceptanceCriteria,
+			TestAssertions:      t.TestAssertions,
+			FilesToRead:         t.FilesToRead,
+			FilesToModify:       t.FilesToModify,
+			EstimatedComplexity: t.EstimatedComplexity,
+			DependsOn:           t.DependsOn,
+		}
+	}
+	return &daemon.PlanResult{
+		Status:  result.Status,
+		Message: result.Message,
+		CodebasePatterns: daemon.CodebasePatterns{
+			Language:   result.CodebasePatterns.Language,
+			Framework:  result.CodebasePatterns.Framework,
+			TestRunner: result.CodebasePatterns.TestRunner,
+			StyleNotes: result.CodebasePatterns.StyleNotes,
+		},
+		Tasks: tasks,
+	}, nil
+}
+
 // clarityAdapter wraps pipeline.Pipeline to satisfy daemon.ClarityChecker.
 type clarityAdapter struct {
 	pipeline *pipeline.Pipeline
