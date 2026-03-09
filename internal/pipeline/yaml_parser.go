@@ -10,32 +10,32 @@ import (
 
 // PlannerResult is the parsed output from the planner LLM call.
 type PlannerResult struct {
-	CodebasePatterns   CodebasePatterns `yaml:"codebase_patterns"`
-	Status             string           `yaml:"status"`
-	Message            string           `yaml:"message"`
-	Tasks              []PlannedTask    `yaml:"tasks"`
-	ConfidenceConcerns []string
-	ConfidenceScore    float64
+	CodebasePatterns   CodebasePatterns `yaml:"codebase_patterns"    json:"codebase_patterns"`
+	Status             string           `yaml:"status"               json:"status"`
+	Message            string           `yaml:"message"              json:"message"`
+	Tasks              []PlannedTask    `yaml:"tasks"                json:"tasks"`
+	ConfidenceConcerns []string         `yaml:"confidence_concerns"  json:"confidence_concerns,omitempty"`
+	ConfidenceScore    float64          `yaml:"confidence_score"     json:"confidence_score,omitempty"`
 }
 
 // CodebasePatterns holds detected patterns from the codebase.
 type CodebasePatterns struct {
-	Language   string `yaml:"language"`
-	Framework  string `yaml:"framework"`
-	TestRunner string `yaml:"test_runner"`
-	StyleNotes string `yaml:"style_notes"`
+	Language   string `yaml:"language"    json:"language"`
+	Framework  string `yaml:"framework"   json:"framework"`
+	TestRunner string `yaml:"test_runner" json:"test_runner"`
+	StyleNotes string `yaml:"style_notes" json:"style_notes"`
 }
 
 // PlannedTask represents a single task decomposed from a ticket.
 type PlannedTask struct {
-	Title               string   `yaml:"title"`
-	Description         string   `yaml:"description"`
-	AcceptanceCriteria  []string `yaml:"acceptance_criteria"`
-	TestAssertions      []string `yaml:"test_assertions"`
-	FilesToRead         []string `yaml:"files_to_read"`
-	FilesToModify       []string `yaml:"files_to_modify"`
-	EstimatedComplexity string   `yaml:"estimated_complexity"`
-	DependsOn           []string `yaml:"depends_on"`
+	Title               string   `yaml:"title"                json:"title"`
+	Description         string   `yaml:"description"          json:"description"`
+	AcceptanceCriteria  []string `yaml:"acceptance_criteria"  json:"acceptance_criteria,omitempty"`
+	TestAssertions      []string `yaml:"test_assertions"      json:"test_assertions,omitempty"`
+	FilesToRead         []string `yaml:"files_to_read"        json:"files_to_read,omitempty"`
+	FilesToModify       []string `yaml:"files_to_modify"      json:"files_to_modify,omitempty"`
+	EstimatedComplexity string   `yaml:"estimated_complexity" json:"estimated_complexity,omitempty"`
+	DependsOn           []string `yaml:"depends_on"           json:"depends_on,omitempty"`
 }
 
 // normalizeNumericDepsOn resolves numeric index strings in depends_on (e.g. "0", "1")
