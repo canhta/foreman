@@ -8,6 +8,7 @@ import (
 
 	"github.com/canhta/foreman/internal/config"
 	"github.com/canhta/foreman/internal/models"
+	"github.com/canhta/foreman/internal/util"
 	"github.com/spf13/cobra"
 )
 
@@ -128,15 +129,9 @@ func loadConfig() (*models.Config, error) {
 }
 
 // redactConfigKey redacts an API key or secret for display purposes.
-// Defined locally in cmd package — separate from dashboard.redactKey.
+// Delegates to util.RedactKey.
 func redactConfigKey(key string) string {
-	if key == "" {
-		return "(not set)"
-	}
-	if len(key) <= 8 {
-		return "****"
-	}
-	return key[:7] + "..." + key[len(key)-4:]
+	return util.RedactKey(key)
 }
 
 // getActiveAPIKey returns the API key for the configured default LLM provider.

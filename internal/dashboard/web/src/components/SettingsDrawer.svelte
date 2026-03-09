@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { appState, closeSettings, selectTicket } from '../state.svelte';
-  import { formatCost, formatTokens, formatRelative } from '../format';
+  import { appState, closeSettings, selectTicket, setSettingsTab } from '../state.svelte';
+  import { formatCost, formatTokens, formatRelative, runnerBadgeCls, shortModel } from '../format';
 
   function budgetPct(used: number, budget: number): number {
     if (!budget) return 0;
@@ -11,16 +11,6 @@
     if (pct >= 90) return 'bg-danger';
     if (pct >= 75) return 'bg-warning';
     return 'bg-accent';
-  }
-
-  function runnerBadgeCls(runner: string): string {
-    if (runner === 'claudecode') return 'text-accent border-accent/40';
-    if (runner === 'copilot') return 'text-purple-400 border-purple-400/40';
-    return 'text-muted border-border-strong';
-  }
-
-  function shortModel(model: string): string {
-    return model.replace(/^claude-/, '').replace(/^gpt-/, '');
   }
 
   $effect(() => {
@@ -86,7 +76,7 @@
       <button
         class="flex-1 px-4 py-2 text-xs tracking-[0.15em] transition-colors
           {appState.settingsTab === tab ? 'bg-accent text-bg font-bold' : 'text-muted hover:text-text'}"
-        onclick={() => appState.settingsTab = tab as 'config' | 'usage'}
+        onclick={() => setSettingsTab(tab as 'config' | 'usage')}
       >{tab.toUpperCase()}</button>
     {/each}
   </div>
@@ -160,6 +150,10 @@
                 <span class="text-[10px] text-muted tracking-wider">branch_prefix</span>
                 <span class="text-xs text-text">{summary.git.branch_prefix}</span>
               </div>
+              <div class="flex justify-between">
+                <span class="text-[10px] text-muted tracking-wider">auto_merge</span>
+                <span class="text-xs text-text">{summary.git.auto_merge ? 'ON' : 'OFF'}</span>
+              </div>
             </div>
           </section>
 
@@ -176,6 +170,10 @@
               <div class="flex justify-between">
                 <span class="text-[10px] text-muted tracking-wider">max_turns</span>
                 <span class="text-xs text-text">{summary.agent_runner.max_turns}</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-[10px] text-muted tracking-wider">token_budget</span>
+                <span class="text-xs text-text">{summary.agent_runner.token_budget.toLocaleString()}</span>
               </div>
             </div>
           </section>
@@ -379,6 +377,21 @@
               {/if}
             </div>
 
+            <!-- BY ROLE -->
+            {#if breakdown.by_role.length > 0}
+              <div class="border-2 border-border mx-3 mt-2">
+                <div class="px-3 py-1 text-[10px] tracking-widest text-muted border-l-4 border-l-accent bg-surface-active">ROLE MAPPING</div>
+                {#each breakdown.by_role as row}
+                  <div class="flex items-center gap-2 px-3 py-1 border-b border-border last:border-0">
+                    <span class="text-[10px] text-text w-28 truncate">{row.role}</span>
+                    <span class="text-[9px] border px-1 py-0.5 leading-none {runnerBadgeCls(row.runner)}">{row.runner}</span>
+                    <span class="text-[10px] text-muted-bright flex-1">{shortModel(row.model)}</span>
+                    <span class="text-[10px] text-text font-mono">${row.cost_usd.toFixed(4)}</span>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+
             <!-- RECENT CALLS -->
             <div class="px-3 pt-2 pb-3 border-t border-border mt-2">
               <div class="text-[10px] font-bold tracking-[0.15em] text-muted-bright mb-1.5">RECENT CALLS</div>
@@ -422,6 +435,9 @@
               <div class="text-muted text-xs px-3 py-2">Claude Code CLI data not found.</div>
             {:else}
               <div class="p-3 space-y-3">
+                {#if cc.estimate_note}
+                  <p class="text-[10px] italic text-muted">{cc.estimate_note}</p>
+                {/if}
                 <!-- Today's summary -->
                 {#if cc.today}
                   <div>

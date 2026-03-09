@@ -99,6 +99,10 @@ export function setFeedCollapsed(v: boolean) {
   localStorage.setItem('feed_collapsed', String(v));
 }
 
+export function setSettingsTab(tab: 'config' | 'usage') {
+  appState.settingsTab = tab;
+}
+
 // ── Data Fetching ──
 
 export async function loadStatus() {

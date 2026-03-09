@@ -438,11 +438,15 @@ func buildAgentOnProgress(ctx context.Context, sCtx *SkillContext, stepID string
 
 		switch evt.Type {
 		case agent.AgentEventTurnStart:
+			meta := map[string]string{
+				"turn_number": fmt.Sprintf("%d", evt.Turn),
+				"step_id":     stepID,
+			}
 			sCtx.EventEmitter.Emit(ctx,
 				sCtx.PipelineCtx.TicketID, sCtx.PipelineCtx.TaskID,
 				"agent_turn_start", "info",
 				fmt.Sprintf("step=%s turn=%d", stepID, evt.Turn),
-				nil,
+				meta,
 			)
 		case agent.AgentEventTurnEnd:
 			meta := map[string]string{
@@ -476,7 +480,9 @@ func buildAgentOnProgress(ctx context.Context, sCtx *SkillContext, stepID string
 				sCtx.PipelineCtx.TicketID, sCtx.PipelineCtx.TaskID,
 				"agent_tool_end", "info",
 				fmt.Sprintf("step=%s turn=%d tool=%s", stepID, evt.Turn, evt.ToolName),
-				nil,
+				map[string]string{
+					"tool_name": evt.ToolName,
+				},
 			)
 		}
 	}

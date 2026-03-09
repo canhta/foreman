@@ -143,8 +143,8 @@ export interface StatusResponse {
 export interface ConfigSummary {
   llm: { provider: string; models: Record<string, string>; api_key: string };
   tracker: { provider: string; poll_interval: string };
-  git: { provider: string; clone_url: string; branch_prefix: string };
-  agent_runner: { provider: string; max_turns: number };
+  git: { provider: string; clone_url: string; branch_prefix: string; auto_merge: boolean };
+  agent_runner: { provider: string; max_turns: number; token_budget: number };
   cost: { daily_budget: number; monthly_budget: number; per_ticket_budget: number; alert_threshold: number };
   daemon: { max_parallel_tickets: number; max_parallel_tasks: number; work_dir: string; log_level: string };
   database: { driver: string; path: string };
@@ -154,6 +154,7 @@ export interface ConfigSummary {
 
 export interface ClaudeCodeUsage {
   available: boolean;
+  estimate_note?: string;
   today?: { sessions: number; input_tokens: number; output_tokens: number; cache_read_tokens: number; estimated_cost_usd: number };
   last_7_days?: { date: string; input_tokens: number; output_tokens: number; cost_usd: number }[];
   total_sessions?: number;

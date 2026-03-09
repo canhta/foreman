@@ -158,12 +158,12 @@ func (m *mockInvalidAuthDB) ValidateAuthToken(_ context.Context, _ string) (bool
 }
 
 type emittedEvent struct {
+	metadata  map[string]string
 	ticketID  string
 	taskID    string
 	eventType string
 	severity  string
 	message   string
-	metadata  map[string]string
 }
 
 type mockRetryEventEmitter struct {
@@ -822,8 +822,8 @@ func TestAPIGetStatus_WithoutMCPHealth(t *testing.T) {
 
 // mockPromptQuerier is a test double for PromptSnapshotQuerier.
 type mockPromptQuerier struct {
-	snapshots []db.PromptSnapshot
 	err       error
+	snapshots []db.PromptSnapshot
 }
 
 func (m *mockPromptQuerier) GetPromptSnapshots(_ context.Context) ([]db.PromptSnapshot, error) {
@@ -1276,8 +1276,8 @@ func TestAPIReplyToTicket_TicketNotFound(t *testing.T) {
 // retryTestDB wraps mockDashboardDB to override ListTasks and track ticket status.
 type retryTestDB struct {
 	*mockDashboardDB
-	tasks        []models.Task
 	ticketStatus models.TicketStatus
+	tasks        []models.Task
 }
 
 func (r *retryTestDB) ListTasks(_ context.Context, _ string) ([]models.Task, error) {
@@ -1378,4 +1378,128 @@ func TestSmartRetrier_ResetsTasksAndSavesDagState(t *testing.T) {
 
 	// ticket re-queued.
 	assert.Equal(t, models.TicketStatusQueued, retryDB.ticketStatus)
+}
+
+// mockConfigProvider implements ConfigProvider for tests.
+type mockConfigProvider struct {
+	cfg *models.Config
+}
+
+func (m *mockConfigProvider) GetConfig() *models.Config { return m.cfg }
+
+func TestHandleConfigSummary_NilProvider_Returns503(t *testing.T) {
+	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
+	// No SetConfigProvider called — configProvider is nil.
+
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/config/summary", nil)
+	rec := httptest.NewRecorder()
+	api.handleConfigSummary(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 when configProvider is nil, got %d", rec.Code)
+	}
+}
+
+func TestHandleConfigSummary_ValidConfig_Returns200WithRedactedKey(t *testing.T) {
+	cfg := &models.Config{
+		LLM: models.LLMConfig{
+			DefaultProvider: "anthropic",
+			Anthropic:       models.LLMProviderConfig{APIKey: "sk-ant-api03-longkeyvalue"},
+		},
+		Git: models.GitConfig{
+			Provider:     "github",
+			CloneURL:     "https://github.com/org/repo",
+			BranchPrefix: "foreman/",
+		},
+		AgentRunner: models.AgentRunnerConfig{
+			Provider:        "builtin",
+			MaxTurnsDefault: 10,
+		},
+	}
+	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
+	api.SetConfigProvider(&mockConfigProvider{cfg: cfg})
+
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/config/summary", nil)
+	rec := httptest.NewRecorder()
+	api.handleConfigSummary(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]interface{}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	llm, ok := resp["llm"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected llm key in response")
+	}
+	apiKey, ok := llm["api_key"].(string)
+	if !ok {
+		t.Fatal("expected api_key in llm section")
+	}
+	if !strings.Contains(apiKey, "...") {
+		t.Errorf("expected api_key to be redacted (contain '...'), got %q", apiKey)
+	}
+}
+
+func TestHandleConfigSummary_ShortAPIKey_ShowsRedacted(t *testing.T) {
+	cfg := &models.Config{
+		LLM: models.LLMConfig{
+			DefaultProvider: "openai",
+			OpenAI:          models.LLMProviderConfig{APIKey: "short"},
+		},
+	}
+	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
+	api.SetConfigProvider(&mockConfigProvider{cfg: cfg})
+
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/config/summary", nil)
+	rec := httptest.NewRecorder()
+	api.handleConfigSummary(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]interface{}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	llm := resp["llm"].(map[string]interface{})
+	apiKey := llm["api_key"].(string)
+	if apiKey != "****" {
+		t.Errorf("expected api_key='****' for short key, got %q", apiKey)
+	}
+}
+
+func TestHandleActivityBreakdown_ValidJSONStructure(t *testing.T) {
+	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
+
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/usage/activity", nil)
+	rec := httptest.NewRecorder()
+	api.handleActivityBreakdown(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]interface{}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	if _, ok := resp["by_runner"]; !ok {
+		t.Error("expected by_runner key in response")
+	}
+	if _, ok := resp["by_model"]; !ok {
+		t.Error("expected by_model key in response")
+	}
+	if _, ok := resp["by_role"]; !ok {
+		t.Error("expected by_role key in response")
+	}
+	if _, ok := resp["recent_calls"]; !ok {
+		t.Error("expected recent_calls key in response")
+	}
 }

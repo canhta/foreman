@@ -110,11 +110,11 @@ func (a *API) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 //
 //nolint:govet // fieldalignment: embedding EventRecord first prioritises readability
 type enrichedEvent struct {
-	models.EventRecord
 	TicketTitle string `json:"ticket_title,omitempty"`
 	Submitter   string `json:"submitter,omitempty"`
 	Runner      string `json:"runner,omitempty"`
 	Model       string `json:"model,omitempty"`
+	models.EventRecord
 }
 
 func (a *API) enrichEvent(ctx context.Context, evt *models.EventRecord) *enrichedEvent {

@@ -134,6 +134,7 @@ type GitConfig struct {
 	AutoPush       bool         `mapstructure:"auto_push"`
 	PRDraft        bool         `mapstructure:"pr_draft"`
 	RebaseBeforePR bool         `mapstructure:"rebase_before_pr"`
+	AutoMerge      bool         `mapstructure:"auto_merge"`
 	GitHub         GitHubConfig `mapstructure:"github"`
 	GitLab         GitLabConfig `mapstructure:"gitlab"`
 }
@@ -318,6 +319,7 @@ type AgentRunnerConfig struct {
 	MaxCostPerTicketUSD float64                `mapstructure:"max_cost_per_ticket_usd"`
 	MaxTurnsDefault     int                    `mapstructure:"max_turns_default"`
 	TimeoutSecsDefault  int                    `mapstructure:"timeout_secs_default"`
+	TokenBudget         int                    `mapstructure:"token_budget"`
 }
 
 type BuiltinRunnerConfig struct {

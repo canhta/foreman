@@ -124,8 +124,8 @@ func TestSmartRetrier_SetsStatusQueued(t *testing.T) {
 
 // mockCaptureDB wraps mockDashboardDB and intercepts UpdateTicketStatus calls.
 type mockCaptureDB struct {
-	mockDashboardDB
 	onUpdateTicketStatus func(id string, status models.TicketStatus)
+	mockDashboardDB
 }
 
 func (m *mockCaptureDB) UpdateTicketStatus(_ context.Context, id string, status models.TicketStatus) error {

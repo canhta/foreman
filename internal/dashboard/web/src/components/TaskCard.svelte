@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Task, EventRecord, LlmCallRecord } from '../types';
   import { appState, retryTask } from '../state.svelte';
-  import { taskIcon, formatCost, formatRelative } from '../format';
+  import { taskIcon, formatCost, formatRelative, runnerBadgeCls, shortModel } from '../format';
   import ConfirmDialog from './ConfirmDialog.svelte';
 
   let { task, events = [], llmCalls = [] }: { task: Task; events?: EventRecord[]; llmCalls?: LlmCallRecord[] } = $props();
@@ -25,13 +25,6 @@
   let runnerLabel = $derived(
     task.AgentRunner || (taskCalls.length > 0 ? taskCalls[0].AgentRunner : '') || ''
   );
-
-  function runnerBadgeCls(runner: string): string {
-    if (runner === 'claudecode') return 'text-accent border-accent/40';
-    if (runner === 'copilot')    return 'text-purple-400 border-purple-400/40';
-    if (runner === 'builtin')    return 'text-muted border-border-strong';
-    return 'text-muted border-border-strong';
-  }
 
   let isActive = $derived(
     ['implementing', 'tdd_verifying', 'testing', 'spec_review', 'quality_review'].includes(task.Status)
@@ -140,7 +133,7 @@
               <span class="text-[10px] border px-1 py-0.5 leading-none {runnerBadgeCls(liveProgress.runner)}">{liveProgress.runner}</span>
             {/if}
             {#if liveProgress.model}
-              <span class="text-[10px] text-muted-bright">{liveProgress.model.replace('claude-', '')}</span>
+              <span class="text-[10px] text-muted-bright">{shortModel(liveProgress.model)}</span>
             {/if}
           </div>
           {#if liveProgress.lastTool}

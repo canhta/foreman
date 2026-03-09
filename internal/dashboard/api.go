@@ -12,6 +12,7 @@ import (
 
 	"github.com/canhta/foreman/internal/db"
 	"github.com/canhta/foreman/internal/models"
+	"github.com/canhta/foreman/internal/util"
 )
 
 // TaskContextStats is an alias for db.TaskContextStats used in the dashboard package.
@@ -202,11 +203,13 @@ type configGit struct {
 	Provider     string `json:"provider"`
 	CloneURL     string `json:"clone_url"`
 	BranchPrefix string `json:"branch_prefix"`
+	AutoMerge    bool   `json:"auto_merge"`
 }
 
 type configAgentRunner struct {
-	Provider string `json:"provider"`
-	MaxTurns int    `json:"max_turns"`
+	Provider    string `json:"provider"`
+	MaxTurns    int    `json:"max_turns"`
+	TokenBudget int    `json:"token_budget"`
 }
 
 type configCost struct {
@@ -284,14 +287,9 @@ type recentLlmCall struct {
 }
 
 // redactKey returns a redacted version of an API key for display purposes.
+// Deprecated: use util.RedactKey directly.
 func redactKey(key string) string {
-	if key == "" {
-		return "(not set)"
-	}
-	if len(key) <= 8 {
-		return "****"
-	}
-	return key[:7] + "..." + key[len(key)-4:]
+	return util.RedactKey(key)
 }
 
 func (a *API) handleConfigSummary(w http.ResponseWriter, r *http.Request) {
@@ -344,10 +342,12 @@ func (a *API) handleConfigSummary(w http.ResponseWriter, r *http.Request) {
 			Provider:     cfg.Git.Provider,
 			CloneURL:     cfg.Git.CloneURL,
 			BranchPrefix: cfg.Git.BranchPrefix,
+			AutoMerge:    cfg.Git.AutoMerge,
 		},
 		AgentRunner: configAgentRunner{
-			Provider: cfg.AgentRunner.Provider,
-			MaxTurns: cfg.AgentRunner.MaxTurnsDefault,
+			Provider:    cfg.AgentRunner.Provider,
+			MaxTurns:    cfg.AgentRunner.MaxTurnsDefault,
+			TokenBudget: cfg.AgentRunner.TokenBudget,
 		},
 		Cost: configCost{
 			DailyBudget:     cfg.Cost.MaxCostPerDayUSD,
@@ -885,7 +885,7 @@ func (a *API) handleActivityBreakdown(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *API) handleClaudeCodeUsage(w http.ResponseWriter, _ *http.Request) {
-	usage := parseClaudeCodeUsage()
+	usage := parseClaudeCodeUsageCached()
 	writeJSON(w, http.StatusOK, usage)
 }
 

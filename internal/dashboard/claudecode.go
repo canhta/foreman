@@ -7,14 +7,34 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
 type claudeCodeUsage struct {
 	Today         *claudeCodeDaySummary `json:"today,omitempty"`
+	EstimateNote  string                `json:"estimate_note,omitempty"`
 	Last7Days     []claudeCodeDay       `json:"last_7_days,omitempty"`
 	TotalSessions int                   `json:"total_sessions,omitempty"`
 	Available     bool                  `json:"available"`
+}
+
+var (
+	claudeCodeCacheMu  sync.Mutex
+	claudeCodeCache    *claudeCodeUsage
+	claudeCodeCacheExp time.Time
+)
+
+func parseClaudeCodeUsageCached() claudeCodeUsage {
+	claudeCodeCacheMu.Lock()
+	defer claudeCodeCacheMu.Unlock()
+	if claudeCodeCache != nil && time.Now().Before(claudeCodeCacheExp) {
+		return *claudeCodeCache
+	}
+	result := parseClaudeCodeUsage()
+	claudeCodeCache = &result
+	claudeCodeCacheExp = time.Now().Add(60 * time.Second)
+	return result
 }
 
 type claudeCodeDaySummary struct {
@@ -136,6 +156,7 @@ func parseClaudeCodeUsage() claudeCodeUsage {
 	today := time.Now().Format("2006-01-02")
 	result := claudeCodeUsage{
 		Available:     true,
+		EstimateNote:  "estimated using claude-sonnet-4-5 pricing ($3/$15 per M tokens)",
 		TotalSessions: totalSessions,
 	}
 

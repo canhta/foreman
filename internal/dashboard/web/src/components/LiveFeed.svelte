@@ -1,6 +1,6 @@
 <script lang="ts">
   import { appState, selectTicket, setFeedCollapsed } from '../state.svelte';
-  import { formatTime, severityIcon } from '../format';
+  import { formatTime, severityIcon, runnerBadgeCls, shortModel } from '../format';
 
   function toggleCollapse() {
     setFeedCollapsed(!appState.feedCollapsed);
@@ -12,16 +12,6 @@
     if (eventType.includes('complet') || eventType.includes('done') || eventType.includes('pass') || eventType.includes('merg')) return 'text-success';
     if (eventType.includes('start') || eventType.includes('creat') || eventType.includes('new')) return 'text-accent';
     return 'text-muted-bright';
-  }
-
-  function runnerBadgeCls(runner: string): string {
-    if (runner === 'claudecode') return 'text-accent border-accent/40';
-    if (runner === 'copilot') return 'text-purple-400 border-purple-400/40';
-    return 'text-muted border-border-strong';
-  }
-
-  function shortModel(model: string): string {
-    return model.replace('claude-', '');
   }
 </script>
 
