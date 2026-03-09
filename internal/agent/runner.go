@@ -109,6 +109,8 @@ type AgentResult struct {
 	Output       string
 	FileChanges  []FileChange
 	Usage        AgentUsage
+	CostSummary  CostSummary
+	DiffSummary  DiffSummary
 }
 
 // AgentUsage tracks resource consumption for an agent task.

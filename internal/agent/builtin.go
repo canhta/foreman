@@ -168,6 +168,7 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 	fallbackModel := req.FallbackModel
 	messages := []models.Message{{Role: "user", Content: req.Prompt}}
 	usage := AgentUsage{Model: r.model}
+	costTracker := NewCostTracker()
 
 	// Tool call deduplication: fingerprint → count of times called.
 	// Guidance-only — injects a warning but does NOT block execution.
@@ -189,6 +190,9 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 	}
 
 	for turn := 0; turn < maxTurns; turn++ {
+		if costTracker.BudgetExceeded() {
+			return AgentResult{CostSummary: costTracker.Summary()}, fmt.Errorf("builtin: cost budget exceeded at turn %d", turn+1)
+		}
 		if req.OnProgress != nil {
 			req.OnProgress(AgentEvent{Type: AgentEventTurnStart, Turn: turn + 1})
 		}
@@ -244,6 +248,11 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 		usage.OutputTokens += resp.TokensOutput
 		usage.DurationMs += int(resp.DurationMs)
 		usage.NumTurns++
+		costTracker.Record(CostEntry{
+			Model:        r.model,
+			InputTokens:  resp.TokensInput,
+			OutputTokens: resp.TokensOutput,
+		})
 
 		if req.OnProgress != nil {
 			req.OnProgress(AgentEvent{
@@ -255,14 +264,14 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 		}
 
 		if resp.StopReason == models.StopReasonEndTurn || resp.StopReason == models.StopReasonMaxTokens {
-			return enrichResult(AgentResult{Output: resp.Content, Usage: usage}), nil
+			return enrichResult(AgentResult{Output: resp.Content, Usage: usage, CostSummary: costTracker.Summary()}), nil
 		}
 
 		// Implicit stop from self-reflection: if the agent replied TASK_COMPLETE
 		// to a reflection prompt, treat it as a graceful end-of-turn (REQ-LOOP-001).
 		if strings.Contains(resp.Content, "TASK_COMPLETE") {
 			log.Info().Int("turn", turn+1).Msg("builtin: implicit stop via self-reflection TASK_COMPLETE")
-			return enrichResult(AgentResult{Output: resp.Content, Usage: usage}), nil
+			return enrichResult(AgentResult{Output: resp.Content, Usage: usage, CostSummary: costTracker.Summary()}), nil
 		}
 
 		if resp.StopReason == models.StopReasonToolUse && len(resp.ToolCalls) > 0 {
@@ -277,9 +286,10 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 							return AgentResult{}, fmt.Errorf("structured output validation failed: %w", err)
 						}
 						return enrichResult(AgentResult{
-							Output:     resp.Content,
-							Structured: json.RawMessage(tc.Input),
-							Usage:      usage,
+							Output:      resp.Content,
+							Structured:  json.RawMessage(tc.Input),
+							Usage:       usage,
+							CostSummary: costTracker.Summary(),
 						}), nil
 					}
 				}
@@ -406,10 +416,10 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 			continue
 		}
 
-		return enrichResult(AgentResult{Output: resp.Content, Usage: usage}), nil
+		return enrichResult(AgentResult{Output: resp.Content, Usage: usage, CostSummary: costTracker.Summary()}), nil
 	}
 
-	return AgentResult{}, fmt.Errorf("builtin: exceeded max turns %d without completion", maxTurns)
+	return AgentResult{CostSummary: costTracker.Summary()}, fmt.Errorf("builtin: exceeded max turns %d without completion", maxTurns)
 }
 
 // executeToolsFileAware executes tool calls with file-path conflict awareness.
