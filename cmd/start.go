@@ -4,7 +4,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -433,7 +435,7 @@ func newStartCmd() *cobra.Command {
 				srv.SetTrackerSyncer(d)
 				srv.SetPromptSnapshotQuerier(database)
 				go func() {
-					if err := srv.Start(); err != nil {
+					if err := srv.Start(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 						log.Error().Err(err).Msg("dashboard server error")
 					}
 				}()
@@ -542,6 +544,9 @@ func buildPRCreator(cfg *models.Config) git.PRCreator {
 	if token == "" {
 		token = os.Getenv("GITHUB_TOKEN") // backwards compat fallback
 	}
+	if token == "" {
+		token = cfg.Tracker.GitHub.Token // reuse tracker token if git token not set
+	}
 	owner, repo := parseOwnerRepo(cfg.Git.CloneURL)
 	if owner == "" || repo == "" || token == "" {
 		return nil
@@ -553,6 +558,9 @@ func buildPRChecker(cfg *models.Config) git.PRChecker {
 	token := cfg.Git.GitHub.Token
 	if token == "" {
 		token = os.Getenv("GITHUB_TOKEN") // backwards compat fallback
+	}
+	if token == "" {
+		token = cfg.Tracker.GitHub.Token // reuse tracker token if git token not set
 	}
 	owner, repo := parseOwnerRepo(cfg.Git.CloneURL)
 	if owner == "" || repo == "" || token == "" {
