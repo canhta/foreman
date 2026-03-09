@@ -177,9 +177,11 @@ func (t *editTool) Execute(_ context.Context, workDir string, input json.RawMess
 	if err != nil {
 		return "", fmt.Errorf("edit: %w", err)
 	}
-	_ = strategy // strategy used for the match (e.g. "simple", "fuzzy")
 	if err := os.WriteFile(abs, []byte(updated), 0644); err != nil {
 		return "", fmt.Errorf("edit: %w", err)
+	}
+	if strategy != "simple" {
+		return fmt.Sprintf("OK (strategy: %s)", strategy), nil
 	}
 	return "OK", nil
 }
