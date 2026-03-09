@@ -121,6 +121,8 @@ func (m *realMockGitProvider) MergeNoFF(_ context.Context, _, _ string) error   
 func (m *realMockGitProvider) DeleteBranch(_ context.Context, _, _ string) error      { return nil }
 func (m *realMockGitProvider) Checkout(_ context.Context, _, _ string) error          { return nil }
 func (m *realMockGitProvider) Pull(_ context.Context, _ string) error                 { return nil }
+func (m *realMockGitProvider) ResetWorktree(_ context.Context, _, _ string) error     { return nil }
+func (m *realMockGitProvider) CleanWorktree(_ context.Context, _ string) error        { return nil }
 
 // realMockCmdRunner implements runner.CommandRunner.
 type realMockCmdRunner struct {

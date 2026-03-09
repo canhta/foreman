@@ -129,9 +129,11 @@ func (m *mockIntegrationGit) Pull(_ context.Context, _ string) error         { r
 func (m *mockIntegrationGit) AddWorktree(_ context.Context, _, _, _, _ string) error {
 	return nil
 }
-func (m *mockIntegrationGit) RemoveWorktree(_ context.Context, _, _ string) error { return nil }
-func (m *mockIntegrationGit) MergeNoFF(_ context.Context, _, _ string) error      { return nil }
-func (m *mockIntegrationGit) DeleteBranch(_ context.Context, _, _ string) error   { return nil }
+func (m *mockIntegrationGit) RemoveWorktree(_ context.Context, _, _ string) error  { return nil }
+func (m *mockIntegrationGit) MergeNoFF(_ context.Context, _, _ string) error       { return nil }
+func (m *mockIntegrationGit) DeleteBranch(_ context.Context, _, _ string) error    { return nil }
+func (m *mockIntegrationGit) ResetWorktree(_ context.Context, _, _ string) error   { return nil }
+func (m *mockIntegrationGit) CleanWorktree(_ context.Context, _ string) error      { return nil }
 
 // --- Mock PR Creator ---
 

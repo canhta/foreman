@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -127,6 +128,25 @@ func (a *DAGTaskAdapter) Run(ctx context.Context, taskID string) daemon.TaskResu
 				}
 				if err = envloader.CopyInto(a.envFiles, worktreeDir); err != nil {
 					log.Warn().Err(err).Str("task_id", taskID).Msg("env file copy into worktree failed")
+				}
+			}
+			// Run the optional start command (e.g. "npm install") in the new worktree.
+			// Failure is non-fatal — log a warning and continue task execution.
+			if startCmd := a.config.WorktreeStartCommand; startCmd != "" {
+				startExec := exec.CommandContext(ctx, "sh", "-c", startCmd)
+				startExec.Dir = worktreeDir
+				if out, cmdErr := startExec.CombinedOutput(); cmdErr != nil {
+					log.Warn().
+						Err(cmdErr).
+						Str("task_id", taskID).
+						Str("start_command", startCmd).
+						Str("output", string(out)).
+						Msg("worktree start command failed (non-fatal)")
+				} else {
+					log.Info().
+						Str("task_id", taskID).
+						Str("start_command", startCmd).
+						Msg("worktree start command completed")
 				}
 			}
 		}

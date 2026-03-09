@@ -25,6 +25,12 @@ type GitProvider interface {
 	RemoveWorktree(ctx context.Context, repoDir, worktreeDir string) error
 	MergeNoFF(ctx context.Context, workDir, branch string) error
 	DeleteBranch(ctx context.Context, workDir, branch string) error
+	// ResetWorktree hard-resets the worktree at path to the given git ref
+	// and removes untracked files and directories (including ignored files).
+	ResetWorktree(ctx context.Context, worktreePath, targetRef string) error
+	// CleanWorktree removes all untracked files and directories from the
+	// worktree, preserving gitignored files (e.g. node_modules).
+	CleanWorktree(ctx context.Context, worktreePath string) error
 }
 
 // RebaseResult holds rebase outcome.

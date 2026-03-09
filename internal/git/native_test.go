@@ -219,3 +219,62 @@ func TestNativeGitProvider_StageAll(t *testing.T) {
 func trimNewline(s string) string {
 	return strings.TrimRight(s, "\r\n")
 }
+
+func TestNativeGitProvider_ResetWorktree(t *testing.T) {
+	// Create a temp git repo
+	repoDir := t.TempDir()
+	cmd := exec.Command("git", "init", repoDir)
+	require.NoError(t, cmd.Run())
+	// Configure git user for commits
+	exec.Command("git", "-C", repoDir, "config", "user.email", "test@test.com").Run()
+	exec.Command("git", "-C", repoDir, "config", "user.name", "Test").Run()
+	// Create initial commit
+	testFile := filepath.Join(repoDir, "main.go")
+	require.NoError(t, os.WriteFile(testFile, []byte("package main"), 0o644))
+	exec.Command("git", "-C", repoDir, "add", ".").Run()
+	exec.Command("git", "-C", repoDir, "commit", "-m", "init").Run()
+
+	g := NewNativeGitProvider()
+	// Dirty the repo
+	require.NoError(t, os.WriteFile(testFile, []byte("package main\n// dirty"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(repoDir, "untracked.go"), []byte("x"), 0o644))
+
+	err := g.ResetWorktree(context.Background(), repoDir, "HEAD")
+	require.NoError(t, err)
+
+	// main.go should be restored to original content
+	data, err := os.ReadFile(testFile)
+	require.NoError(t, err)
+	assert.Equal(t, "package main", string(data))
+
+	// untracked.go should be removed
+	_, err = os.Stat(filepath.Join(repoDir, "untracked.go"))
+	assert.True(t, os.IsNotExist(err))
+}
+
+func TestNativeGitProvider_CleanWorktree(t *testing.T) {
+	repoDir := t.TempDir()
+	run(t, repoDir, "git", "init")
+	run(t, repoDir, "git", "config", "user.email", "test@test.com")
+	run(t, repoDir, "git", "config", "user.name", "Test")
+	testFile := filepath.Join(repoDir, "main.go")
+	require.NoError(t, os.WriteFile(testFile, []byte("package main"), 0o644))
+	run(t, repoDir, "git", "add", ".")
+	run(t, repoDir, "git", "commit", "-m", "init")
+
+	g := NewNativeGitProvider()
+
+	// Add an untracked file
+	require.NoError(t, os.WriteFile(filepath.Join(repoDir, "untracked.go"), []byte("x"), 0o644))
+
+	err := g.CleanWorktree(context.Background(), repoDir)
+	require.NoError(t, err)
+
+	// untracked.go should be removed
+	_, err = os.Stat(filepath.Join(repoDir, "untracked.go"))
+	assert.True(t, os.IsNotExist(err))
+
+	// main.go should still be present (tracked file, not touched by clean)
+	_, err = os.Stat(testFile)
+	require.NoError(t, err)
+}

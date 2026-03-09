@@ -50,6 +50,8 @@ func (m *mockGitProvider) MergeNoFF(_ context.Context, _, _ string) error       
 func (m *mockGitProvider) DeleteBranch(_ context.Context, _, _ string) error      { return nil }
 func (m *mockGitProvider) Checkout(_ context.Context, _, _ string) error          { return nil }
 func (m *mockGitProvider) Pull(_ context.Context, _ string) error                 { return nil }
+func (m *mockGitProvider) ResetWorktree(_ context.Context, _, _ string) error     { return nil }
+func (m *mockGitProvider) CleanWorktree(_ context.Context, _ string) error        { return nil }
 
 func newGitRegistry(t *testing.T, g git.GitProvider) (*tools.Registry, string) {
 	t.Helper()

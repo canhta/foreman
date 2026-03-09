@@ -125,18 +125,27 @@ type LocalFileTrackerConfig struct {
 
 //nolint:govet // fieldalignment: struct field order prioritises readability over padding
 type GitConfig struct {
-	Provider       string       `mapstructure:"provider"`
-	Backend        string       `mapstructure:"backend"`
-	CloneURL       string       `mapstructure:"clone_url"`
-	DefaultBranch  string       `mapstructure:"default_branch"`
-	BranchPrefix   string       `mapstructure:"branch_prefix"`
-	PRReviewers    []string     `mapstructure:"pr_reviewers"`
-	AutoPush       bool         `mapstructure:"auto_push"`
-	PRDraft        bool         `mapstructure:"pr_draft"`
-	RebaseBeforePR bool         `mapstructure:"rebase_before_pr"`
-	AutoMerge      bool         `mapstructure:"auto_merge"`
-	GitHub         GitHubConfig `mapstructure:"github"`
-	GitLab         GitLabConfig `mapstructure:"gitlab"`
+	Provider       string          `mapstructure:"provider"`
+	Backend        string          `mapstructure:"backend"`
+	CloneURL       string          `mapstructure:"clone_url"`
+	DefaultBranch  string          `mapstructure:"default_branch"`
+	BranchPrefix   string          `mapstructure:"branch_prefix"`
+	PRReviewers    []string        `mapstructure:"pr_reviewers"`
+	AutoPush       bool            `mapstructure:"auto_push"`
+	PRDraft        bool            `mapstructure:"pr_draft"`
+	RebaseBeforePR bool            `mapstructure:"rebase_before_pr"`
+	AutoMerge      bool            `mapstructure:"auto_merge"`
+	GitHub         GitHubConfig    `mapstructure:"github"`
+	GitLab         GitLabConfig    `mapstructure:"gitlab"`
+	Worktree       WorktreeConfig  `mapstructure:"worktree"`
+}
+
+// WorktreeConfig holds settings applied when a new task worktree is created.
+type WorktreeConfig struct {
+	// StartCommand is an optional shell command to run inside the worktree
+	// directory after it is created (e.g. "npm install", "go mod download").
+	// Failures are logged as warnings and do not abort worktree creation.
+	StartCommand string `mapstructure:"start_command"`
 }
 
 type GitHubConfig struct {

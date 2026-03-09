@@ -258,6 +258,27 @@ func (g *NativeGitProvider) DeleteBranch(ctx context.Context, workDir, branch st
 	return err
 }
 
+// ResetWorktree hard-resets the worktree at path to the given git ref and
+// removes all untracked files and directories, including ignored files.
+func (g *NativeGitProvider) ResetWorktree(ctx context.Context, path, ref string) error {
+	if _, err := g.run(ctx, path, "git", "reset", "--hard", ref); err != nil {
+		return fmt.Errorf("reset worktree: %w", err)
+	}
+	if _, err := g.run(ctx, path, "git", "clean", "-ffdx"); err != nil {
+		return fmt.Errorf("clean worktree: %w", err)
+	}
+	return nil
+}
+
+// CleanWorktree removes all untracked files and directories from the worktree,
+// preserving gitignored files (e.g. node_modules, build artifacts).
+func (g *NativeGitProvider) CleanWorktree(ctx context.Context, path string) error {
+	if _, err := g.run(ctx, path, "git", "clean", "-ffd"); err != nil {
+		return fmt.Errorf("clean worktree: %w", err)
+	}
+	return nil
+}
+
 func (g *NativeGitProvider) run(ctx context.Context, workDir string, name string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = workDir

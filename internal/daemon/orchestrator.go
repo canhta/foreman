@@ -85,6 +85,10 @@ type TaskRunnerFactoryInput struct {
 	// EnvFiles maps worktree-relative dest paths to source paths on disk.
 	// Reloaded into process env and copied into each task worktree.
 	EnvFiles map[string]string
+	// WorktreeStartCommand is an optional shell command to run inside each new
+	// task worktree after it is created (e.g. "npm install", "go mod download").
+	// Failures are logged as warnings and do not abort worktree creation.
+	WorktreeStartCommand string
 }
 
 // PlanResult mirrors pipeline.PlannerResult without creating an import cycle.
@@ -154,6 +158,10 @@ type OrchestratorConfig struct {
 	// EnvFiles maps worktree-relative dest paths to source paths on disk.
 	// Reloaded into process env and copied into each task worktree.
 	EnvFiles map[string]string
+	// WorktreeStartCommand is an optional shell command to run inside each new
+	// task worktree after it is created (e.g. "npm install", "go mod download").
+	// Failures are logged as warnings and do not abort worktree creation.
+	WorktreeStartCommand string
 }
 
 // Orchestrator coordinates the full ticket-to-PR lifecycle.
@@ -534,6 +542,7 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 		HookRunner:                 o.hookRunner,
 		DiscoveryBoard:             discoveryBoard,
 		EnvFiles:                   o.config.EnvFiles,
+		WorktreeStartCommand:       o.config.WorktreeStartCommand,
 	})
 
 	// Build DAG tasks (resolve title->ID dependencies).

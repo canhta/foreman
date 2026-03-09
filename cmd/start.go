@@ -157,6 +157,7 @@ func (f *taskRunnerFactory) Create(input daemon.TaskRunnerFactoryInput) daemon.T
 		DiscoveryBoard:             input.DiscoveryBoard,
 		AgentRunner:                f.agentRunner,
 		AgentRunnerName:            f.agentRunnerName,
+		WorktreeStartCommand:       input.WorktreeStartCommand,
 	}
 	tr := pipeline.NewPipelineTaskRunner(f.llm, f.db, f.gitProv, f.cmdRunner, cfg, f.registry)
 	if f.metrics != nil {
@@ -354,6 +355,7 @@ func newStartCmd() *cobra.Command {
 					IntermediateReviewInterval: cfg.Limits.IntermediateReviewInterval,
 					PromptVersions:             hashes,
 					EnvFiles:                   cfg.Daemon.EnvFiles,
+					WorktreeStartCommand:       cfg.Git.Worktree.StartCommand,
 				},
 			)
 

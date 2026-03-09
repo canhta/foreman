@@ -190,3 +190,11 @@ func (g *GoGitProvider) Checkout(_ context.Context, _, _ string) error {
 func (g *GoGitProvider) Pull(_ context.Context, _ string) error {
 	return fmt.Errorf("go-git: Pull not supported")
 }
+
+func (g *GoGitProvider) ResetWorktree(_ context.Context, _, _ string) error {
+	return fmt.Errorf("go-git: ResetWorktree not supported — use native git provider")
+}
+
+func (g *GoGitProvider) CleanWorktree(_ context.Context, _ string) error {
+	return fmt.Errorf("go-git: CleanWorktree not supported — use native git provider")
+}

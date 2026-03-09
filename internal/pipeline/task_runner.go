@@ -76,6 +76,10 @@ type TaskRunnerConfig struct {
 	// AgentRunnerName identifies the runner type ("claudecode", "copilot").
 	// Used to decide whether to inject Claude Code skills.
 	AgentRunnerName string
+	// WorktreeStartCommand is an optional shell command to run inside each new
+	// task worktree after it is created (e.g. "npm install", "go mod download").
+	// Failures are logged as warnings and do not abort worktree creation.
+	WorktreeStartCommand string
 }
 
 // ConsistencyReviewDB is the subset of db.Database needed by the intermediate
