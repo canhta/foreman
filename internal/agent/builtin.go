@@ -158,6 +158,10 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 	// Guidance-only — injects a warning but does NOT block execution.
 	toolCallCounts := make(map[string]int)
 
+	// Doom loop detector: tracks consecutive identical tool calls (threshold 3).
+	// Stronger than deduplication — injects a firm directive to reconsider.
+	doomDetector := NewDoomLoopDetector(3)
+
 	// Wire budget and depth into the registry so SubagentTool can enforce constraints.
 	if r.registry != nil {
 		r.registry.SetParentBudgetAndDepth(req.RemainingBudget, req.AgentDepth)
@@ -271,6 +275,19 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 				Content:   resp.Content,
 				ToolCalls: resp.ToolCalls,
 			})
+
+			// Doom loop detection: check each tool call against consecutive repetition tracker.
+			// If threshold is hit, inject a firm directive and continue (don't abort).
+			for _, tc := range resp.ToolCalls {
+				if doomDetector.Check(tc.Name, string(tc.Input)) {
+					log.Warn().Str("tool", tc.Name).Msg("builtin: doom loop detected — injecting reconsideration message")
+					messages = append(messages, models.Message{
+						Role:    "user",
+						Content: "You are repeating the same action. Stop and reconsider your approach.",
+					})
+					break
+				}
+			}
 
 			// File-aware parallel tool execution (REQ-LOOP-003):
 			// Tool calls sharing a file path are serialized; disjoint ones run in parallel.
