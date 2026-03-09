@@ -9,6 +9,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 
+	"github.com/canhta/foreman/internal/agent"
 	appcontext "github.com/canhta/foreman/internal/context"
 	dbpkg "github.com/canhta/foreman/internal/db"
 	"github.com/canhta/foreman/internal/git"
@@ -65,6 +66,13 @@ type TaskRunnerConfig struct {
 	// When non-nil, patterns from the board are merged with DB patterns
 	// during context-file selection so parallel tasks share discoveries.
 	DiscoveryBoard *models.DiscoveryBoard
+	// AgentRunner is an optional external agent runner. When non-nil, RunTask
+	// delegates implementation to this runner instead of using the builtin
+	// implementer → parse → apply → review loop.
+	AgentRunner agent.AgentRunner
+	// AgentRunnerName identifies the runner type ("claudecode", "copilot").
+	// Used to decide whether to inject Claude Code skills.
+	AgentRunnerName string
 }
 
 // ConsistencyReviewDB is the subset of db.Database needed by the intermediate
@@ -162,6 +170,11 @@ func (r *PipelineTaskRunner) runPostLintHook(ctx context.Context, task *models.T
 func (r *PipelineTaskRunner) RunTask(ctx context.Context, task *models.Task) error {
 	if err := r.db.UpdateTaskStatus(ctx, task.ID, models.TaskStatusImplementing); err != nil {
 		return fmt.Errorf("update task status: %w", err)
+	}
+
+	// External runner path — delegate entire implementation to AgentRunner.
+	if r.config.AgentRunner != nil {
+		return r.runTaskWithAgent(ctx, task)
 	}
 
 	feedback := NewFeedbackAccumulator()
@@ -338,6 +351,129 @@ func (r *PipelineTaskRunner) RunTask(ctx context.Context, task *models.Task) err
 	// Write context feedback on failure too, so the system can learn from missed files.
 	r.writeContextFeedback(ctx, task, nil, nil)
 	return fmt.Errorf("task %q failed after %d attempts: %s", task.Title, r.config.MaxImplementationRetries+1, feedbackText)
+}
+
+// runTaskWithAgent delegates the full implementation of a task to the configured
+// AgentRunner. The agent handles its own TDD loop and file operations.
+// Foreman only: builds prompt, calls agent, verifies diff, stage+commit, update status.
+func (r *PipelineTaskRunner) runTaskWithAgent(ctx context.Context, task *models.Task) error {
+	pb := NewPromptBuilder(r.llm)
+	feedback := NewFeedbackAccumulator()
+
+	for attempt := 1; attempt <= r.config.MaxImplementationRetries+1; attempt++ {
+		if attempt > 1 {
+			feedback.ResetKeepingSummary()
+		}
+
+		// Build prompt for this attempt.
+		prompt := pb.Build(task, nil, PromptBuilderConfig{
+			TestCommand:      r.config.TestCommand,
+			CodebasePatterns: r.config.CodebasePatterns,
+			RetryFeedback:    feedback.Render(),
+			Attempt:          attempt,
+		})
+
+		// Delegate to agent.
+		result, err := r.config.AgentRunner.Run(ctx, agent.AgentRequest{
+			Prompt:  prompt,
+			WorkDir: r.config.WorkDir,
+		})
+		if err != nil {
+			log.Warn().Err(err).
+				Str("task_id", task.ID).
+				Int("attempt", attempt).
+				Msg("agent runner error; will retry if attempts remain")
+			feedback.AddLintError(fmt.Sprintf("agent error: %s", err))
+			continue
+		}
+
+		log.Info().
+			Str("task_id", task.ID).
+			Int("attempt", attempt).
+			Str("runner", r.config.AgentRunnerName).
+			Float64("cost_usd", result.Usage.CostUSD).
+			Int("input_tokens", result.Usage.InputTokens).
+			Int("output_tokens", result.Usage.OutputTokens).
+			Msg("agent runner completed task")
+
+		// Verify the agent produced a diff.
+		diff, diffErr := r.git.DiffWorking(ctx, r.config.WorkDir)
+		if diffErr != nil {
+			return fmt.Errorf("git diff after agent: %w", diffErr)
+		}
+		if strings.TrimSpace(diff) == "" {
+			log.Warn().
+				Str("task_id", task.ID).
+				Int("attempt", attempt).
+				Msg("agent produced empty diff; will retry if attempts remain")
+			feedback.AddLintError("agent produced no file changes (empty diff)")
+			continue
+		}
+
+		// Stage all changes and commit.
+		if stageErr := r.git.StageAll(ctx, r.config.WorkDir); stageErr != nil {
+			return fmt.Errorf("git stage after agent: %w", stageErr)
+		}
+		commitMsg := fmt.Sprintf("feat: %s", task.Title)
+		_, commitErr := r.git.Commit(ctx, r.config.WorkDir, commitMsg)
+		if commitErr != nil {
+			// If the agent already committed, the working tree may be clean.
+			// Verify by checking the diff again; if clean this is fine.
+			cleanDiff, _ := r.git.DiffWorking(ctx, r.config.WorkDir)
+			if strings.TrimSpace(cleanDiff) != "" {
+				return fmt.Errorf("git commit after agent: %w", commitErr)
+			}
+			log.Info().
+				Str("task_id", task.ID).
+				Msg("commit skipped: agent already committed the changes")
+		}
+
+		// Invalidate context cache so the next task sees fresh HEAD.
+		if r.config.Cache != nil {
+			r.config.Cache.Invalidate()
+		}
+
+		// Non-blocking spec review.
+		if r.specReviewer != nil && len(task.AcceptanceCriteria) > 0 {
+			specFeedback := NewFeedbackAccumulator()
+			specErr := r.runSpecReview(ctx, task, diff, "", specFeedback)
+			if specErr != nil {
+				log.Warn().Err(specErr).
+					Str("task_id", task.ID).
+					Msg("spec review rejected agent output (non-blocking)")
+			}
+		}
+
+		// Non-blocking quality review.
+		if r.qualityReviewer != nil {
+			qualFeedback := NewFeedbackAccumulator()
+			qualErr := r.runQualityReview(ctx, task.ID, diff, qualFeedback)
+			if qualErr != nil {
+				log.Warn().Err(qualErr).
+					Str("task_id", task.ID).
+					Msg("quality review rejected agent output (non-blocking)")
+			}
+		}
+
+		// Fire post_lint skill hooks after successful commit.
+		r.runPostLintHook(ctx, task)
+
+		// Write context feedback for future context selection learning.
+		r.writeContextFeedback(ctx, task, nil, nil)
+
+		if err := r.db.UpdateTaskStatus(ctx, task.ID, models.TaskStatusDone); err != nil {
+			return fmt.Errorf("update task status done: %w", err)
+		}
+		return nil
+	}
+
+	// All retries exhausted.
+	_ = r.db.UpdateTaskStatus(ctx, task.ID, models.TaskStatusFailed)
+	if r.metrics != nil {
+		r.metrics.TaskFailuresTotal.WithLabelValues("agent_empty_diff", r.config.AgentRunnerName).Inc()
+	}
+	return fmt.Errorf("task %q failed after %d agent attempts: %s",
+		task.Title, r.config.MaxImplementationRetries+1, feedback.Render())
 }
 
 // reviewRejectedError is an internal sentinel for review rejection (triggers retry).
