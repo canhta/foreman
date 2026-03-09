@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -27,6 +28,7 @@ type DAGTaskAdapter struct {
 	git               git.GitProvider
 	runner            *PipelineTaskRunner
 	ticketID          string
+	ticketBranch      string
 	lastReviewedSHA   string
 	config            TaskRunnerConfig
 	completedCount    atomic.Int64
@@ -40,6 +42,8 @@ func NewDAGTaskAdapter(runner *PipelineTaskRunner, db TaskRunnerDB, ticketID str
 
 // NewDAGTaskAdapterWithConsistency creates an adapter with intermediate consistency
 // review support (REQ-PIPE-006). Pass interval=0 to disable the check.
+// ticketBranch is the git branch for the ticket (e.g. "foremanSU-SU-738"); when
+// non-empty, each task runs in its own git worktree branched from this branch.
 func NewDAGTaskAdapterWithConsistency(
 	runner *PipelineTaskRunner,
 	db TaskRunnerDB,
@@ -48,20 +52,27 @@ func NewDAGTaskAdapterWithConsistency(
 	cdb ConsistencyReviewDB,
 	gitProv git.GitProvider,
 	config TaskRunnerConfig,
+	ticketBranch string,
 ) *DAGTaskAdapter {
 	return &DAGTaskAdapter{
-		runner:   runner,
-		db:       db,
-		ticketID: ticketID,
-		llm:      llm,
-		cdb:      cdb,
-		git:      gitProv,
-		config:   config,
+		runner:       runner,
+		db:           db,
+		ticketID:     ticketID,
+		ticketBranch: ticketBranch,
+		llm:          llm,
+		cdb:          cdb,
+		git:          gitProv,
+		config:       config,
 	}
 }
 
 // Run implements daemon.TaskRunner. It looks up the task by ID from the DB
 // task list and delegates to PipelineTaskRunner.RunTask.
+//
+// When a ticketBranch is configured, each task runs in a dedicated git worktree
+// so parallel tasks don't share a working directory. On success the result
+// carries WorktreeDir and WorktreeBranch so the orchestrator can merge and
+// clean up after all tasks finish.
 func (a *DAGTaskAdapter) Run(ctx context.Context, taskID string) daemon.TaskResult {
 	// Find the task in the DB. We need the ticket ID to list tasks,
 	// but the DAG executor only gives us the task ID. Use the task directly
@@ -75,7 +86,29 @@ func (a *DAGTaskAdapter) Run(ctx context.Context, taskID string) daemon.TaskResu
 		}
 	}
 
-	err = a.runner.RunTask(ctx, task)
+	// Attempt to create a per-task git worktree for isolation.
+	var worktreeDir, worktreeBranch string
+	runnerToUse := a.runner
+
+	if a.ticketBranch != "" && a.git != nil && a.config.WorkDir != "" {
+		shortID := taskID
+		if len(shortID) > 8 {
+			shortID = shortID[:8]
+		}
+		worktreeDir = filepath.Join(filepath.Dir(a.config.WorkDir), "worktrees", taskID)
+		worktreeBranch = a.ticketBranch + "-wt-" + shortID
+
+		if wtErr := a.git.AddWorktree(ctx, a.config.WorkDir, worktreeDir, worktreeBranch, a.ticketBranch); wtErr != nil {
+			log.Warn().Err(wtErr).Str("task_id", taskID).Msg("worktree creation failed, running in main workdir")
+			// Fall back to the main workdir — clear the tracking vars.
+			worktreeDir = ""
+			worktreeBranch = ""
+		} else {
+			runnerToUse = a.runner.CloneWithWorkDir(worktreeDir)
+		}
+	}
+
+	err = runnerToUse.RunTask(ctx, task)
 	if err != nil {
 		var escalation *EscalationError
 		if errors.As(err, &escalation) {
@@ -84,15 +117,19 @@ func (a *DAGTaskAdapter) Run(ctx context.Context, taskID string) daemon.TaskResu
 			// with the result reported to the orchestrator. Dependents are still skipped
 			// because the DAG executor treats any non-Done status as a failure for propagation.
 			return daemon.TaskResult{
-				TaskID: taskID,
-				Status: models.TaskStatusEscalated,
-				Error:  err,
+				TaskID:         taskID,
+				Status:         models.TaskStatusEscalated,
+				Error:          err,
+				WorktreeDir:    worktreeDir,
+				WorktreeBranch: worktreeBranch,
 			}
 		}
 		return daemon.TaskResult{
-			TaskID: taskID,
-			Status: models.TaskStatusFailed,
-			Error:  err,
+			TaskID:         taskID,
+			Status:         models.TaskStatusFailed,
+			Error:          err,
+			WorktreeDir:    worktreeDir,
+			WorktreeBranch: worktreeBranch,
 		}
 	}
 
@@ -107,8 +144,10 @@ func (a *DAGTaskAdapter) Run(ctx context.Context, taskID string) daemon.TaskResu
 	}
 
 	return daemon.TaskResult{
-		TaskID: taskID,
-		Status: models.TaskStatusDone,
+		TaskID:         taskID,
+		Status:         models.TaskStatusDone,
+		WorktreeDir:    worktreeDir,
+		WorktreeBranch: worktreeBranch,
 	}
 }
 

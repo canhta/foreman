@@ -51,6 +51,10 @@ type TaskRunnerFactoryInput struct {
 	WorkDir          string
 	CodebasePatterns string
 	TestCommand      string
+	// BranchName is the git branch checked out in WorkDir for this ticket
+	// (e.g. "foremanSU-SU-738"). When non-empty, each task runs in its own
+	// git worktree branched from this branch so parallel tasks are isolated.
+	BranchName string
 	// PromptVersions maps prompt template filenames (e.g. "planner.md.j2") to
 	// their SHA256 hashes for LlmRequest.PromptVersion (REQ-OBS-001).
 	PromptVersions map[string]string
@@ -489,6 +493,7 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 		TicketID:                   ticket.ID,
 		Models:                     o.config.Models,
 		WorkDir:                    o.config.WorkDir,
+		BranchName:                 branchName,
 		CodebasePatterns:           codebasePatterns,
 		TestCommand:                o.config.TestCommand,
 		MaxImplementationRetries:   o.config.MaxImplementRetries,
@@ -529,6 +534,27 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 		defer cancel()
 	}
 	results := executor.Execute(execCtx, tasksToRun)
+
+	// Merge successful task worktrees into the ticket branch and clean up.
+	// Tasks that fell back to the main workdir have empty WorktreeBranch, so they are skipped.
+	for _, result := range results {
+		if result.WorktreeBranch == "" {
+			continue
+		}
+		if result.Status == models.TaskStatusDone {
+			if mergeErr := o.git.MergeNoFF(ctx, o.config.WorkDir, result.WorktreeBranch); mergeErr != nil {
+				log.Error().Err(mergeErr).Str("branch", result.WorktreeBranch).Msg("failed to merge task branch")
+			}
+		}
+		if result.WorktreeDir != "" {
+			if rmErr := o.git.RemoveWorktree(ctx, o.config.WorkDir, result.WorktreeDir); rmErr != nil {
+				log.Warn().Err(rmErr).Str("dir", result.WorktreeDir).Msg("failed to remove worktree")
+			}
+		}
+		if delErr := o.git.DeleteBranch(ctx, o.config.WorkDir, result.WorktreeBranch); delErr != nil {
+			log.Warn().Err(delErr).Str("branch", result.WorktreeBranch).Msg("failed to delete task branch")
+		}
+	}
 
 	// Recovery case: if all tasks were already completed before this run
 	// (tasksToRun was empty because every task ID appeared in dagState.CompletedTasks),

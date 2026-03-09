@@ -166,3 +166,19 @@ func (g *GoGitProvider) Log(ctx context.Context, workDir string, count int) ([]C
 func (g *GoGitProvider) CheckFileOverlap(ctx context.Context, workDir, branchA string, filesB []string) ([]string, error) {
 	return nil, fmt.Errorf("go-git CheckFileOverlap not implemented — use native git provider")
 }
+
+func (g *GoGitProvider) AddWorktree(_ context.Context, _, _, _, _ string) error {
+	return fmt.Errorf("go-git: worktree operations not supported")
+}
+
+func (g *GoGitProvider) RemoveWorktree(_ context.Context, _, _ string) error {
+	return fmt.Errorf("go-git: worktree operations not supported")
+}
+
+func (g *GoGitProvider) MergeNoFF(_ context.Context, _, _ string) error {
+	return fmt.Errorf("go-git: worktree operations not supported")
+}
+
+func (g *GoGitProvider) DeleteBranch(_ context.Context, _, _ string) error {
+	return fmt.Errorf("go-git: worktree operations not supported")
+}

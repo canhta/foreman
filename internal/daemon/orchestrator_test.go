@@ -344,6 +344,10 @@ func (m *orchMockGit) Log(_ context.Context, _ string, _ int) ([]git.CommitEntry
 }
 func (m *orchMockGit) StageAll(_ context.Context, _ string) error         { return nil }
 func (m *orchMockGit) CleanWorkingTree(_ context.Context, _ string) error { return nil }
+func (m *orchMockGit) AddWorktree(_ context.Context, _, _, _, _ string) error { return nil }
+func (m *orchMockGit) RemoveWorktree(_ context.Context, _, _ string) error    { return nil }
+func (m *orchMockGit) MergeNoFF(_ context.Context, _, _ string) error         { return nil }
+func (m *orchMockGit) DeleteBranch(_ context.Context, _, _ string) error      { return nil }
 
 // ---------------------------------------------------------------------------
 // Mock: git.PRCreator

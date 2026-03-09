@@ -132,6 +132,17 @@ func (r *PipelineTaskRunner) SetMetrics(m *telemetry.Metrics) {
 	r.metrics = m
 }
 
+// CloneWithWorkDir returns a shallow copy of the runner with a different WorkDir.
+// The cache is reset since it is path-specific.
+func (r *PipelineTaskRunner) CloneWithWorkDir(workDir string) *PipelineTaskRunner {
+	cloned := *r
+	cfg := r.config
+	cfg.WorkDir = workDir
+	cfg.Cache = nil
+	cloned.config = cfg
+	return &cloned
+}
+
 // runPostLintHook fires post_lint skill hooks after a task commit (REQ-OBS-002).
 // Failures are logged as warnings and do not abort the task.
 func (r *PipelineTaskRunner) runPostLintHook(ctx context.Context, task *models.Task) {

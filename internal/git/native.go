@@ -217,6 +217,30 @@ func (g *NativeGitProvider) CleanWorkingTree(ctx context.Context, workDir string
 	return nil
 }
 
+// AddWorktree creates a new git worktree with a new branch rooted at startPoint.
+func (g *NativeGitProvider) AddWorktree(ctx context.Context, repoDir, worktreeDir, newBranch, startPoint string) error {
+	_, err := g.run(ctx, repoDir, "git", "worktree", "add", "-b", newBranch, worktreeDir, startPoint)
+	return err
+}
+
+// RemoveWorktree removes a git worktree directory and prunes the worktree metadata.
+func (g *NativeGitProvider) RemoveWorktree(ctx context.Context, repoDir, worktreeDir string) error {
+	_, err := g.run(ctx, repoDir, "git", "worktree", "remove", "--force", worktreeDir)
+	return err
+}
+
+// MergeNoFF merges the given branch into the current branch without fast-forward.
+func (g *NativeGitProvider) MergeNoFF(ctx context.Context, workDir, branch string) error {
+	_, err := g.run(ctx, workDir, "git", "merge", "--no-ff", "--no-edit", branch)
+	return err
+}
+
+// DeleteBranch force-deletes the given local branch.
+func (g *NativeGitProvider) DeleteBranch(ctx context.Context, workDir, branch string) error {
+	_, err := g.run(ctx, workDir, "git", "branch", "-D", branch)
+	return err
+}
+
 func (g *NativeGitProvider) run(ctx context.Context, workDir string, name string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = workDir

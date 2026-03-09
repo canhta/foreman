@@ -110,6 +110,10 @@ func (m *realMockGitProvider) CleanWorkingTree(_ context.Context, _ string) erro
 	}
 	return m.cleanErr
 }
+func (m *realMockGitProvider) AddWorktree(_ context.Context, _, _, _, _ string) error { return nil }
+func (m *realMockGitProvider) RemoveWorktree(_ context.Context, _, _ string) error    { return nil }
+func (m *realMockGitProvider) MergeNoFF(_ context.Context, _, _ string) error         { return nil }
+func (m *realMockGitProvider) DeleteBranch(_ context.Context, _, _ string) error      { return nil }
 
 // realMockCmdRunner implements runner.CommandRunner.
 type realMockCmdRunner struct {

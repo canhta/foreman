@@ -157,7 +157,7 @@ func (f *taskRunnerFactory) Create(input daemon.TaskRunnerFactoryInput) daemon.T
 	if f.metrics != nil {
 		tr.SetMetrics(f.metrics)
 	}
-	return pipeline.NewDAGTaskAdapterWithConsistency(tr, f.db, input.TicketID, f.llm, f.db, f.gitProv, cfg)
+	return pipeline.NewDAGTaskAdapterWithConsistency(tr, f.db, input.TicketID, f.llm, f.db, f.gitProv, cfg, input.BranchName)
 }
 
 func newStartCmd() *cobra.Command {

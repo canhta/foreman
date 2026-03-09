@@ -277,6 +277,10 @@ func (m *mockGitForEngine) CleanWorkingTree(_ context.Context, _ string) error {
 func (m *mockGitForEngine) CheckFileOverlap(_ context.Context, _, _ string, _ []string) ([]string, error) {
 	return nil, nil
 }
+func (m *mockGitForEngine) AddWorktree(_ context.Context, _, _, _, _ string) error { return nil }
+func (m *mockGitForEngine) RemoveWorktree(_ context.Context, _, _ string) error    { return nil }
+func (m *mockGitForEngine) MergeNoFF(_ context.Context, _, _ string) error         { return nil }
+func (m *mockGitForEngine) DeleteBranch(_ context.Context, _, _ string) error      { return nil }
 
 func TestEngine_ExecuteAgentSDK(t *testing.T) {
 	workDir := t.TempDir()
