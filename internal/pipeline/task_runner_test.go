@@ -181,7 +181,7 @@ func TestQualityReviewPassesTaskID(t *testing.T) {
 	}
 	r := &PipelineTaskRunner{
 		db:              db,
-		qualityReviewer: NewQualityReviewer(llm),
+		qualityReviewer: NewQualityReviewer(llm, mustLoadTestRegistry(t)),
 		config: TaskRunnerConfig{
 			WorkDir:            "/some/filesystem/path",
 			MaxLlmCallsPerTask: 8,
@@ -387,9 +387,9 @@ func TestTaskRunner_SnapshotRestoreOnExhaustedRetries(t *testing.T) {
 		llm:             llm,
 		db:              db,
 		cmdRunner:       cmd,
-		implementer:     NewImplementer(llm),
-		specReviewer:    NewSpecReviewer(llm),
-		qualityReviewer: NewQualityReviewer(llm),
+		implementer:     NewImplementer(llm, mustLoadTestRegistry(t)),
+		specReviewer:    NewSpecReviewer(llm, mustLoadTestRegistry(t)),
+		qualityReviewer: NewQualityReviewer(llm, mustLoadTestRegistry(t)),
 		snap:            snap,
 		config: TaskRunnerConfig{
 			WorkDir:                  workDir,

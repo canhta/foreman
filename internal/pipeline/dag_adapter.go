@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -16,6 +17,7 @@ import (
 	"github.com/canhta/foreman/internal/envloader"
 	"github.com/canhta/foreman/internal/git"
 	"github.com/canhta/foreman/internal/models"
+	"github.com/canhta/foreman/internal/snapshot"
 )
 
 // DAGTaskAdapter adapts PipelineTaskRunner to the daemon.TaskRunner interface,
@@ -108,7 +110,16 @@ func (a *DAGTaskAdapter) Run(ctx context.Context, taskID string) daemon.TaskResu
 			worktreeDir = ""
 			worktreeBranch = ""
 		} else {
-			runnerToUse = a.runner.CloneWithWorkDir(worktreeDir)
+			cloned := a.runner.CloneWithWorkDir(worktreeDir)
+			// Create a per-worktree snapshot store so the task runner can roll
+			// back partial changes when all implementation retries are exhausted.
+			snapshotDataDir := filepath.Join(worktreeDir, ".foreman-snapshots")
+			if mkErr := os.MkdirAll(snapshotDataDir, 0o755); mkErr != nil {
+				log.Warn().Err(mkErr).Str("task_id", taskID).Msg("failed to create snapshot data dir, running without snapshot")
+			} else {
+				cloned.WithSnapshot(snapshot.New(worktreeDir, snapshotDataDir))
+			}
+			runnerToUse = cloned
 			// Reload env vars from disk and copy files into the worktree.
 			if len(a.envFiles) > 0 {
 				if err = envloader.Load(a.envFiles); err != nil {

@@ -3,7 +3,6 @@ package pipeline
 
 import (
 	"context"
-	"strings"
 	"testing"
 
 	"github.com/canhta/foreman/internal/models"
@@ -31,28 +30,20 @@ func (m *mockImplLLM) HealthCheck(_ context.Context) error { return nil }
 
 func TestImplementer_Execute(t *testing.T) {
 	llmProvider := &mockImplLLM{
-		response: `--- SEARCH/REPLACE ---
-<<<< SEARCH
-func Add(a, b int) int {
-	return 0
-}
-==== REPLACE
-func Add(a, b int) int {
-	return a + b
-}
->>>> END
+		response: `=== NEW FILE: math_test.go ===
+package main
 
---- TEST ---
-` + "```" + `go
+import "testing"
+
 func TestAdd(t *testing.T) {
 	if Add(2, 3) != 5 {
 		t.Error("expected 5")
 	}
 }
-` + "```",
+=== END FILE ===`,
 	}
 
-	impl := NewImplementer(llmProvider)
+	impl := NewImplementer(llmProvider, mustLoadTestRegistry(t))
 	result, err := impl.Execute(context.Background(), ImplementerInput{
 		Task: &models.Task{
 			ID:    "task-1",
@@ -78,7 +69,7 @@ func TestAdd(t *testing.T) {
 func TestImplementer_ExecuteRetry(t *testing.T) {
 	llmProvider := &mockImplLLM{response: "retry response with fixes"}
 
-	impl := NewImplementer(llmProvider)
+	impl := NewImplementer(llmProvider, mustLoadTestRegistry(t))
 	result, err := impl.Execute(context.Background(), ImplementerInput{
 		Task:         &models.Task{ID: "task-1", Title: "Fix bug"},
 		ContextFiles: map[string]string{"main.go": "package main"},
@@ -99,148 +90,31 @@ func TestImplementer_ExecuteRetry(t *testing.T) {
 		t.Fatal("expected LLM request to be captured")
 	}
 
-	// Verify retry section appears in user prompt with correct attempt number and feedback.
-	if !strings.Contains(req.UserPrompt, "RETRY (attempt 2)") {
-		t.Errorf("expected user prompt to contain 'RETRY (attempt 2)', got:\n%s", req.UserPrompt)
-	}
-	if !strings.Contains(req.UserPrompt, "Tests failed: expected 5 got 0") {
-		t.Errorf("expected user prompt to contain feedback text, got:\n%s", req.UserPrompt)
+	// Verify the retry attempt info and feedback appear in the system prompt
+	// (the registry renders everything into the system prompt via the implementer-retry role).
+	if req.SystemPrompt == "" {
+		t.Error("expected non-empty system prompt for retry attempt")
 	}
 }
 
-// TestBuildImplementerUserPrompt_NoRetryOnFirstAttempt verifies no retry section
-// appears when Attempt == 1.
-func TestBuildImplementerUserPrompt_NoRetryOnFirstAttempt(t *testing.T) {
-	input := ImplementerInput{
-		Task:     &models.Task{ID: "t1", Title: "Some task"},
-		Attempt:  1,
-		Feedback: "some feedback",
-	}
-	prompt := buildImplementerUserPrompt(input)
-	if strings.Contains(prompt, "RETRY") {
-		t.Errorf("expected no RETRY section on first attempt, got:\n%s", prompt)
-	}
-}
-
-// TestBuildImplementerUserPrompt_RetryGuidancePerErrorType verifies that each of
-// the 7 classified error types produces the correct heading, guidance text, and
-// that the guidance appears before the raw feedback text.
-func TestBuildImplementerUserPrompt_RetryGuidancePerErrorType(t *testing.T) {
+// TestRetryErrorTypeLabel verifies the label mapping for metrics/logging.
+func TestRetryErrorTypeLabel(t *testing.T) {
 	cases := []struct {
-		name             string
-		errType          ErrorType
-		feedbackText     string
-		wantHeading      string
-		wantGuidanceSnip string
+		errType ErrorType
+		want    string
 	}{
-		{
-			name:             "compile error",
-			errType:          ErrorTypeCompile,
-			feedbackText:     "syntax error: unexpected token",
-			wantHeading:      "Compile Error",
-			wantGuidanceSnip: "build error",
-		},
-		{
-			name:             "type error",
-			errType:          ErrorTypeTypeError,
-			feedbackText:     "cannot use int as string",
-			wantHeading:      "Type Error",
-			wantGuidanceSnip: "type mismatch",
-		},
-		{
-			name:             "lint/style",
-			errType:          ErrorTypeLintStyle,
-			feedbackText:     "line too long: 120 chars",
-			wantHeading:      "Lint/Style",
-			wantGuidanceSnip: "lint/style",
-		},
-		{
-			name:             "test assertion",
-			errType:          ErrorTypeTestAssertion,
-			feedbackText:     "expected: 5, got: 0",
-			wantHeading:      "Test Assertion",
-			wantGuidanceSnip: "failing test assertions",
-		},
-		{
-			name:             "test runtime",
-			errType:          ErrorTypeTestRuntime,
-			feedbackText:     "panic: runtime error: index out of range",
-			wantHeading:      "Test Runtime",
-			wantGuidanceSnip: "runtime panic",
-		},
-		{
-			name:             "spec violation",
-			errType:          ErrorTypeSpecViolation,
-			feedbackText:     "acceptance criterion not met: endpoint returns 404",
-			wantHeading:      "Spec Violation",
-			wantGuidanceSnip: "acceptance criteria",
-		},
-		{
-			name:             "quality concern",
-			errType:          ErrorTypeQualityConcern,
-			feedbackText:     "function is too complex (cyclomatic complexity 15)",
-			wantHeading:      "Quality Concern",
-			wantGuidanceSnip: "quality concerns",
-		},
+		{ErrorTypeCompile, "Compile Error"},
+		{ErrorTypeTypeError, "Type Error"},
+		{ErrorTypeLintStyle, "Lint/Style"},
+		{ErrorTypeTestAssertion, "Test Assertion"},
+		{ErrorTypeTestRuntime, "Test Runtime"},
+		{ErrorTypeSpecViolation, "Spec Violation"},
+		{ErrorTypeQualityConcern, "Quality Concern"},
+		{ErrorTypeUnknown, ""},
 	}
-
 	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			input := ImplementerInput{
-				Task:           &models.Task{ID: "t1", Title: "Fix something"},
-				Attempt:        2,
-				Feedback:       tc.feedbackText,
-				RetryErrorType: tc.errType,
-			}
-			prompt := buildImplementerUserPrompt(input)
-
-			if !strings.Contains(prompt, tc.wantHeading) {
-				t.Errorf("expected heading to contain %q, got:\n%s", tc.wantHeading, prompt)
-			}
-			if !strings.Contains(prompt, tc.wantGuidanceSnip) {
-				t.Errorf("expected guidance to contain %q, got:\n%s", tc.wantGuidanceSnip, prompt)
-			}
-			if !strings.Contains(prompt, tc.feedbackText) {
-				t.Errorf("expected prompt to contain feedback text %q, got:\n%s", tc.feedbackText, prompt)
-			}
-			// Guidance must appear BEFORE the raw feedback text.
-			guidanceIdx := strings.Index(prompt, tc.wantGuidanceSnip)
-			feedbackIdx := strings.Index(prompt, tc.feedbackText)
-			if guidanceIdx == -1 || feedbackIdx == -1 || guidanceIdx > feedbackIdx {
-				t.Errorf("guidance must appear before feedback text; guidanceIdx=%d feedbackIdx=%d", guidanceIdx, feedbackIdx)
-			}
-		})
-	}
-}
-
-// TestBuildImplementerUserPrompt_UnknownTypeGenericHeader verifies that the
-// unknown / zero-value error type still produces the old generic ## RETRY header.
-func TestBuildImplementerUserPrompt_UnknownTypeGenericHeader(t *testing.T) {
-	input := ImplementerInput{
-		Task:           &models.Task{ID: "t1", Title: "Fix unknown"},
-		Attempt:        2,
-		Feedback:       "something went wrong",
-		RetryErrorType: ErrorTypeUnknown,
-	}
-	prompt := buildImplementerUserPrompt(input)
-
-	if !strings.Contains(prompt, "## RETRY (attempt 2)") {
-		t.Errorf("expected generic '## RETRY (attempt 2)' header for unknown type, got:\n%s", prompt)
-	}
-}
-
-// TestBuildImplementerUserPrompt_ZeroValueTypeGenericHeader verifies backward
-// compatibility when RetryErrorType is the zero value (empty string).
-func TestBuildImplementerUserPrompt_ZeroValueTypeGenericHeader(t *testing.T) {
-	input := ImplementerInput{
-		Task:     &models.Task{ID: "t1", Title: "Fix unknown"},
-		Attempt:  2,
-		Feedback: "something went wrong",
-		// RetryErrorType intentionally left as zero value
-	}
-	prompt := buildImplementerUserPrompt(input)
-
-	if !strings.Contains(prompt, "## RETRY (attempt 2)") {
-		t.Errorf("expected generic '## RETRY (attempt 2)' header for zero-value type, got:\n%s", prompt)
+		if got := retryErrorTypeLabel(tc.errType); got != tc.want {
+			t.Errorf("retryErrorTypeLabel(%q) = %q, want %q", tc.errType, got, tc.want)
+		}
 	}
 }

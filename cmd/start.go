@@ -158,10 +158,7 @@ func (f *taskRunnerFactory) Create(input daemon.TaskRunnerFactoryInput) daemon.T
 		AgentRunner:                f.agentRunner,
 		AgentRunnerName:            f.agentRunnerName,
 	}
-	tr := pipeline.NewPipelineTaskRunner(f.llm, f.db, f.gitProv, f.cmdRunner, cfg)
-	if f.registry != nil {
-		tr.WithRegistry(f.registry)
-	}
+	tr := pipeline.NewPipelineTaskRunner(f.llm, f.db, f.gitProv, f.cmdRunner, cfg, f.registry)
 	if f.metrics != nil {
 		tr.SetMetrics(f.metrics)
 	}
@@ -214,14 +211,12 @@ func newStartCmd() *cobra.Command {
 				log.Info().Int("count", len(hashes)).Str("prompts_dir", promptsDir).Msg("prompt templates hashed")
 			}
 
-			// 1d. Load prompt registry (graceful — nil registry if dir missing or empty).
-			var promptRegistry *prompts.Registry
-			if reg, regErr := prompts.Load(promptsDir); regErr != nil {
-				log.Warn().Err(regErr).Str("prompts_dir", promptsDir).Msg("could not load prompt registry; pipeline components will use legacy prompts")
-			} else {
-				promptRegistry = reg
-				log.Info().Str("prompts_dir", promptsDir).Msg("prompt registry loaded")
+			// 1d. Load prompt registry (required — hard failure if missing or invalid).
+			promptRegistry, err := prompts.Load(promptsDir)
+			if err != nil {
+				return fmt.Errorf("load prompt registry from %s: %w", promptsDir, err)
 			}
+			log.Info().Str("prompts_dir", promptsDir).Msg("prompt registry loaded")
 
 			// 2. Initialize LLM provider.
 			baseProv, err := llm.NewProviderFromConfig(cfg.LLM.DefaultProvider, cfg.LLM)
@@ -288,10 +283,8 @@ func newStartCmd() *cobra.Command {
 					return fmt.Errorf("pipeline agent runner: %w", arErr)
 				}
 				// Wire prompt registry into ClaudeCodeRunner when applicable.
-				if promptRegistry != nil {
-					if ccr, ok := pipelineAgentRunner.(*agent.ClaudeCodeRunner); ok {
-						ccr.WithRegistry(promptRegistry)
-					}
+				if ccr, ok := pipelineAgentRunner.(*agent.ClaudeCodeRunner); ok {
+					ccr.WithRegistry(promptRegistry)
 				}
 				if closer, ok := pipelineAgentRunner.(interface{ Close() error }); ok {
 					defer closer.Close()
@@ -428,14 +421,12 @@ func newStartCmd() *cobra.Command {
 				}
 
 				// Supplement YAML skills with registry-based skills (SKILL.md files).
-				if promptRegistry != nil {
-					regSkills, regErr := skills.LoadFromRegistry(promptRegistry)
-					if regErr != nil {
-						log.Warn().Err(regErr).Msg("failed to load skills from prompt registry; skipping registry skills")
-					} else if len(regSkills) > 0 {
-						loadedSkills = append(loadedSkills, regSkills...)
-						log.Info().Int("count", len(regSkills)).Msg("registry skills loaded")
-					}
+				regSkills, regErr := skills.LoadFromRegistry(promptRegistry)
+				if regErr != nil {
+					log.Warn().Err(regErr).Msg("failed to load skills from prompt registry; skipping registry skills")
+				} else if len(regSkills) > 0 {
+					loadedSkills = append(loadedSkills, regSkills...)
+					log.Info().Int("count", len(regSkills)).Msg("registry skills loaded")
 				}
 
 				if len(loadedSkills) > 0 {

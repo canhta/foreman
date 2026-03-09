@@ -36,47 +36,26 @@ type FinalReviewer struct {
 	registry *prompts.Registry
 }
 
-// NewFinalReviewer creates a final reviewer.
-func NewFinalReviewer(provider llm.LlmProvider) *FinalReviewer {
-	return &FinalReviewer{llm: provider}
-}
-
-// WithRegistry attaches a prompt registry so the reviewer uses registry.Render()
-// instead of the legacy RenderPrompt() function.
-func (r *FinalReviewer) WithRegistry(reg *prompts.Registry) *FinalReviewer {
-	r.registry = reg
-	return r
-}
-
 // Compile-time check.
 var _ FinalReviewRunner = (*FinalReviewer)(nil)
 
+// NewFinalReviewer creates a final reviewer.
+// Registry is required; NewFinalReviewer panics if reg is nil.
+func NewFinalReviewer(provider llm.LlmProvider, reg *prompts.Registry) *FinalReviewer {
+	if reg == nil {
+		panic("final_reviewer: registry must not be nil")
+	}
+	return &FinalReviewer{llm: provider, registry: reg}
+}
+
 // Review runs the final review and returns the parsed result.
 func (r *FinalReviewer) Review(ctx context.Context, input FinalReviewInput) (*models.ReviewOutput, error) {
-	completedTasks := make([]CompletedTask, len(input.TaskSummaries))
-	for i, t := range input.TaskSummaries {
-		completedTasks[i] = CompletedTask(t)
-	}
-
-	var (
-		system string
-		err    error
-	)
-	if r.registry != nil {
-		system, err = r.registry.Render(prompts.KindRole, "final-reviewer", map[string]any{
-			"ticket_title":       input.TicketTitle,
-			"ticket_description": input.TicketDescription,
-			"full_diff":          input.FullDiff,
-			"completed_tasks":    completedTasks,
-		})
-	} else {
-		system, err = RenderPrompt("final_reviewer", PromptContext{
-			TicketTitle:       input.TicketTitle,
-			TicketDescription: input.TicketDescription,
-			FullDiff:          input.FullDiff,
-			CompletedTasks:    completedTasks,
-		})
-	}
+	system, err := r.registry.Render(prompts.KindRole, "final-reviewer", map[string]any{
+		"ticket_title":       input.TicketTitle,
+		"ticket_description": input.TicketDescription,
+		"full_diff":          input.FullDiff,
+		"completed_tasks":    input.TaskSummaries,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("render final_reviewer prompt: %w", err)
 	}

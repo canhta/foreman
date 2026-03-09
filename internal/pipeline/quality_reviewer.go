@@ -27,38 +27,24 @@ type QualityReviewer struct {
 	registry *prompts.Registry
 }
 
-// NewQualityReviewer creates a quality reviewer.
-func NewQualityReviewer(provider llm.LlmProvider) *QualityReviewer {
-	return &QualityReviewer{llm: provider}
-}
-
-// WithRegistry attaches a prompt registry so the reviewer uses registry.Render()
-// instead of the legacy RenderPrompt() function.
-func (r *QualityReviewer) WithRegistry(reg *prompts.Registry) *QualityReviewer {
-	r.registry = reg
-	return r
-}
-
 // Compile-time check.
 var _ QualityReviewRunner = (*QualityReviewer)(nil)
 
+// NewQualityReviewer creates a quality reviewer.
+// Registry is required; NewQualityReviewer panics if reg is nil.
+func NewQualityReviewer(provider llm.LlmProvider, reg *prompts.Registry) *QualityReviewer {
+	if reg == nil {
+		panic("quality_reviewer: registry must not be nil")
+	}
+	return &QualityReviewer{llm: provider, registry: reg}
+}
+
 // Review runs a quality review and returns the parsed result.
 func (r *QualityReviewer) Review(ctx context.Context, input QualityReviewInput) (*models.ReviewOutput, error) {
-	var (
-		system string
-		err    error
-	)
-	if r.registry != nil {
-		system, err = r.registry.Render(prompts.KindRole, "quality-reviewer", map[string]any{
-			"diff":              input.Diff,
-			"codebase_patterns": input.CodebasePatterns,
-		})
-	} else {
-		system, err = RenderPrompt("quality_reviewer", PromptContext{
-			Diff:             input.Diff,
-			CodebasePatterns: input.CodebasePatterns,
-		})
-	}
+	system, err := r.registry.Render(prompts.KindRole, "quality-reviewer", map[string]any{
+		"diff":              input.Diff,
+		"codebase_patterns": input.CodebasePatterns,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("render quality_reviewer prompt: %w", err)
 	}

@@ -42,7 +42,7 @@ func TestRunTask_AgentRunner_DelegatesToAgent(t *testing.T) {
 		AgentRunner:              mockAgent,
 		AgentRunnerName:          "claudecode",
 	}
-	tr := NewPipelineTaskRunner(nil, mockDB, mockGit, nil, cfg)
+	tr := NewPipelineTaskRunner(nil, mockDB, mockGit, nil, cfg, mustLoadTestRegistry(t))
 
 	task := &models.Task{
 		ID:       "task-1",
@@ -84,7 +84,7 @@ func TestRunTask_AgentRunner_SyntheticLlmCall_UsesActualModel(t *testing.T) {
 		AgentRunnerName:          "claudecode",
 		Models:                   models.ModelsConfig{Implementer: "openai:gpt-5.4"}, // wrong config value
 	}
-	tr := NewPipelineTaskRunner(nil, mockDB, mockGit, nil, cfg)
+	tr := NewPipelineTaskRunner(nil, mockDB, mockGit, nil, cfg, mustLoadTestRegistry(t))
 
 	task := &models.Task{ID: "task-1", TicketID: "ticket-1", Title: "Add feature"}
 	err := tr.RunTask(context.Background(), task)
@@ -112,7 +112,7 @@ func TestRunTask_AgentRunner_EmptyDiff_Retries(t *testing.T) {
 		MaxImplementationRetries: 1,
 		AgentRunner:              mockAgent,
 	}
-	tr := NewPipelineTaskRunner(nil, mockDB, mockGit, nil, cfg)
+	tr := NewPipelineTaskRunner(nil, mockDB, mockGit, nil, cfg, mustLoadTestRegistry(t))
 	task := &models.Task{ID: "t-1", TicketID: "tk-1", Title: "Fix bug"}
 
 	err := tr.RunTask(context.Background(), task)
@@ -141,7 +141,7 @@ func TestRunTask_NoAgentRunner_UsesBuiltinPath(t *testing.T) {
 	// will fail — but it should NOT call mockAgent.
 	mockDB := newMockTaskRunnerDB()
 	mockGit := &realMockGitProvider{diffOutput: "some diff"}
-	tr := NewPipelineTaskRunner(nil, mockDB, mockGit, nil, cfg)
+	tr := NewPipelineTaskRunner(nil, mockDB, mockGit, nil, cfg, mustLoadTestRegistry(t))
 	task := &models.Task{ID: "t-1", TicketID: "tk-1", Title: "Test builtin path"}
 
 	_ = tr.RunTask(context.Background(), task)

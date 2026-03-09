@@ -144,7 +144,8 @@ func (m *realMockCmdRunner) Run(_ context.Context, _, _ string, _ []string, _ in
 func (m *realMockCmdRunner) CommandExists(_ context.Context, _ string) bool { return true }
 
 // buildMinimalTaskRunner wires a PipelineTaskRunner with no-op mocks.
-func buildMinimalTaskRunner(db TaskRunnerDB) *PipelineTaskRunner {
+func buildMinimalTaskRunner(t *testing.T, db TaskRunnerDB) *PipelineTaskRunner {
+	t.Helper()
 	llm := &mockLLM{responses: map[string]string{}}
 	g := &realMockGitProvider{}
 	cmd := &realMockCmdRunner{}
@@ -152,7 +153,7 @@ func buildMinimalTaskRunner(db TaskRunnerDB) *PipelineTaskRunner {
 		MaxImplementationRetries: 0,
 		MaxLlmCallsPerTask:       8,
 		SearchReplaceSimilarity:  0.8,
-	})
+	}, mustLoadTestRegistry(t))
 }
 
 // buildNewFileResponse builds a valid implementer LLM response that creates one new file.
@@ -170,7 +171,7 @@ func TestDAGTaskAdapter_ImplementsDaemonInterface(t *testing.T) {
 // TestNewDAGTaskAdapter verifies constructor wiring.
 func TestNewDAGTaskAdapter(t *testing.T) {
 	db := newMockAdapterDB(nil)
-	r := buildMinimalTaskRunner(db)
+	r := buildMinimalTaskRunner(t, db)
 	adapter := NewDAGTaskAdapter(r, db, "ticket-1")
 	require.NotNil(t, adapter)
 	assert.Same(t, r, adapter.runner)
@@ -184,7 +185,7 @@ func TestDAGTaskAdapter_findTask_FoundByID(t *testing.T) {
 		{ID: "task-2", Title: "Second task"},
 	}
 	db := newMockAdapterDB(tasks)
-	adapter := &DAGTaskAdapter{runner: buildMinimalTaskRunner(db), db: db, ticketID: "ticket-1"}
+	adapter := &DAGTaskAdapter{runner: buildMinimalTaskRunner(t, db), db: db, ticketID: "ticket-1"}
 
 	task, err := adapter.findTask(context.Background(), "task-2")
 	require.NoError(t, err)
@@ -197,7 +198,7 @@ func TestDAGTaskAdapter_findTask_FoundByID(t *testing.T) {
 func TestDAGTaskAdapter_findTask_ErrorWhenNotFound(t *testing.T) {
 	tasks := []models.Task{{ID: "task-1", Title: "Something"}}
 	db := newMockAdapterDB(tasks)
-	adapter := &DAGTaskAdapter{runner: buildMinimalTaskRunner(db), db: db, ticketID: "ticket-1"}
+	adapter := &DAGTaskAdapter{runner: buildMinimalTaskRunner(t, db), db: db, ticketID: "ticket-1"}
 
 	task, err := adapter.findTask(context.Background(), "unknown-task")
 	require.Error(t, err)
@@ -210,7 +211,7 @@ func TestDAGTaskAdapter_findTask_ErrorWhenNotFound(t *testing.T) {
 func TestDAGTaskAdapter_findTask_ErrorWhenDBError(t *testing.T) {
 	db := newMockAdapterDB(nil)
 	db.listErr = fmt.Errorf("db unavailable")
-	adapter := &DAGTaskAdapter{runner: buildMinimalTaskRunner(db), db: db, ticketID: "ticket-1"}
+	adapter := &DAGTaskAdapter{runner: buildMinimalTaskRunner(t, db), db: db, ticketID: "ticket-1"}
 
 	task, err := adapter.findTask(context.Background(), "task-xyz")
 	require.Error(t, err)
@@ -222,7 +223,7 @@ func TestDAGTaskAdapter_findTask_ErrorWhenDBError(t *testing.T) {
 // error when no tasks exist for the ticket.
 func TestDAGTaskAdapter_findTask_ErrorWhenEmptyList(t *testing.T) {
 	db := newMockAdapterDB([]models.Task{})
-	adapter := &DAGTaskAdapter{runner: buildMinimalTaskRunner(db), db: db, ticketID: "ticket-1"}
+	adapter := &DAGTaskAdapter{runner: buildMinimalTaskRunner(t, db), db: db, ticketID: "ticket-1"}
 
 	task, err := adapter.findTask(context.Background(), "task-abc")
 	require.Error(t, err)
@@ -252,7 +253,7 @@ func TestDAGTaskAdapter_Run_Success(t *testing.T) {
 		MaxLlmCallsPerTask:       8,
 		EnableTDDVerification:    false,
 		SearchReplaceSimilarity:  0.8,
-	}).WithRegistry(mustLoadTestRegistry(t))
+	}, mustLoadTestRegistry(t))
 	adapter := NewDAGTaskAdapter(r, db, "ticket-1")
 
 	result := adapter.Run(context.Background(), "task-1")
@@ -282,7 +283,7 @@ func TestDAGTaskAdapter_Run_EscalationReturnsFailed(t *testing.T) {
 		MaxLlmCallsPerTask:       8,
 		EnableTDDVerification:    false,
 		SearchReplaceSimilarity:  0.8,
-	})
+	}, mustLoadTestRegistry(t))
 	adapter := NewDAGTaskAdapter(r, db, "ticket-1")
 
 	result := adapter.Run(context.Background(), "task-esc")
@@ -317,7 +318,7 @@ func TestDAGTaskAdapter_Run_AllRetriesExhausted(t *testing.T) {
 		MaxLlmCallsPerTask:       8,
 		EnableTDDVerification:    false,
 		SearchReplaceSimilarity:  0.8,
-	})
+	}, mustLoadTestRegistry(t))
 	adapter := NewDAGTaskAdapter(r, db, "ticket-1")
 
 	result := adapter.Run(context.Background(), "task-bad")
@@ -331,7 +332,7 @@ func TestDAGTaskAdapter_Run_AllRetriesExhausted(t *testing.T) {
 func TestDAGTaskAdapter_Run_TaskNotFound_ReturnsError(t *testing.T) {
 	db := newMockAdapterDB([]models.Task{})
 
-	r := buildMinimalTaskRunner(db)
+	r := buildMinimalTaskRunner(t, db)
 	adapter := NewDAGTaskAdapter(r, db, "ticket-1")
 
 	result := adapter.Run(context.Background(), "ghost-task")

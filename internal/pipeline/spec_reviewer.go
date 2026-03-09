@@ -35,15 +35,12 @@ type SpecReviewer struct {
 }
 
 // NewSpecReviewer creates a spec reviewer.
-func NewSpecReviewer(provider llm.LlmProvider) *SpecReviewer {
-	return &SpecReviewer{llm: provider}
-}
-
-// WithRegistry attaches a prompt registry so the reviewer uses registry.Render()
-// instead of the legacy RenderPrompt() function.
-func (r *SpecReviewer) WithRegistry(reg *prompts.Registry) *SpecReviewer {
-	r.registry = reg
-	return r
+// Registry is required; NewSpecReviewer panics if reg is nil.
+func NewSpecReviewer(provider llm.LlmProvider, reg *prompts.Registry) *SpecReviewer {
+	if reg == nil {
+		panic("spec_reviewer: registry must not be nil")
+	}
+	return &SpecReviewer{llm: provider, registry: reg}
 }
 
 // Review runs a spec review and returns the parsed result.
@@ -52,23 +49,11 @@ func (r *SpecReviewer) Review(ctx context.Context, input SpecReviewInput) (*mode
 		return nil, fmt.Errorf("spec review requires at least one acceptance criterion")
 	}
 
-	var (
-		system string
-		err    error
-	)
-	if r.registry != nil {
-		system, err = r.registry.Render(prompts.KindRole, "spec-reviewer", map[string]any{
-			"task_title":          input.TaskTitle,
-			"acceptance_criteria": input.AcceptanceCriteria,
-			"diff":                input.Diff,
-		})
-	} else {
-		system, err = RenderPrompt("spec_reviewer", PromptContext{
-			TaskTitle:          input.TaskTitle,
-			AcceptanceCriteria: input.AcceptanceCriteria,
-			Diff:               input.Diff,
-		})
-	}
+	system, err := r.registry.Render(prompts.KindRole, "spec-reviewer", map[string]any{
+		"task_title":          input.TaskTitle,
+		"acceptance_criteria": input.AcceptanceCriteria,
+		"diff":                input.Diff,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("render spec_reviewer prompt: %w", err)
 	}

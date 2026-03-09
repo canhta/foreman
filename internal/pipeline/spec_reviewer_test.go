@@ -39,7 +39,7 @@ ISSUES:
 EXTRAS:
 - None`}
 
-	reviewer := NewSpecReviewer(mock).WithRegistry(mustLoadTestRegistry(t))
+	reviewer := NewSpecReviewer(mock, mustLoadTestRegistry(t))
 	result, err := reviewer.Review(context.Background(), SpecReviewInput{
 		TaskTitle:          "Add user handler",
 		AcceptanceCriteria: []string{"Handler returns 200", "Response is JSON"},
@@ -52,7 +52,7 @@ EXTRAS:
 }
 
 func TestSpecReviewer_EmptyCriteria(t *testing.T) {
-	reviewer := NewSpecReviewer(&specMock{})
+	reviewer := NewSpecReviewer(&specMock{}, mustLoadTestRegistry(t))
 	_, err := reviewer.Review(context.Background(), SpecReviewInput{
 		TaskTitle:          "Add user handler",
 		AcceptanceCriteria: []string{},
@@ -76,7 +76,7 @@ ISSUES:
 EXTRAS:
 - None`}
 
-	reviewer := NewSpecReviewer(mock).WithRegistry(mustLoadTestRegistry(t))
+	reviewer := NewSpecReviewer(mock, mustLoadTestRegistry(t))
 	result, err := reviewer.Review(context.Background(), SpecReviewInput{
 		TaskTitle:          "Add user handler",
 		AcceptanceCriteria: []string{"Handler returns 200", "Response is JSON"},

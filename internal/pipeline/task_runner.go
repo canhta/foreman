@@ -111,6 +111,7 @@ type PipelineTaskRunner struct {
 	metrics         *telemetry.Metrics
 	snap            *snapshot.Snapshot
 	config          TaskRunnerConfig
+	registry        *prompts.Registry
 }
 
 // NewPipelineTaskRunner creates a task runner that wires all pipeline stages together.
@@ -120,6 +121,7 @@ func NewPipelineTaskRunner(
 	gitProv git.GitProvider,
 	cmdRunner runner.CommandRunner,
 	config TaskRunnerConfig,
+	reg *prompts.Registry,
 ) *PipelineTaskRunner {
 	return &PipelineTaskRunner{
 		llm:             llm,
@@ -127,27 +129,16 @@ func NewPipelineTaskRunner(
 		git:             gitProv,
 		cmdRunner:       cmdRunner,
 		config:          config,
-		implementer:     NewImplementer(llm),
-		specReviewer:    NewSpecReviewer(llm),
-		qualityReviewer: NewQualityReviewer(llm),
+		registry:        reg,
+		implementer:     NewImplementer(llm, reg),
+		specReviewer:    NewSpecReviewer(llm, reg),
+		qualityReviewer: NewQualityReviewer(llm, reg),
 	}
 }
 
 // SetMetrics attaches a Metrics instance for instrumentation.
 func (r *PipelineTaskRunner) SetMetrics(m *telemetry.Metrics) {
 	r.metrics = m
-}
-
-// WithRegistry attaches a prompt registry to all pipeline components that support it.
-// Passing nil is a no-op. Returns the runner for chaining.
-func (r *PipelineTaskRunner) WithRegistry(reg *prompts.Registry) *PipelineTaskRunner {
-	if reg == nil {
-		return r
-	}
-	r.implementer.WithRegistry(reg)
-	r.specReviewer.WithRegistry(reg)
-	r.qualityReviewer.WithRegistry(reg)
-	return r
 }
 
 // WithSnapshot attaches a Snapshot instance for pre-implementation rollback.
@@ -418,19 +409,16 @@ func (r *PipelineTaskRunner) RunTask(ctx context.Context, task *models.Task) err
 // AgentRunner. The agent handles its own TDD loop and file operations.
 // Foreman only: builds prompt, calls agent, verifies diff, stage+commit, update status.
 func (r *PipelineTaskRunner) runTaskWithAgent(ctx context.Context, task *models.Task) error {
-	pb := NewPromptBuilder(r.llm)
 	feedback := NewFeedbackAccumulator()
 
-	// Inject Claude Code skills if applicable.
+	// Write .claude/ structure if running under Claude Code runner.
 	if r.config.AgentRunnerName == "claudecode" {
-		injector := NewSkillInjector(SkillInjectorConfig{
-			TestCommand: r.config.TestCommand,
-			Language:    r.config.CodebasePatterns,
-		})
-		if err := injector.Inject(r.config.WorkDir); err != nil {
-			log.Warn().Err(err).Msg("skill injection failed, proceeding without skills")
+		vars := map[string]any{
+			"test_command": r.config.TestCommand,
 		}
-		defer injector.Cleanup(r.config.WorkDir)
+		if err := r.registry.ForClaude(r.config.WorkDir, vars); err != nil {
+			log.Warn().Err(err).Msg("registry.ForClaude failed, proceeding without .claude/ structure")
+		}
 	}
 
 	for attempt := 1; attempt <= r.config.MaxImplementationRetries+1; attempt++ {
@@ -438,13 +426,29 @@ func (r *PipelineTaskRunner) runTaskWithAgent(ctx context.Context, task *models.
 			feedback.ResetKeepingSummary()
 		}
 
-		// Build prompt for this attempt.
-		prompt := pb.Build(task, nil, PromptBuilderConfig{
-			TestCommand:      r.config.TestCommand,
-			CodebasePatterns: r.config.CodebasePatterns,
-			RetryFeedback:    feedback.Render(),
-			Attempt:          attempt,
-		})
+		// Build prompt for this attempt via registry.
+		roleName := "implementer"
+		if attempt > 1 {
+			roleName = "implementer-retry"
+		}
+		promptVars := map[string]any{
+			"task_title":          task.Title,
+			"task_description":    task.Description,
+			"acceptance_criteria": task.AcceptanceCriteria,
+			"context_files":       map[string]string{},
+			"codebase_patterns":   r.config.CodebasePatterns,
+			"test_command":        r.config.TestCommand,
+			"attempt":             attempt,
+			"max_attempts":        r.config.MaxImplementationRetries + 1,
+			"retry_feedback":      feedback.Render(),
+		}
+		if attempt > 1 && feedback.Render() != "" {
+			promptVars["tdd_failure"] = feedback.Render()
+		}
+		prompt, err := r.registry.Render(prompts.KindRole, roleName, promptVars)
+		if err != nil {
+			return fmt.Errorf("render agent prompt (attempt %d): %w", attempt, err)
+		}
 
 		// Delegate to agent.
 		result, err := r.config.AgentRunner.Run(ctx, agent.AgentRequest{
