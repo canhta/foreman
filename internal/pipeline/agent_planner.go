@@ -11,6 +11,11 @@ import (
 
 // AgentPlanner implements planning by delegating to an AgentRunner
 // that can explore the codebase and return structured output.
+//
+// Note: AgentPlanner requires an AgentRunner that populates AgentResult.Structured
+// (e.g., the claudecode runner which extracts JSON from the agent's structured output).
+// With the builtin runner, Structured will be nil and planning will fail with
+// "no structured output returned". Use claudecode or a compatible runner.
 type AgentPlanner struct {
 	runner agent.AgentRunner
 	limits *models.LimitsConfig
@@ -52,6 +57,9 @@ func (ap *AgentPlanner) Plan(ctx context.Context, workDir string, ticket *models
 		return nil, fmt.Errorf("agent plan validation failed: plan has %d tasks, exceeding limit of %d",
 			len(planResult.Tasks), ap.limits.MaxTasksPerTicket)
 	}
+
+	// Normalize numeric depends_on entries (LLM may use 0-based index strings instead of titles)
+	normalizeNumericDepsOn(planResult)
 
 	// Topological sort (also validates dependency graph for cycles/unknown deps)
 	sorted, err := TopologicalSort(planResult.Tasks)

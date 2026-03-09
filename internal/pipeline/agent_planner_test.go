@@ -73,13 +73,24 @@ func TestAgentPlanner_Plan_AgentError_ReturnsFallbackError(t *testing.T) {
 func TestAgentPlanner_Plan_InvalidStructured_ReturnsError(t *testing.T) {
 	mock := &mockAgentRunnerForPlanner{
 		result: agent.AgentResult{
-			Structured: "not valid json object",
+			Structured: json.RawMessage("this is not json"),
 		},
 	}
 	ap := NewAgentPlanner(mock, &models.LimitsConfig{MaxTasksPerTicket: 10})
 
 	_, err := ap.Plan(context.Background(), "/tmp/repo", &models.Ticket{Title: "Test"})
 	assert.Error(t, err)
+}
+
+func TestAgentPlanner_Plan_NilStructured_ReturnsError(t *testing.T) {
+	mock := &mockAgentRunnerForPlanner{
+		result: agent.AgentResult{Structured: nil},
+	}
+	ap := NewAgentPlanner(mock, &models.LimitsConfig{MaxTasksPerTicket: 10})
+
+	_, err := ap.Plan(context.Background(), "/tmp/repo", &models.Ticket{Title: "Test"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "no structured output")
 }
 
 func TestAgentPlanner_Plan_ValidatesAndSorts(t *testing.T) {
