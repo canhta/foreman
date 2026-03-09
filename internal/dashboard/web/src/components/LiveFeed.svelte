@@ -13,6 +13,16 @@
     if (eventType.includes('start') || eventType.includes('creat') || eventType.includes('new')) return 'text-accent';
     return 'text-muted-bright';
   }
+
+  function runnerBadgeCls(runner: string): string {
+    if (runner === 'claudecode') return 'text-accent border-accent/40';
+    if (runner === 'copilot') return 'text-purple-400 border-purple-400/40';
+    return 'text-muted border-border-strong';
+  }
+
+  function shortModel(model: string): string {
+    return model.replace('claude-', '');
+  }
 </script>
 
 <section
@@ -54,6 +64,18 @@
           <!-- Message -->
           {#if evt.Message}
             <div class="text-text/50 mt-0.5 truncate pl-3.5">{evt.Message}</div>
+          {/if}
+
+          <!-- Runner / model badges -->
+          {#if evt.runner || evt.model}
+            <div class="pl-3.5 mt-0.5 flex items-center gap-1.5">
+              {#if evt.runner}
+                <span class="text-[9px] border px-1 py-0.5 leading-none {runnerBadgeCls(evt.runner)}">{evt.runner}</span>
+              {/if}
+              {#if evt.model}
+                <span class="text-[9px] text-muted-bright">{shortModel(evt.model)}</span>
+              {/if}
+            </div>
           {/if}
 
           <!-- Ticket link -->
