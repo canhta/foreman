@@ -111,8 +111,10 @@ func (a *API) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 //nolint:govet // fieldalignment: embedding EventRecord first prioritises readability
 type enrichedEvent struct {
 	models.EventRecord
-	TicketTitle string `json:"ticket_title"`
-	Submitter   string `json:"submitter"`
+	TicketTitle string `json:"ticket_title,omitempty"`
+	Submitter   string `json:"submitter,omitempty"`
+	Runner      string `json:"runner,omitempty"`
+	Model       string `json:"model,omitempty"`
 }
 
 func (a *API) enrichEvent(ctx context.Context, evt *models.EventRecord) *enrichedEvent {
@@ -124,5 +126,19 @@ func (a *API) enrichEvent(ctx context.Context, evt *models.EventRecord) *enriche
 			enriched.Submitter = ticket.ChannelSenderID
 		}
 	}
+
+	// Extract runner and model from Details JSON if present
+	if evt.Details != "" {
+		var details map[string]interface{}
+		if err := json.Unmarshal([]byte(evt.Details), &details); err == nil {
+			if r, ok := details["runner"].(string); ok {
+				enriched.Runner = r
+			}
+			if m, ok := details["model"].(string); ok {
+				enriched.Model = m
+			}
+		}
+	}
+
 	return enriched
 }
