@@ -32,9 +32,35 @@ For the full TOML reference for every integration, see [Configuration](configura
 
 **Setup:**
 
-1. Create a GitHub personal access token (or a bot account token) with `repo` scope.
+1. Create a GitHub personal access token (or a bot account token) with `repo` scope at `https://github.com/settings/tokens`.
+   - For fine-grained tokens: `https://github.com/settings/personal-access-tokens/new`
 2. Add the `foreman-ready` label to your repository.
 3. For any issue you want Foreman to process, apply the `foreman-ready` label.
+
+**Org private repository token setup (recommended):**
+
+1. Create a **fine-grained personal access token** at `https://github.com/settings/personal-access-tokens/new`.
+2. Set `Resource owner` to your organization (for example `SETA-International-Vietnam`).
+3. Set `Repository access` to `Only select repositories`, then select your private repo.
+4. Set repository permissions:
+   - `Contents`: `Read and write` (branch push)
+   - `Pull requests`: `Read and write` (create/update PR)
+   - `Issues`: `Read and write` (comments/links)
+   - `Metadata`: `Read-only` (usually auto-granted)
+5. If your org enforces SAML SSO, authorize the token for SSO after creation.
+6. If your org requires PAT approval, have an org admin approve the token.
+7. Export token before running Foreman:
+   ```bash
+   export GITHUB_TOKEN=github_pat_...
+   ```
+
+Quick verification:
+
+```bash
+curl -s -H "Authorization: Bearer $GITHUB_TOKEN" https://api.github.com/user | head
+```
+
+If that passes but PR creation still fails with `403`, the token is usually missing org approval, SSO authorization, or one of the permissions above.
 
 **Behaviour:**
 
