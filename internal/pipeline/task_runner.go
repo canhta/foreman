@@ -226,7 +226,7 @@ func (r *PipelineTaskRunner) RunTask(ctx context.Context, task *models.Task) err
 	}
 
 	// currentRetryErrorType holds the error type for the current retry.
-	// Zero value on attempt 1 is intentional — buildImplementerUserPrompt
+	// Zero value on attempt 1 is intentional — the implementer role template
 	// renders no retry section when Attempt == 1, regardless of error type.
 	var currentRetryErrorType ErrorType
 
