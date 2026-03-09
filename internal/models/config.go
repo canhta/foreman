@@ -76,11 +76,44 @@ type DashboardConfig struct {
 	Enabled   bool   `mapstructure:"enabled"`
 }
 
+//nolint:govet // fieldalignment: struct field order prioritises readability over padding
 type TrackerConfig struct {
-	Provider                  string `mapstructure:"provider"`
-	PickupLabel               string `mapstructure:"pickup_label"`
-	ClarificationLabel        string `mapstructure:"clarification_label"`
-	ClarificationTimeoutHours int    `mapstructure:"clarification_timeout_hours"`
+	Provider                  string                 `mapstructure:"provider"`
+	PickupLabel               string                 `mapstructure:"pickup_label"`
+	ClarificationLabel        string                 `mapstructure:"clarification_label"`
+	ClarificationTimeoutHours int                    `mapstructure:"clarification_timeout_hours"`
+	Jira                      JiraTrackerConfig      `mapstructure:"jira"`
+	GitHub                    GitHubTrackerConfig    `mapstructure:"github"`
+	Linear                    LinearTrackerConfig    `mapstructure:"linear"`
+	LocalFile                 LocalFileTrackerConfig `mapstructure:"local_file"`
+}
+
+type JiraTrackerConfig struct {
+	BaseURL          string `mapstructure:"base_url"`
+	Email            string `mapstructure:"email"`
+	APIToken         string `mapstructure:"api_token"`
+	ProjectKey       string `mapstructure:"project_key"`
+	StatusInProgress string `mapstructure:"status_in_progress"`
+	StatusInReview   string `mapstructure:"status_in_review"`
+	StatusDone       string `mapstructure:"status_done"`
+	StatusBlocked    string `mapstructure:"status_blocked"`
+}
+
+type GitHubTrackerConfig struct {
+	Owner   string `mapstructure:"owner"`
+	Repo    string `mapstructure:"repo"`
+	Token   string `mapstructure:"token"`
+	BaseURL string `mapstructure:"base_url"` // empty = https://api.github.com
+}
+
+type LinearTrackerConfig struct {
+	APIKey  string `mapstructure:"api_key"`
+	TeamID  string `mapstructure:"team_id"`
+	BaseURL string `mapstructure:"base_url"` // empty = https://api.linear.app
+}
+
+type LocalFileTrackerConfig struct {
+	Path string `mapstructure:"path"`
 }
 
 type GitConfig struct {

@@ -60,6 +60,11 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("tracker.pickup_label", "foreman-ready")
 	v.SetDefault("tracker.clarification_label", "foreman-needs-info")
 	v.SetDefault("tracker.clarification_timeout_hours", 72)
+	v.SetDefault("tracker.jira.status_in_progress", "In Progress")
+	v.SetDefault("tracker.jira.status_in_review", "In Review")
+	v.SetDefault("tracker.jira.status_done", "Done")
+	v.SetDefault("tracker.jira.status_blocked", "Blocked")
+	v.SetDefault("tracker.local_file.path", "./tickets")
 
 	v.SetDefault("git.provider", "github")
 	v.SetDefault("git.backend", "native")
@@ -163,6 +168,9 @@ func expandEnvVars(cfg *models.Config) {
 	cfg.Dashboard.AuthToken = expandEnv(cfg.Dashboard.AuthToken)
 	cfg.Database.Postgres.URL = expandEnv(cfg.Database.Postgres.URL)
 	cfg.Skills.AgentRunner.Copilot.GitHubToken = expandEnv(cfg.Skills.AgentRunner.Copilot.GitHubToken)
+	cfg.Tracker.Jira.APIToken = expandEnv(cfg.Tracker.Jira.APIToken)
+	cfg.Tracker.GitHub.Token = expandEnv(cfg.Tracker.GitHub.Token)
+	cfg.Tracker.Linear.APIKey = expandEnv(cfg.Tracker.Linear.APIKey)
 	cfg.Daemon.WorkDir = expandTilde(cfg.Daemon.WorkDir)
 	cfg.Database.SQLite.Path = expandTilde(cfg.Database.SQLite.Path)
 }
