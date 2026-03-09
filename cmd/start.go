@@ -424,21 +424,27 @@ func buildGitProvider(cfg *models.Config) git.GitProvider {
 }
 
 func buildPRCreator(cfg *models.Config) git.PRCreator {
-	token := os.Getenv("GITHUB_TOKEN")
+	token := cfg.Git.GitHub.Token
+	if token == "" {
+		token = os.Getenv("GITHUB_TOKEN") // backwards compat fallback
+	}
 	owner, repo := parseOwnerRepo(cfg.Git.CloneURL)
 	if owner == "" || repo == "" || token == "" {
 		return nil
 	}
-	return git.NewGitHubPRCreator("", token, owner, repo)
+	return git.NewGitHubPRCreator(cfg.Git.GitHub.BaseURL, token, owner, repo)
 }
 
 func buildPRChecker(cfg *models.Config) git.PRChecker {
-	token := os.Getenv("GITHUB_TOKEN")
+	token := cfg.Git.GitHub.Token
+	if token == "" {
+		token = os.Getenv("GITHUB_TOKEN") // backwards compat fallback
+	}
 	owner, repo := parseOwnerRepo(cfg.Git.CloneURL)
 	if owner == "" || repo == "" || token == "" {
 		return nil
 	}
-	return git.NewGitHubPRChecker("", token, owner, repo)
+	return git.NewGitHubPRChecker(cfg.Git.GitHub.BaseURL, token, owner, repo)
 }
 
 func buildCommandRunner(cfg *models.Config) runner.CommandRunner {
