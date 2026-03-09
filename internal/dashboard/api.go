@@ -884,6 +884,11 @@ func (a *API) handleActivityBreakdown(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+func (a *API) handleClaudeCodeUsage(w http.ResponseWriter, _ *http.Request) {
+	usage := parseClaudeCodeUsage()
+	writeJSON(w, http.StatusOK, usage)
+}
+
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
