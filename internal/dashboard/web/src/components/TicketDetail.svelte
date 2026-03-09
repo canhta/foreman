@@ -204,7 +204,7 @@
       {#if activeTab === 'tasks'}
         <div class="p-3 space-y-1">
           {#each appState.ticketTasks as task (task.ID)}
-            <TaskCard {task} events={appState.ticketEvents} />
+            <TaskCard {task} events={appState.ticketEvents} llmCalls={appState.ticketLlmCalls} />
           {/each}
           {#if appState.ticketTasks.length === 0}
             <div class="text-center text-muted text-xs py-8 tracking-wider">NO TASKS YET</div>

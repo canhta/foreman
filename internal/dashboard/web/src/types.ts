@@ -67,6 +67,7 @@ export interface Task {
   Description: string;
   Status: TaskStatus;
   Sequence: number;
+  AgentRunner: string;  // "builtin" | "claudecode" | "copilot" | ""
   EstimatedComplexity: string;
   DependsOn: string[];
   FilesToModify: string[];
@@ -109,6 +110,7 @@ export interface LlmCallRecord {
   Provider: string;
   Model: string;
   Stage: string;
+  AgentRunner: string;  // "builtin" | "claudecode" | "copilot" | ""
   TokensInput: number;
   TokensOutput: number;
   CostUSD: number;

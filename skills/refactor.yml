@@ -4,6 +4,6 @@ trigger: post_lint
 steps:
   - id: behavior-check
     type: run_command
-    command: "go"
-    args: ["test", "./..."]
+    command: "sh"
+    args: ["-c", "[ -f go.mod ] || exit 0; go test ./..."]
     allow_failure: false

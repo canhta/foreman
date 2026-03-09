@@ -126,6 +126,12 @@ func runSQLiteMigrations(db *sql.DB) error {
 	_, _ = db.ExecContext(ctx,
 		`ALTER TABLE llm_calls ADD COLUMN stage TEXT NOT NULL DEFAULT ''`)
 
+	// Add agent_runner columns to track which runner executed a task or made an LLM call.
+	_, _ = db.ExecContext(ctx,
+		`ALTER TABLE tasks ADD COLUMN agent_runner TEXT NOT NULL DEFAULT ''`)
+	_, _ = db.ExecContext(ctx,
+		`ALTER TABLE llm_calls ADD COLUMN agent_runner TEXT NOT NULL DEFAULT ''`)
+
 	return nil
 }
 
@@ -382,6 +388,14 @@ func (s *SQLiteDB) SetTaskErrorType(ctx context.Context, id, errorType string) e
 	return nil
 }
 
+func (s *SQLiteDB) SetTaskAgentRunner(ctx context.Context, id, agentRunner string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE tasks SET agent_runner = ? WHERE id = ?`, agentRunner, id)
+	if err != nil {
+		return fmt.Errorf("set task agent runner: %w", err)
+	}
+	return nil
+}
+
 func (s *SQLiteDB) GetTaskContextStats(ctx context.Context, taskID string) (TaskContextStats, error) {
 	var stats TaskContextStats
 	err := s.db.QueryRowContext(ctx,
@@ -436,12 +450,12 @@ func (s *SQLiteDB) RecordLlmCall(ctx context.Context, call *models.LlmCallRecord
 	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO llm_calls (id, ticket_id, task_id, role, provider, model, attempt,
 		 tokens_input, tokens_output, cost_usd, duration_ms, prompt_hash, response_summary, status, error_message,
-		 cache_read_input_tokens, cache_creation_input_tokens, prompt_version, stage, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 cache_read_input_tokens, cache_creation_input_tokens, prompt_version, stage, agent_runner, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		call.ID, call.TicketID, taskID, call.Role, call.Provider, call.Model, call.Attempt,
 		call.TokensInput, call.TokensOutput, call.CostUSD, call.DurationMs,
 		call.PromptHash, call.ResponseSummary, call.Status, call.ErrorMessage,
-		call.CacheReadTokens, call.CacheCreationTokens, call.PromptVersion, call.Stage, call.CreatedAt,
+		call.CacheReadTokens, call.CacheCreationTokens, call.PromptVersion, call.Stage, call.AgentRunner, call.CreatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("record llm call: %w", err)
@@ -788,7 +802,8 @@ func (s *SQLiteDB) GetMonthlyCost(ctx context.Context, yearMonth string) (float6
 func (s *SQLiteDB) ListTasks(ctx context.Context, ticketID string) ([]models.Task, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, ticket_id, sequence, title, description, status, created_at,
-		        acceptance_criteria, files_to_read, files_to_modify, test_assertions, depends_on
+		        acceptance_criteria, files_to_read, files_to_modify, test_assertions, depends_on,
+		        COALESCE(agent_runner, '') as agent_runner
 		 FROM tasks WHERE ticket_id = ? ORDER BY sequence`,
 		ticketID)
 	if err != nil {
@@ -802,7 +817,7 @@ func (s *SQLiteDB) ListTasks(ctx context.Context, ticketID string) ([]models.Tas
 		var status string
 		var acceptanceCriteria, filesToRead, filesToModify, testAssertions, dependsOn string
 		if err := rows.Scan(&t.ID, &t.TicketID, &t.Sequence, &t.Title, &t.Description, &status, &t.CreatedAt,
-			&acceptanceCriteria, &filesToRead, &filesToModify, &testAssertions, &dependsOn); err != nil {
+			&acceptanceCriteria, &filesToRead, &filesToModify, &testAssertions, &dependsOn, &t.AgentRunner); err != nil {
 			return nil, fmt.Errorf("scan task row: %w", err)
 		}
 		t.Status = models.TaskStatus(status)
@@ -823,7 +838,8 @@ func (s *SQLiteDB) ListLlmCalls(ctx context.Context, ticketID string) ([]models.
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, ticket_id, task_id, role, provider, model, attempt,
 		        tokens_input, tokens_output, cost_usd, duration_ms, status,
-		        cache_read_input_tokens, cache_creation_input_tokens, prompt_version, created_at
+		        cache_read_input_tokens, cache_creation_input_tokens, prompt_version,
+		        COALESCE(agent_runner, '') as agent_runner, created_at
 		 FROM llm_calls WHERE ticket_id = ? ORDER BY created_at DESC`,
 		ticketID)
 	if err != nil {
@@ -838,7 +854,7 @@ func (s *SQLiteDB) ListLlmCalls(ctx context.Context, ticketID string) ([]models.
 		var status string
 		if err := rows.Scan(&c.ID, &c.TicketID, &taskID, &c.Role, &c.Provider, &c.Model, &c.Attempt,
 			&c.TokensInput, &c.TokensOutput, &c.CostUSD, &c.DurationMs, &status,
-			&c.CacheReadTokens, &c.CacheCreationTokens, &c.PromptVersion, &c.CreatedAt); err != nil {
+			&c.CacheReadTokens, &c.CacheCreationTokens, &c.PromptVersion, &c.AgentRunner, &c.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan llm call row: %w", err)
 		}
 		c.TaskID = taskID.String

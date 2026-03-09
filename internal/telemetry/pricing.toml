@@ -1,0 +1,63 @@
+# Foreman built-in model pricing table.
+# Embedded into the binary at compile time via go:embed.
+# User [cost.pricing] entries in foreman.toml override individual entries here.
+# Prices are USD per 1M tokens. Source: official pricing pages 2026-03-09.
+#   OpenAI:    https://platform.openai.com/docs/pricing
+#   Anthropic: https://claude.com/pricing#api
+
+[pricing]
+# ── Anthropic ─────────────────────────────────────────────────────────────────
+"anthropic:claude-opus-4-6"   = { input = 5.00,  output = 25.00 }
+"anthropic:claude-sonnet-4-6" = { input = 3.00,  output = 15.00 }
+"anthropic:claude-haiku-4-5"  = { input = 1.00,  output = 5.00  }
+"anthropic:claude-sonnet-4-5" = { input = 3.00,  output = 15.00 }
+"anthropic:claude-opus-4-5"   = { input = 5.00,  output = 25.00 }
+"anthropic:claude-opus-4-1"   = { input = 15.00, output = 75.00 }
+"anthropic:claude-sonnet-4"   = { input = 3.00,  output = 15.00 }
+"anthropic:claude-opus-4"     = { input = 15.00, output = 75.00 }
+"anthropic:claude-haiku-3"    = { input = 0.25,  output = 1.25  }
+# bare names (after provider prefix is stripped by candidateModelKeys)
+"claude-opus-4-6"   = { input = 5.00,  output = 25.00 }
+"claude-sonnet-4-6" = { input = 3.00,  output = 15.00 }
+"claude-haiku-4-5"  = { input = 1.00,  output = 5.00  }
+"claude-sonnet-4-5" = { input = 3.00,  output = 15.00 }
+"claude-opus-4-5"   = { input = 5.00,  output = 25.00 }
+"claude-opus-4-1"   = { input = 15.00, output = 75.00 }
+"claude-sonnet-4"   = { input = 3.00,  output = 15.00 }
+"claude-opus-4"     = { input = 15.00, output = 75.00 }
+"claude-haiku-3"    = { input = 0.25,  output = 1.25  }
+
+# ── OpenAI (Standard tier) ────────────────────────────────────────────────────
+"openai:gpt-5.4"      = { input = 2.50,  output = 15.00 }
+"openai:gpt-5.2"      = { input = 1.75,  output = 14.00 }
+"openai:gpt-5.1"      = { input = 1.25,  output = 10.00 }
+"openai:gpt-5"        = { input = 1.25,  output = 10.00 }
+"openai:gpt-5-mini"   = { input = 0.25,  output = 2.00  }
+"openai:gpt-5-nano"   = { input = 0.05,  output = 0.40  }
+"openai:gpt-4.1"      = { input = 2.00,  output = 8.00  }
+"openai:gpt-4.1-mini" = { input = 0.40,  output = 1.60  }
+"openai:gpt-4.1-nano" = { input = 0.10,  output = 0.40  }
+"openai:gpt-4o"       = { input = 2.50,  output = 10.00 }
+"openai:gpt-4o-mini"  = { input = 0.15,  output = 0.60  }
+"openai:o1"           = { input = 15.00, output = 60.00 }
+"openai:o1-mini"      = { input = 1.10,  output = 4.40  }
+"openai:o3"           = { input = 2.00,  output = 8.00  }
+"openai:o3-mini"      = { input = 1.10,  output = 4.40  }
+"openai:o4-mini"      = { input = 1.10,  output = 4.40  }
+# bare names
+"gpt-5.4"      = { input = 2.50,  output = 15.00 }
+"gpt-5.2"      = { input = 1.75,  output = 14.00 }
+"gpt-5.1"      = { input = 1.25,  output = 10.00 }
+"gpt-5"        = { input = 1.25,  output = 10.00 }
+"gpt-5-mini"   = { input = 0.25,  output = 2.00  }
+"gpt-5-nano"   = { input = 0.05,  output = 0.40  }
+"gpt-4.1"      = { input = 2.00,  output = 8.00  }
+"gpt-4.1-mini" = { input = 0.40,  output = 1.60  }
+"gpt-4.1-nano" = { input = 0.10,  output = 0.40  }
+"gpt-4o"       = { input = 2.50,  output = 10.00 }
+"gpt-4o-mini"  = { input = 0.15,  output = 0.60  }
+"o1"           = { input = 15.00, output = 60.00 }
+"o1-mini"      = { input = 1.10,  output = 4.40  }
+"o3"           = { input = 2.00,  output = 8.00  }
+"o3-mini"      = { input = 1.10,  output = 4.40  }
+"o4-mini"      = { input = 1.10,  output = 4.40  }

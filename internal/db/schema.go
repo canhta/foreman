@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     total_llm_calls INTEGER DEFAULT 0,
     commit_sha TEXT,
     last_error_type TEXT NOT NULL DEFAULT '',
+    agent_runner TEXT NOT NULL DEFAULT '',
     cost_usd REAL DEFAULT 0.0,
     context_budget      INTEGER DEFAULT 0,
     context_used        INTEGER DEFAULT 0,
@@ -82,6 +83,7 @@ CREATE TABLE IF NOT EXISTS llm_calls (
     cache_read_input_tokens INTEGER NOT NULL DEFAULT 0,
     cache_creation_input_tokens INTEGER NOT NULL DEFAULT 0,
     prompt_version TEXT NOT NULL DEFAULT '',
+    agent_runner TEXT NOT NULL DEFAULT '',
     stage TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

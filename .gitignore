@@ -15,6 +15,7 @@ foreman.toml
 *.toml
 !foreman.example.toml
 !.air.toml
+!internal/telemetry/pricing.toml
 
 # Work directory
 .foreman/

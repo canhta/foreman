@@ -53,8 +53,12 @@ func (m *mockTaskRunnerDB) IncrementTaskLlmCalls(_ context.Context, id string) (
 	return m.callCounts[id], nil
 }
 
-func (m *mockTaskRunnerDB) SetTaskErrorType(_ context.Context, _, _ string) error { return nil }
+func (m *mockTaskRunnerDB) SetTaskErrorType(_ context.Context, _, _ string) error   { return nil }
+func (m *mockTaskRunnerDB) SetTaskAgentRunner(_ context.Context, _, _ string) error { return nil }
 
+func (m *mockTaskRunnerDB) RecordLlmCall(_ context.Context, _ *models.LlmCallRecord) error {
+	return nil
+}
 func (m *mockTaskRunnerDB) WriteContextFeedback(_ context.Context, _ dbpkg.ContextFeedbackRow) error {
 	return nil
 }

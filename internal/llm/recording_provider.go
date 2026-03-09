@@ -31,10 +31,11 @@ type LlmCallRecorder interface {
 // with per-stage cost data so GetTicketCostByStage returns meaningful results (ARCH-O04).
 // DB errors are logged as warnings and never propagate to callers.
 type RecordingProvider struct {
-	inner    LlmProvider
-	db       CallDetailsStore
-	recorder LlmCallRecorder // optional; set when db also implements LlmCallRecorder
-	costCtrl CostCalculator  // optional; used to compute cost_usd per call
+	inner       LlmProvider
+	db          CallDetailsStore
+	recorder    LlmCallRecorder // optional; set when db also implements LlmCallRecorder
+	costCtrl    CostCalculator  // optional; used to compute cost_usd per call
+	agentRunner string          // identifies which runner owns these calls (default: "builtin")
 }
 
 // CostCalculator computes a USD cost given a model name and token counts.
@@ -48,11 +49,17 @@ type CostCalculator interface {
 // for per-stage cost attribution (ARCH-O04).
 // costCtrl may be nil; if provided, each LlmCallRecord is populated with a cost_usd value.
 func NewRecordingProvider(provider LlmProvider, db CallDetailsStore, costCtrl CostCalculator) *RecordingProvider {
-	rp := &RecordingProvider{inner: provider, db: db, costCtrl: costCtrl}
+	rp := &RecordingProvider{inner: provider, db: db, costCtrl: costCtrl, agentRunner: "builtin"}
 	if rec, ok := db.(LlmCallRecorder); ok {
 		rp.recorder = rec
 	}
 	return rp
+}
+
+// WithAgentRunner sets the agent runner label stamped on every LlmCallRecord.
+func (r *RecordingProvider) WithAgentRunner(name string) *RecordingProvider {
+	r.agentRunner = name
+	return r
 }
 
 // WithCostCalculator attaches a cost calculator so each recorded LlmCallRecord
@@ -134,6 +141,7 @@ func (r *RecordingProvider) recordCall(ctx context.Context, callID string, req m
 		Provider:            r.inner.ProviderName(),
 		Model:               resp.Model,
 		Stage:               req.Stage,
+		AgentRunner:         r.agentRunner,
 		TokensInput:         resp.TokensInput,
 		TokensOutput:        resp.TokensOutput,
 		CacheReadTokens:     resp.CacheReadTokens,

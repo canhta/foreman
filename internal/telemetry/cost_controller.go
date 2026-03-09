@@ -17,8 +17,26 @@ type CostController struct {
 
 var modelSnapshotSuffixRe = regexp.MustCompile(`-\d{4}-\d{2}-\d{2}$`)
 
-// NewCostController creates a cost controller.
+// NewCostController creates a cost controller. The embedded pricing.toml is
+// used as a baseline; user [cost.pricing] entries override individual entries.
 func NewCostController(config models.CostConfig) *CostController {
+	embedded, err := LoadEmbeddedPricing()
+	if err != nil {
+		// Malformed embedded file — should never happen in a correct build.
+		log.Warn().Err(err).Msg("failed to load embedded pricing table; cost estimates may be inaccurate")
+		embedded = make(map[string]models.PricingConfig)
+	}
+
+	// Merge: start with embedded baseline, then overlay user config entries.
+	merged := make(map[string]models.PricingConfig, len(embedded)+len(config.Pricing))
+	for k, v := range embedded {
+		merged[k] = v
+	}
+	for k, v := range config.Pricing {
+		merged[k] = v
+	}
+	config.Pricing = merged
+
 	return &CostController{config: config}
 }
 

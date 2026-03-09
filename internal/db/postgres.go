@@ -70,6 +70,15 @@ func runPostgresSchema(db *sqlx.DB) error {
 		`ALTER TABLE llm_calls ADD COLUMN IF NOT EXISTS stage TEXT NOT NULL DEFAULT ''`); err != nil {
 		return fmt.Errorf("migrate llm_calls.stage: %w", err)
 	}
+	// Add agent_runner columns to track which runner executed a task or made an LLM call.
+	if _, err := db.ExecContext(ctx,
+		`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS agent_runner TEXT NOT NULL DEFAULT ''`); err != nil {
+		return fmt.Errorf("migrate tasks.agent_runner: %w", err)
+	}
+	if _, err := db.ExecContext(ctx,
+		`ALTER TABLE llm_calls ADD COLUMN IF NOT EXISTS agent_runner TEXT NOT NULL DEFAULT ''`); err != nil {
+		return fmt.Errorf("migrate llm_calls.agent_runner: %w", err)
+	}
 	return nil
 }
 
@@ -304,6 +313,14 @@ func (p *PostgresDB) SetTaskErrorType(ctx context.Context, id, errorType string)
 	return nil
 }
 
+func (p *PostgresDB) SetTaskAgentRunner(ctx context.Context, id, agentRunner string) error {
+	_, err := p.db.ExecContext(ctx, `UPDATE tasks SET agent_runner = $1 WHERE id = $2`, agentRunner, id)
+	if err != nil {
+		return fmt.Errorf("set task agent runner: %w", err)
+	}
+	return nil
+}
+
 func (p *PostgresDB) GetTaskContextStats(ctx context.Context, taskID string) (TaskContextStats, error) {
 	var stats TaskContextStats
 	err := p.db.QueryRowContext(ctx,
@@ -350,12 +367,12 @@ func (p *PostgresDB) RecordLlmCall(ctx context.Context, call *models.LlmCallReco
 	_, err := p.db.ExecContext(ctx,
 		`INSERT INTO llm_calls (id, ticket_id, task_id, role, provider, model, attempt,
 		 tokens_input, tokens_output, cost_usd, duration_ms, prompt_hash, response_summary, status, error_message,
-		 cache_read_input_tokens, cache_creation_input_tokens, prompt_version, stage, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)`,
+		 cache_read_input_tokens, cache_creation_input_tokens, prompt_version, stage, agent_runner, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
 		call.ID, call.TicketID, taskID, call.Role, call.Provider, call.Model, call.Attempt,
 		call.TokensInput, call.TokensOutput, call.CostUSD, call.DurationMs,
 		call.PromptHash, call.ResponseSummary, call.Status, call.ErrorMessage,
-		call.CacheReadTokens, call.CacheCreationTokens, call.PromptVersion, call.Stage, call.CreatedAt,
+		call.CacheReadTokens, call.CacheCreationTokens, call.PromptVersion, call.Stage, call.AgentRunner, call.CreatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("record llm call: %w", err)
@@ -671,7 +688,8 @@ func (p *PostgresDB) GetMonthlyCost(ctx context.Context, yearMonth string) (floa
 func (p *PostgresDB) ListTasks(ctx context.Context, ticketID string) ([]models.Task, error) {
 	rows, err := p.db.QueryContext(ctx,
 		`SELECT id, ticket_id, sequence, title, description, status, created_at,
-		        acceptance_criteria, files_to_read, files_to_modify, test_assertions, depends_on
+		        acceptance_criteria, files_to_read, files_to_modify, test_assertions, depends_on,
+		        COALESCE(agent_runner, '') as agent_runner
 		 FROM tasks WHERE ticket_id = $1 ORDER BY sequence`,
 		ticketID)
 	if err != nil {
@@ -685,7 +703,7 @@ func (p *PostgresDB) ListTasks(ctx context.Context, ticketID string) ([]models.T
 		var status string
 		var acceptanceCriteria, filesToRead, filesToModify, testAssertions, dependsOn string
 		if err := rows.Scan(&t.ID, &t.TicketID, &t.Sequence, &t.Title, &t.Description, &status, &t.CreatedAt,
-			&acceptanceCriteria, &filesToRead, &filesToModify, &testAssertions, &dependsOn); err != nil {
+			&acceptanceCriteria, &filesToRead, &filesToModify, &testAssertions, &dependsOn, &t.AgentRunner); err != nil {
 			return nil, fmt.Errorf("scan task row: %w", err)
 		}
 		t.Status = models.TaskStatus(status)
@@ -706,7 +724,8 @@ func (p *PostgresDB) ListLlmCalls(ctx context.Context, ticketID string) ([]model
 	rows, err := p.db.QueryContext(ctx,
 		`SELECT id, ticket_id, task_id, role, provider, model, attempt,
 		        tokens_input, tokens_output, cost_usd, duration_ms, status,
-		        cache_read_input_tokens, cache_creation_input_tokens, prompt_version, created_at
+		        cache_read_input_tokens, cache_creation_input_tokens, prompt_version,
+		        COALESCE(agent_runner, '') as agent_runner, created_at
 		 FROM llm_calls WHERE ticket_id = $1 ORDER BY created_at DESC`,
 		ticketID)
 	if err != nil {
@@ -721,7 +740,7 @@ func (p *PostgresDB) ListLlmCalls(ctx context.Context, ticketID string) ([]model
 		var status string
 		if err := rows.Scan(&c.ID, &c.TicketID, &taskID, &c.Role, &c.Provider, &c.Model, &c.Attempt,
 			&c.TokensInput, &c.TokensOutput, &c.CostUSD, &c.DurationMs, &status,
-			&c.CacheReadTokens, &c.CacheCreationTokens, &c.PromptVersion, &c.CreatedAt); err != nil {
+			&c.CacheReadTokens, &c.CacheCreationTokens, &c.PromptVersion, &c.AgentRunner, &c.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan llm call row: %w", err)
 		}
 		c.TaskID = taskID.String

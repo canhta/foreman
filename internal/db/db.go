@@ -79,6 +79,7 @@ type Database interface {
 	CreateTasks(ctx context.Context, ticketID string, tasks []models.Task) error
 	UpdateTaskStatus(ctx context.Context, id string, status models.TaskStatus) error
 	SetTaskErrorType(ctx context.Context, id, errorType string) error
+	SetTaskAgentRunner(ctx context.Context, id, agentRunner string) error
 	IncrementTaskLlmCalls(ctx context.Context, id string) (int, error)
 	ListTasks(ctx context.Context, ticketID string) ([]models.Task, error)
 	GetTaskContextStats(ctx context.Context, taskID string) (TaskContextStats, error)

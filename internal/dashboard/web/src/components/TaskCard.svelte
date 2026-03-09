@@ -1,10 +1,10 @@
 <script lang="ts">
-  import type { Task, EventRecord } from '../types';
+  import type { Task, EventRecord, LlmCallRecord } from '../types';
   import { appState, retryTask } from '../state.svelte';
   import { taskIcon, formatCost, formatRelative } from '../format';
   import ConfirmDialog from './ConfirmDialog.svelte';
 
-  let { task, events = [] }: { task: Task; events?: EventRecord[] } = $props();
+  let { task, events = [], llmCalls = [] }: { task: Task; events?: EventRecord[]; llmCalls?: LlmCallRecord[] } = $props();
 
   let confirmOpen = $state(false);
 
@@ -13,6 +13,25 @@
   let taskEvents = $derived(
     events.filter(e => e.TaskID === task.ID).slice(0, 10)
   );
+
+  let taskCalls = $derived(llmCalls.filter(c => c.TaskID === task.ID));
+
+  // Derive unique models from llm calls for this task.
+  let taskModels = $derived(
+    [...new Set(taskCalls.map(c => c.Model).filter(Boolean))].join(', ')
+  );
+
+  // Runner label: prefer the task-level field, fall back to deriving from llm calls.
+  let runnerLabel = $derived(
+    task.AgentRunner || (taskCalls.length > 0 ? taskCalls[0].AgentRunner : '') || ''
+  );
+
+  function runnerBadgeCls(runner: string): string {
+    if (runner === 'claudecode') return 'text-accent border-accent/40';
+    if (runner === 'copilot')    return 'text-purple-400 border-purple-400/40';
+    if (runner === 'builtin')    return 'text-muted border-border-strong';
+    return 'text-muted border-border-strong';
+  }
 
   let isActive = $derived(
     ['implementing', 'tdd_verifying', 'testing', 'spec_review', 'quality_review'].includes(task.Status)
@@ -97,6 +116,12 @@
         <span>Cost <span class="text-text">{formatCost(task.CostUSD)}</span></span>
         {#if task.TotalLlmCalls > 0}
           <span><span class="text-text">{task.TotalLlmCalls}</span> LLM calls</span>
+        {/if}
+        {#if runnerLabel}
+          <span class="text-[10px] border px-1 py-0.5 leading-none shrink-0 {runnerBadgeCls(runnerLabel)}">{runnerLabel}</span>
+        {/if}
+        {#if taskModels}
+          <span class="text-[10px] text-muted-bright truncate max-w-[140px]" title={taskModels}>{taskModels}</span>
         {/if}
         {#if task.StartedAt}
           <span>{formatRelative(task.StartedAt)}</span>

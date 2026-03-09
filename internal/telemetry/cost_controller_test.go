@@ -143,3 +143,48 @@ func TestCostController_CalculateCost_ProviderPrefixedSnapshotModel(t *testing.T
 	cost := cc.CalculateCost("openai:gpt-5.4-2026-03-05", 1_000_000, 1_000_000)
 	assert.InDelta(t, 12.0, cost, 0.001)
 }
+
+// TestEmbeddedPricing_KnownModelsResolvable verifies the embedded pricing.toml
+// covers the key Anthropic and OpenAI models used by default.
+func TestEmbeddedPricing_KnownModelsResolvable(t *testing.T) {
+	embedded, err := LoadEmbeddedPricing()
+	require.NoError(t, err)
+	require.NotEmpty(t, embedded)
+
+	mustHave := []string{
+		"anthropic:claude-sonnet-4-6",
+		"anthropic:claude-haiku-4-5",
+		"gpt-4o",
+		"gpt-4o-mini",
+		"openai:gpt-5-mini",
+		"gpt-5-mini",
+	}
+	for _, k := range mustHave {
+		_, ok := embedded[k]
+		assert.True(t, ok, "expected key %q in embedded pricing", k)
+	}
+}
+
+// TestNewCostController_EmbeddedPricingUsedAsBaseline verifies that when the
+// user provides no [cost.pricing], known models resolve without the $3/$15 fallback.
+func TestNewCostController_EmbeddedPricingUsedAsBaseline(t *testing.T) {
+	cc := NewCostController(models.CostConfig{})
+
+	// gpt-4o-mini: $0.15 input / $0.60 output per 1M tokens → $0.75 total
+	// Fallback would be $18.00 — a very different number.
+	cost := cc.CalculateCost("gpt-4o-mini", 1_000_000, 1_000_000)
+	assert.InDelta(t, 0.75, cost, 0.01,
+		"embedded pricing should be used for gpt-4o-mini; got %.4f (fallback=$18)", cost)
+}
+
+// TestNewCostController_UserOverrideWinsOverEmbedded verifies that a user entry
+// in [cost.pricing] takes precedence over the embedded table.
+func TestNewCostController_UserOverrideWinsOverEmbedded(t *testing.T) {
+	cc := NewCostController(models.CostConfig{
+		Pricing: map[string]models.PricingConfig{
+			"gpt-4o-mini": {Input: 99.0, Output: 99.0},
+		},
+	})
+	cost := cc.CalculateCost("gpt-4o-mini", 1_000_000, 1_000_000)
+	assert.InDelta(t, 198.0, cost, 0.01, "user override should win over embedded pricing")
+}

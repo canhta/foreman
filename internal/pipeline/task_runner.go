@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/rs/zerolog/log"
 
@@ -87,7 +88,9 @@ type TaskRunnerDB interface {
 	ListTasks(ctx context.Context, ticketID string) ([]models.Task, error)
 	UpdateTaskStatus(ctx context.Context, id string, status models.TaskStatus) error
 	SetTaskErrorType(ctx context.Context, id, errorType string) error
+	SetTaskAgentRunner(ctx context.Context, id, agentRunner string) error
 	IncrementTaskLlmCalls(ctx context.Context, id string) (int, error)
+	RecordLlmCall(ctx context.Context, call *models.LlmCallRecord) error
 	WriteContextFeedback(ctx context.Context, row dbpkg.ContextFeedbackRow) error
 	QueryContextFeedback(ctx context.Context, candidates []string, minJaccard float64) ([]dbpkg.ContextFeedbackRow, error)
 	GetProgressPatterns(ctx context.Context, ticketID string, directories []string) ([]models.ProgressPattern, error)
@@ -185,7 +188,19 @@ func (r *PipelineTaskRunner) RunTask(ctx context.Context, task *models.Task) err
 
 	// External runner path — delegate entire implementation to AgentRunner.
 	if r.config.AgentRunner != nil {
+		runnerName := r.config.AgentRunnerName
+		if runnerName == "" {
+			runnerName = "agent"
+		}
+		if err := r.db.SetTaskAgentRunner(ctx, task.ID, runnerName); err != nil {
+			log.Warn().Err(err).Str("task_id", task.ID).Msg("failed to stamp agent runner on task")
+		}
 		return r.runTaskWithAgent(ctx, task)
+	}
+
+	// Builtin runner — stamp the runner name.
+	if err := r.db.SetTaskAgentRunner(ctx, task.ID, "builtin"); err != nil {
+		log.Warn().Err(err).Str("task_id", task.ID).Msg("failed to stamp builtin runner on task")
 	}
 
 	feedback := NewFeedbackAccumulator()
@@ -418,6 +433,30 @@ func (r *PipelineTaskRunner) runTaskWithAgent(ctx context.Context, task *models.
 			Int("input_tokens", result.Usage.InputTokens).
 			Int("output_tokens", result.Usage.OutputTokens).
 			Msg("agent runner completed task")
+
+		// Write a synthetic LlmCallRecord so the dashboard can show cost/tokens
+		// for external runners (claudecode, copilot) alongside builtin calls.
+		tc := telemetry.TraceFromContext(ctx)
+		syntheticCall := &models.LlmCallRecord{
+			ID:           fmt.Sprintf("agent-%d", time.Now().UnixNano()),
+			TicketID:     tc.TicketID,
+			TaskID:       task.ID,
+			Role:         "implementing",
+			Stage:        "implementing",
+			Provider:     r.config.AgentRunnerName,
+			Model:        r.config.Models.Implementer,
+			AgentRunner:  r.config.AgentRunnerName,
+			TokensInput:  result.Usage.InputTokens,
+			TokensOutput: result.Usage.OutputTokens,
+			CostUSD:      result.Usage.CostUSD,
+			DurationMs:   int64(result.Usage.DurationMs),
+			Attempt:      attempt,
+			Status:       "success",
+			CreatedAt:    time.Now(),
+		}
+		if writeErr := r.db.RecordLlmCall(ctx, syntheticCall); writeErr != nil {
+			log.Warn().Err(writeErr).Str("task_id", task.ID).Msg("failed to record agent llm call")
+		}
 
 		// Verify the agent produced a diff.
 		diff, diffErr := r.git.DiffWorking(ctx, r.config.WorkDir)

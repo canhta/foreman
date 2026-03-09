@@ -54,6 +54,7 @@ type Task struct {
 	Description            string
 	CommitSHA              string
 	Status                 TaskStatus
+	AgentRunner            string // runner that executed this task: "builtin", "claudecode", "copilot"
 	EstimatedComplexity    string
 	DependsOn              []string
 	TestAssertions         []string
@@ -82,6 +83,7 @@ type LlmCallRecord struct {
 	ErrorMessage        string
 	Status              string
 	ID                  string
+	AgentRunner         string // runner that made this call: "builtin", "claudecode", "copilot"
 	TokensOutput        int
 	DurationMs          int64
 	TokensInput         int

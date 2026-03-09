@@ -121,7 +121,7 @@ func (g *NativeGitProvider) DiffWorking(ctx context.Context, workDir string) (st
 }
 
 func (g *NativeGitProvider) Push(ctx context.Context, workDir, branchName string) error {
-	_, err := g.run(ctx, workDir, "git", "push", "-u", "origin", branchName)
+	_, err := g.run(ctx, workDir, "git", "push", "--force-with-lease", "-u", "origin", branchName)
 	return err
 }
 
