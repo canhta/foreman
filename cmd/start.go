@@ -18,6 +18,7 @@ import (
 	"github.com/canhta/foreman/internal/channel/whatsapp"
 	"github.com/canhta/foreman/internal/daemon"
 	"github.com/canhta/foreman/internal/dashboard"
+	"github.com/canhta/foreman/internal/envloader"
 	"github.com/canhta/foreman/internal/git"
 	"github.com/canhta/foreman/internal/llm"
 	"github.com/canhta/foreman/internal/models"
@@ -227,6 +228,15 @@ func newStartCmd() *cobra.Command {
 			// 4. Initialize git provider and ensure the work repo is ready.
 			gitProv := buildGitProvider(cfg)
 			repoReady := gitProv.EnsureRepo(context.Background(), cfg.Daemon.WorkDir) == nil
+
+			// 4b. Load user env files into process environment.
+			if len(cfg.Daemon.EnvFiles) > 0 {
+				if err := envloader.Load(cfg.Daemon.EnvFiles); err != nil {
+					log.Warn().Err(err).Msg("failed to load env files at startup")
+				} else {
+					log.Info().Int("count", len(cfg.Daemon.EnvFiles)).Msg("env files loaded into process environment")
+				}
+			}
 
 			// 5. Initialize PR creator and checker.
 			prCreator := buildPRCreator(cfg)
