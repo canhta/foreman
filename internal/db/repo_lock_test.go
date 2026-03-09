@@ -34,7 +34,7 @@ func TestTryReserveFiles_RepoLockBlocksOtherTickets(t *testing.T) {
 	assert.Contains(t, conflicts[0], RepoLockSentinel)
 }
 
-func TestTryReserveFiles_SpecificFilesDoNotBlockRepoLock(t *testing.T) {
+func TestTryReserveFiles_SpecificFilesBlockRepoLock(t *testing.T) {
 	db, cleanup := setupTestDB(t)
 	defer cleanup()
 	ctx := context.Background()
