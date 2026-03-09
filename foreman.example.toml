@@ -175,8 +175,13 @@ context_generate_max_tokens = 32000   # Token budget for `foreman context genera
 context_feedback_boost      = 1.5     # Score multiplier for files from prior similar tasks
 
 # ─── Core Pipeline Agent Runner ───────────────────────
-# Configures the agent runner used by the main pipeline (not skills).
-# See [skills.agent_runner] for the skills-specific runner.
+# Controls which runner drives pipeline planning and per-task implementation.
+# See docs/agent-runner.md for full details.
+#
+# "builtin"    (default): pipeline uses direct LlmProvider calls; runner is only
+#              used for agentsdk skill steps.
+# "claudecode" / "copilot": external runner drives BOTH planning (AgentPlanner)
+#              and per-task implementation (runTaskWithAgent) end-to-end.
 
 [agent_runner]
 provider = "builtin"   # builtin | claudecode | copilot
@@ -188,10 +193,11 @@ reflection_interval = 5      # Self-reflection turn every N tool rounds (0 = dis
 # model = ""                 # override; empty = [models].implementer
 
 # [agent_runner.claudecode]
-# bin                  = "claude"
-# max_turns_default    = 15
+# bin                  = "claude"   # path to claude binary (on $PATH or absolute)
+# model                = "sonnet"   # optional: override default model
+# max_turns_default    = 20
 # timeout_secs_default = 300
-# # model = "sonnet"
+# max_budget_usd       = 0.0        # 0 = unlimited
 
 # [agent_runner.copilot]
 # cli_path             = "copilot"
@@ -231,36 +237,35 @@ reflection_interval = 5      # Self-reflection turn every N tool rounds (0 = dis
 # DB_URL = "${DATABASE_URL}"
 
 # ─── Skills Agent Runner ────────────────────────────────
-# Which runner backs the "agentsdk" step type in YAML skills.
+# Backs "agentsdk" steps in YAML skills.
+# Separate cost cap — does NOT draw from the core pipeline budget.
 # Options: builtin (default) | claudecode | copilot
 
 [skills.agent_runner]
-provider = "builtin"
-
-# Separate cost cap for skill agent calls — does NOT draw from the core pipeline budget.
+provider             = "builtin"
 max_cost_per_ticket_usd = 2.00
-max_turns_default = 10
+max_turns_default    = 10
 timeout_secs_default = 120
 
 [skills.agent_runner.builtin]
 default_allowed_tools = ["Read", "Glob", "Grep"]
-# model = "claude-sonnet-4-6"           # optional: override model for all builtin agent sessions (REQ-LOOP-005)
-                                         # when unset, falls back to the pipeline implementer model
+# model = "claude-sonnet-4-6"   # optional: override model for all builtin agent sessions
+                                 # when unset, falls back to the pipeline implementer model
 
-[skills.agent_runner.claudecode]
-bin = "claude"                  # resolved via $PATH if relative
-default_allowed_tools = ["Read", "Edit", "Glob", "Grep", "Bash"]
-max_turns_default = 10
-timeout_secs_default = 180
-max_budget_usd = 2.00
-# model = "sonnet"             # optional: override default model
+# [skills.agent_runner.claudecode]
+# bin                   = "claude"   # resolved via $PATH if relative
+# default_allowed_tools = ["Read", "Edit", "Glob", "Grep", "Bash"]
+# max_turns_default     = 10
+# timeout_secs_default  = 180
+# max_budget_usd        = 2.00
+# # model = "sonnet"              # optional: override default model
 
-[skills.agent_runner.copilot]
-cli_path = "copilot"
-github_token = "${GITHUB_TOKEN}"
-model = "gpt-4o"
-default_allowed_tools = ["Read", "Edit", "Glob", "Grep", "Bash"]
-timeout_secs_default = 180
+# [skills.agent_runner.copilot]
+# cli_path              = "copilot"
+# github_token          = "${GITHUB_TOKEN}"
+# model                 = "gpt-4o"
+# default_allowed_tools = ["Read", "Edit", "Glob", "Grep", "Bash"]
+# timeout_secs_default  = 180
 
 # ─── Custom Agent Roles ────────────────────────────────
 # Define named agents with specific models, tools, and prompts.
