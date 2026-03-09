@@ -68,6 +68,7 @@ func NewRegistryWithMCP(gitProvider git.GitProvider, cmdRunner runner.CommandRun
 	registerLSP(r)
 	r.Register(&todoWriteTool{store: todoStore})
 	r.Register(&todoReadTool{store: todoStore})
+	r.Register(&webFetchTool{})
 	return r
 }
 
