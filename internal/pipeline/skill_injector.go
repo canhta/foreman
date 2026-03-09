@@ -18,7 +18,6 @@ var claudeAssets embed.FS
 // SkillInjectorConfig holds template rendering values.
 type SkillInjectorConfig struct {
 	TestCommand string
-	LintCommand string
 	Language    string
 }
 
@@ -56,7 +55,7 @@ func (si *SkillInjector) Cleanup(workDir string) {
 
 func (si *SkillInjector) mergeSettings(claudeDir string) error {
 	if err := os.MkdirAll(claudeDir, 0o755); err != nil {
-		return err
+		return fmt.Errorf("mkdir %s: %w", claudeDir, err)
 	}
 
 	settingsPath := filepath.Join(claudeDir, "settings.json")
@@ -100,7 +99,7 @@ func (si *SkillInjector) writeTemplates(claudeDir string) error {
 
 func (si *SkillInjector) writeDir(embedPath, diskPath string, entries []os.DirEntry) error {
 	if err := os.MkdirAll(diskPath, 0o755); err != nil {
-		return err
+		return fmt.Errorf("mkdir %s: %w", diskPath, err)
 	}
 	for _, entry := range entries {
 		srcPath := embedPath + "/" + entry.Name()
@@ -109,10 +108,10 @@ func (si *SkillInjector) writeDir(embedPath, diskPath string, entries []os.DirEn
 		if entry.IsDir() {
 			subEntries, err := claudeAssets.ReadDir(srcPath)
 			if err != nil {
-				return err
+				return fmt.Errorf("read dir %s: %w", srcPath, err)
 			}
 			if err := si.writeDir(srcPath, dstPath, subEntries); err != nil {
-				return err
+				return fmt.Errorf("write dir %s: %w", dstPath, err)
 			}
 			continue
 		}
@@ -143,6 +142,7 @@ func (si *SkillInjector) renderTemplate(name, content string) (string, error) {
 	}
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, si.config); err != nil {
+		log.Warn().Err(err).Str("template", name).Msg("skill_injector: template execution failed, using raw content")
 		return content, nil
 	}
 	return buf.String(), nil
