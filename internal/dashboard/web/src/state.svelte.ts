@@ -190,6 +190,15 @@ export async function resumeDaemon() {
   await postJSON('/api/daemon/resume');
 }
 
+export async function syncTracker() {
+  await postJSON('/api/daemon/sync');
+  // Give the daemon a moment to ingest, then refresh the ticket list.
+  setTimeout(() => {
+    loadTickets();
+    loadActive();
+  }, 1800);
+}
+
 export async function retryTicket(id: string) {
   await postJSON(`/api/tickets/${id}/retry`);
   loadTicketDetail(id);

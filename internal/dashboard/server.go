@@ -123,6 +123,7 @@ func NewServer(db DashboardDB, emitter EventSubscriber, statusProvider DaemonSta
 	mux.Handle("/api/costs/budgets", auth(http.HandlerFunc(api.handleCostsBudgets)))
 	mux.Handle("/api/daemon/pause", auth(http.HandlerFunc(api.handleDaemonPause)))
 	mux.Handle("/api/daemon/resume", auth(http.HandlerFunc(api.handleDaemonResume)))
+	mux.Handle("/api/daemon/sync", auth(http.HandlerFunc(api.handleDaemonSync)))
 	mux.Handle("/api/stats/team", auth(http.HandlerFunc(api.handleTeamStats)))
 	mux.Handle("/api/stats/recent-prs", auth(http.HandlerFunc(api.handleRecentPRs)))
 	mux.Handle("/api/ticket-summaries", auth(http.HandlerFunc(api.handleTicketSummaries)))
@@ -189,6 +190,11 @@ func (s *Server) SetMCPHealthProvider(p MCPHealthProvider) {
 // SetPromptSnapshotQuerier wires the prompt snapshot querier for GET /api/prompts/versions.
 func (s *Server) SetPromptSnapshotQuerier(q PromptSnapshotQuerier) {
 	s.api.SetPromptSnapshotQuerier(q)
+}
+
+// SetTrackerSyncer wires a TrackerSyncer for the POST /api/daemon/sync endpoint.
+func (s *Server) SetTrackerSyncer(syncer TrackerSyncer) {
+	s.api.SetTrackerSyncer(syncer)
 }
 
 // Handler returns the HTTP handler, useful for testing with httptest.NewServer.

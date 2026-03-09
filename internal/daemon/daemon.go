@@ -68,6 +68,7 @@ type Daemon struct {
 	emitter       skills.SkillEventEmitter
 	scheduler     *Scheduler
 	tickets       chan struct{}
+	syncCh        chan struct{}
 	startedAt     time.Time
 	config        DaemonConfig
 	wg            sync.WaitGroup
@@ -85,6 +86,7 @@ func NewDaemon(config DaemonConfig) *Daemon {
 	return &Daemon{
 		config:  config,
 		tickets: make(chan struct{}, maxTickets),
+		syncCh:  make(chan struct{}, 1),
 	}
 }
 
@@ -281,6 +283,17 @@ func (d *Daemon) Start(ctx context.Context) {
 				}
 			}
 			return
+		case <-d.syncCh:
+			// Forced sync requested via TriggerSync (e.g. dashboard button).
+			if !d.paused.Load() {
+				log.Info().Msg("forced tracker sync triggered")
+				if tr != nil && database != nil {
+					d.ingestFromTracker(ctx, database, tr)
+				}
+				if database != nil && d.orchestrator != nil {
+					d.processQueuedTickets(ctx, database)
+				}
+			}
 		case <-ticker.C:
 			if d.paused.Load() {
 				continue
@@ -339,6 +352,15 @@ func (d *Daemon) Pause() {
 // Resume resumes the daemon's polling.
 func (d *Daemon) Resume() {
 	d.paused.Store(false)
+}
+
+// TriggerSync requests an immediate tracker poll, skipping the normal interval.
+// Non-blocking: if a sync is already queued, this is a no-op.
+func (d *Daemon) TriggerSync() {
+	select {
+	case d.syncCh <- struct{}{}:
+	default: // already pending, no-op
+	}
 }
 
 // Status returns the current daemon status.

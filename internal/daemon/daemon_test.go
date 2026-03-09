@@ -448,3 +448,96 @@ func TestDaemon_WaitForDrain(t *testing.T) {
 		t.Fatal("WaitForDrain did not return in time")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// TriggerSync tests
+// ---------------------------------------------------------------------------
+
+func TestDaemon_TriggerSync_NonBlocking(t *testing.T) {
+	d := NewDaemon(DefaultDaemonConfig())
+	// Calling TriggerSync multiple times must never block, even with nobody
+	// draining the channel.
+	done := make(chan struct{})
+	go func() {
+		d.TriggerSync()
+		d.TriggerSync() // second call: channel already full, should be a no-op
+		d.TriggerSync() // third call: still a no-op
+		close(done)
+	}()
+	select {
+	case <-done:
+		// Good: all calls returned immediately.
+	case <-time.After(time.Second):
+		t.Fatal("TriggerSync blocked unexpectedly")
+	}
+	// Exactly one item should be queued in the channel.
+	assert.Equal(t, 1, len(d.syncCh), "only one sync should be queued at a time")
+}
+
+func TestDaemon_TriggerSync_IngestsTickets(t *testing.T) {
+	mdb := newDaemonMockDB()
+	mt := &daemonMockTracker{
+		readyTickets: []tracker.Ticket{
+			{ExternalID: "GH-999", Title: "Sync-ingested ticket"},
+		},
+	}
+
+	cfg := DefaultDaemonConfig()
+	cfg.PollIntervalSecs = 3600 // Very long — sync must not come from the regular ticker.
+
+	d := NewDaemon(cfg)
+	d.SetDB(mdb)
+	d.SetTracker(mt)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go d.Start(ctx)
+	require.Eventually(t, d.IsRunning, time.Second, 10*time.Millisecond)
+
+	d.TriggerSync()
+
+	// The synced ticket should appear in the DB well within 1 s.
+	require.Eventually(t, func() bool {
+		mdb.mu.Lock()
+		defer mdb.mu.Unlock()
+		return len(mdb.createdTickets) == 1
+	}, time.Second, 20*time.Millisecond, "expected ticket to be ingested via TriggerSync")
+
+	mdb.mu.Lock()
+	defer mdb.mu.Unlock()
+	assert.Equal(t, "GH-999", mdb.createdTickets[0].ExternalID)
+}
+
+func TestDaemon_TriggerSync_SkipsWhenPaused(t *testing.T) {
+	mdb := newDaemonMockDB()
+	mt := &daemonMockTracker{
+		readyTickets: []tracker.Ticket{
+			{ExternalID: "GH-777", Title: "Should not ingest while paused"},
+		},
+	}
+
+	cfg := DefaultDaemonConfig()
+	cfg.PollIntervalSecs = 3600
+
+	d := NewDaemon(cfg)
+	d.SetDB(mdb)
+	d.SetTracker(mt)
+	d.Pause()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go d.Start(ctx)
+	require.Eventually(t, d.IsRunning, time.Second, 10*time.Millisecond)
+
+	d.TriggerSync()
+
+	// Wait long enough for the select case to fire and be skipped.
+	time.Sleep(200 * time.Millisecond)
+
+	mdb.mu.Lock()
+	created := len(mdb.createdTickets)
+	mdb.mu.Unlock()
+	assert.Equal(t, 0, created, "sync should be ignored while daemon is paused")
+}

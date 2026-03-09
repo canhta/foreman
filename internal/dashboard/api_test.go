@@ -1220,6 +1220,62 @@ func (r *retryTestDB) UpdateTicketStatus(ctx context.Context, id string, status 
 	return r.mockDashboardDB.UpdateTicketStatus(ctx, id, status)
 }
 
+// --- handleDaemonSync ---
+
+// mockTrackerSyncer records whether TriggerSync was called.
+type mockTrackerSyncer struct {
+	triggered bool
+}
+
+func (m *mockTrackerSyncer) TriggerSync() { m.triggered = true }
+
+func TestAPIDaemonSync_NoSyncer(t *testing.T) {
+	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
+	req := httptest.NewRequestWithContext(t.Context(), "POST", "/api/daemon/sync", nil)
+	rec := httptest.NewRecorder()
+	api.handleDaemonSync(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 when no syncer wired, got %d", rec.Code)
+	}
+}
+
+func TestAPIDaemonSync_MethodNotAllowed(t *testing.T) {
+	syncer := &mockTrackerSyncer{}
+	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
+	api.SetTrackerSyncer(syncer)
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/daemon/sync", nil)
+	rec := httptest.NewRecorder()
+	api.handleDaemonSync(rec, req)
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405 for GET, got %d", rec.Code)
+	}
+	if syncer.triggered {
+		t.Error("expected TriggerSync not to be called on wrong method")
+	}
+}
+
+func TestAPIDaemonSync_Triggers(t *testing.T) {
+	syncer := &mockTrackerSyncer{}
+	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
+	api.SetTrackerSyncer(syncer)
+	req := httptest.NewRequestWithContext(t.Context(), "POST", "/api/daemon/sync", nil)
+	rec := httptest.NewRecorder()
+	api.handleDaemonSync(rec, req)
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("expected 202 Accepted, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !syncer.triggered {
+		t.Error("expected TriggerSync to be called")
+	}
+	var resp map[string]string
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp["status"] != "sync triggered" {
+		t.Errorf("expected status=sync triggered, got %v", resp["status"])
+	}
+}
+
 func TestSmartRetrier_ResetsTasksAndSavesDagState(t *testing.T) {
 	tasks := []models.Task{
 		{ID: "t-done", TicketID: "ticket-1", Status: models.TaskStatusDone},

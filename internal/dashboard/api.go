@@ -75,6 +75,11 @@ type TicketRetrier interface {
 	RetryTicket(ctx context.Context, ticketID string) error
 }
 
+// TrackerSyncer triggers an immediate tracker poll, bypassing the normal interval.
+type TrackerSyncer interface {
+	TriggerSync()
+}
+
 // MCPHealthProvider exposes the health state of all registered MCP servers.
 // Implement this interface to include MCP server health in dashboard responses.
 type MCPHealthProvider interface {
@@ -95,6 +100,7 @@ type API struct {
 	statusProvider  DaemonStatusProvider
 	controller      DaemonController
 	retrier         TicketRetrier
+	syncer          TrackerSyncer
 	mcpHealth       MCPHealthProvider
 	promptSnapshots PromptSnapshotQuerier
 	channelHealth   map[string]interface{ IsConnected() bool }
@@ -124,6 +130,11 @@ func (a *API) SetDaemonController(c DaemonController) {
 // SetTicketRetrier wires a TicketRetrier for ticket retry.
 func (a *API) SetTicketRetrier(r TicketRetrier) {
 	a.retrier = r
+}
+
+// SetTrackerSyncer wires a TrackerSyncer for the forced sync endpoint.
+func (a *API) SetTrackerSyncer(s TrackerSyncer) {
+	a.syncer = s
 }
 
 // SetPromptSnapshotQuerier wires a PromptSnapshotQuerier for the versions endpoint.
@@ -563,6 +574,19 @@ func (a *API) handleDaemonResume(w http.ResponseWriter, r *http.Request) {
 	}
 	a.controller.Resume()
 	writeJSON(w, http.StatusOK, map[string]string{"status": "resumed"})
+}
+
+func (a *API) handleDaemonSync(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if a.syncer == nil {
+		http.Error(w, "sync not available", http.StatusServiceUnavailable)
+		return
+	}
+	a.syncer.TriggerSync()
+	writeJSON(w, http.StatusAccepted, map[string]string{"status": "sync triggered"})
 }
 
 func (a *API) handlePromptVersions(w http.ResponseWriter, r *http.Request) {
