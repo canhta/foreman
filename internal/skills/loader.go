@@ -145,6 +145,25 @@ func LoadFromRegistry(reg *prompts.Registry) ([]*Skill, error) {
 	return skills, nil
 }
 
+// LoadFromPaths loads and validates skills from a list of file paths.
+// Paths that fail to load are returned as errors; valid skills are collected.
+// This is designed to be used with DiscoverSkillPaths.
+func LoadFromPaths(paths []string) ([]*Skill, error) {
+	var skills []*Skill
+	for _, path := range paths {
+		ext := strings.ToLower(filepath.Ext(path))
+		if ext != ".yml" && ext != ".yaml" {
+			continue
+		}
+		skill, err := LoadSkill(path)
+		if err != nil {
+			return nil, fmt.Errorf("loading skill from path %s: %w", path, err)
+		}
+		skills = append(skills, skill)
+	}
+	return skills, nil
+}
+
 // LoadSkillsDir loads all .yml/.yaml files from a directory.
 func LoadSkillsDir(dir string) ([]*Skill, error) {
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
