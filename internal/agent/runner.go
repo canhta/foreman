@@ -50,10 +50,16 @@ type AgentRequest struct {
 	// Thinking configures adaptive or extended thinking for the builtin runner.
 	// ClaudeCode and Copilot runners ignore this field (thinking is model-managed).
 	Thinking        *models.ThinkingConfig
+	// Permissions is an optional ruleset for tool access control.
+	// When nil, no permission checks are performed (preserves backward compatibility).
+	Permissions     Ruleset
 	Prompt          string
 	SystemPrompt    string
 	WorkDir         string
 	FallbackModel   string
+	// Mode selects a pre-configured agent mode (e.g. "plan", "explore", "build").
+	// When set, its permissions are merged with any explicit Permissions.
+	Mode            string
 	AllowedTools    []string
 	OutputSchema    json.RawMessage
 	MCPServers      []mcp.MCPServerConfig

@@ -24,7 +24,20 @@ type Config struct {
 	Limits      LimitsConfig      `mapstructure:"limits"`
 	RateLimit   RateLimitConfig   `mapstructure:"rate_limit"`
 	Context     ContextConfig     `mapstructure:"context"`
+	Permissions PermissionConfig  `mapstructure:"permissions"`
 	PromptsDir  string            `mapstructure:"prompts_dir"`
+}
+
+// PermissionRule defines a single permission rule for tool access control.
+type PermissionRule struct {
+	Permission string `toml:"permission" json:"permission" mapstructure:"permission"`
+	Pattern    string `toml:"pattern" json:"pattern" mapstructure:"pattern"`
+	Action     string `toml:"action" json:"action" mapstructure:"action"`
+}
+
+// PermissionConfig holds default and pattern-based permission rules.
+type PermissionConfig struct {
+	Rules []PermissionRule `toml:"rules" json:"rules" mapstructure:"rules"`
 }
 
 // AgentRoleConfig defines a custom named agent with specific tools, model, and prompt.

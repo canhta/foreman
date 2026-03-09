@@ -470,6 +470,24 @@ func (r *BuiltinRunner) executeToolsFileAware(
 				req.OnProgress(AgentEvent{Type: AgentEventToolStart, Turn: turn + 1, ToolName: m.tc.Name})
 			}
 			g.Go(func() error {
+				// Permission check: only when Permissions is non-nil (opt-in).
+				if req.Permissions != nil {
+					pathArg := extractPath(m.tc.Input)
+					if pathArg == "" {
+						pathArg = m.tc.Name
+					}
+					if Evaluate(m.tc.Name, pathArg, req.Permissions) == ActionDeny {
+						results[m.index] = models.ToolResult{
+							ToolCallID: m.tc.ID,
+							Content:    fmt.Sprintf("permission denied: tool %q is not allowed", m.tc.Name),
+							IsError:    true,
+						}
+						if req.OnProgress != nil {
+							req.OnProgress(AgentEvent{Type: AgentEventToolEnd, Turn: turn + 1, ToolName: m.tc.Name})
+						}
+						return nil
+					}
+				}
 				var out string
 				var err error
 				if r.registry != nil {
