@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/rs/zerolog/log"
 )
 
 // NativeGitProvider shells out to the native git CLI.
@@ -45,24 +47,44 @@ func (g *NativeGitProvider) EnsureRepo(ctx context.Context, workDir string) erro
 	if err := os.MkdirAll(workDir, 0o755); err != nil {
 		return fmt.Errorf("create work dir: %w", err)
 	}
-	// If already a valid git repo, nothing to do.
-	if _, err := g.run(ctx, workDir, "git", "status"); err == nil {
+	// A usable repo needs at least one commit (HEAD must resolve).
+	// git status succeeds even on an empty/broken init, so we use rev-parse.
+	if _, err := g.run(ctx, workDir, "git", "rev-parse", "HEAD"); err == nil {
+		log.Info().Str("work_dir", workDir).Msg("git repo already exists and is ready")
 		return nil
 	}
-	// Not a git repo — clone if a URL is configured.
-	if g.cloneURL != "" {
-		_, err := g.run(ctx, workDir, "git", "clone", g.cloneURL, ".")
-		return err
+	// No valid HEAD — clone if a URL is configured.
+	if g.cloneURL == "" {
+		return fmt.Errorf("work directory %q has no commits and no clone_url is configured", workDir)
 	}
-	return fmt.Errorf("work directory %q is not a git repository and no clone_url is configured", workDir)
+	// If a broken .git dir exists (e.g. empty init), remove it so clone can proceed.
+	gitDir := filepath.Join(workDir, ".git")
+	if _, statErr := os.Stat(gitDir); statErr == nil {
+		log.Warn().Str("work_dir", workDir).Msg("removing invalid .git dir before cloning")
+		if err := os.RemoveAll(gitDir); err != nil {
+			return fmt.Errorf("remove broken .git dir: %w", err)
+		}
+	}
+	log.Info().Str("work_dir", workDir).Str("clone_url", g.cloneURL).Msg("cloning repository into work dir")
+	if _, err := g.run(ctx, workDir, "git", "clone", g.cloneURL, "."); err != nil {
+		return fmt.Errorf("clone %s: %w", g.cloneURL, err)
+	}
+	log.Info().Str("work_dir", workDir).Msg("repository cloned successfully")
+	return nil
 }
 
 func (g *NativeGitProvider) CreateBranch(ctx context.Context, workDir, branchName string) error {
-	// Try to create the branch; if it already exists just check it out.
+	// Try to create the branch.
 	if _, err := g.run(ctx, workDir, "git", "checkout", "-b", branchName); err == nil {
 		return nil
 	}
-	_, err := g.run(ctx, workDir, "git", "checkout", branchName)
+	// Branch may already exist locally — only fall back to checkout if it does.
+	if _, err := g.run(ctx, workDir, "git", "rev-parse", "--verify", "refs/heads/"+branchName); err == nil {
+		_, err = g.run(ctx, workDir, "git", "checkout", branchName)
+		return err
+	}
+	// Branch doesn't exist; retry creation to surface the real error.
+	_, err := g.run(ctx, workDir, "git", "checkout", "-b", branchName)
 	return err
 }
 

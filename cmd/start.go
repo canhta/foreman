@@ -224,8 +224,9 @@ func newStartCmd() *cobra.Command {
 				return fmt.Errorf("tracker: %w", err)
 			}
 
-			// 4. Initialize git provider.
+			// 4. Initialize git provider and ensure the work repo is ready.
 			gitProv := buildGitProvider(cfg)
+			repoReady := gitProv.EnsureRepo(context.Background(), cfg.Daemon.WorkDir) == nil
 
 			// 5. Initialize PR creator and checker.
 			prCreator := buildPRCreator(cfg)
@@ -346,6 +347,7 @@ func newStartCmd() *cobra.Command {
 			d.SetTracker(tr)
 			d.SetOrchestrator(orch)
 			d.SetScheduler(scheduler)
+			d.SetRepoReady(repoReady)
 			if prChecker != nil {
 				d.SetPRChecker(prChecker)
 			}

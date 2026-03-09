@@ -75,6 +75,7 @@ type Daemon struct {
 	mu            sync.Mutex
 	running       atomic.Bool
 	paused        atomic.Bool
+	repoReady     atomic.Bool
 }
 
 // NewDaemon creates a new daemon.
@@ -291,7 +292,11 @@ func (d *Daemon) Start(ctx context.Context) {
 					d.ingestFromTracker(ctx, database, tr)
 				}
 				if database != nil && d.orchestrator != nil {
-					d.processQueuedTickets(ctx, database)
+					if !d.repoReady.Load() {
+						log.Warn().Msg("skipping ticket processing: work repository not ready")
+					} else {
+						d.processQueuedTickets(ctx, database)
+					}
 				}
 			}
 		case <-ticker.C:
@@ -328,7 +333,11 @@ func (d *Daemon) Start(ctx context.Context) {
 
 			// Process queued tickets from DB
 			if database != nil && d.orchestrator != nil {
-				d.processQueuedTickets(ctx, database)
+				if !d.repoReady.Load() {
+					log.Warn().Msg("skipping ticket processing: work repository not ready")
+				} else {
+					d.processQueuedTickets(ctx, database)
+				}
 			}
 		}
 	}
@@ -342,6 +351,11 @@ func (d *Daemon) IsRunning() bool {
 // IsPaused returns whether the daemon is paused.
 func (d *Daemon) IsPaused() bool {
 	return d.paused.Load()
+}
+
+// SetRepoReady marks the work repository as cloned and ready for ticket processing.
+func (d *Daemon) SetRepoReady(ready bool) {
+	d.repoReady.Store(ready)
 }
 
 // Pause pauses the daemon's polling.
