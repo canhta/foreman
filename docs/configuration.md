@@ -147,10 +147,20 @@ pr_draft          = true
 pr_reviewers      = ["team-lead"]
 branch_prefix     = "foreman"   # Branch names: foreman/PROJ-123-add-auth
 rebase_before_pr  = true
+```
 
+### GitHub
+
+```toml
 [git.github]
 token = "${GITHUB_TOKEN}"
+```
 
+> **Token permissions required:** `repo` scope (classic PAT) or `Contents: Read and write` + `Pull requests: Read and write` (fine-grained PAT). For org repos, SAML SSO authorization and PAT approval may also be needed. See [integrations.md](integrations.md) for full setup steps.
+
+### GitLab
+
+```toml
 [git.gitlab]
 token    = "${GITLAB_TOKEN}"
 base_url = "https://gitlab.com"   # Override for self-hosted GitLab
