@@ -348,6 +348,8 @@ func (m *orchMockGit) AddWorktree(_ context.Context, _, _, _, _ string) error { 
 func (m *orchMockGit) RemoveWorktree(_ context.Context, _, _ string) error    { return nil }
 func (m *orchMockGit) MergeNoFF(_ context.Context, _, _ string) error         { return nil }
 func (m *orchMockGit) DeleteBranch(_ context.Context, _, _ string) error      { return nil }
+func (m *orchMockGit) Checkout(_ context.Context, _, _ string) error          { return nil }
+func (m *orchMockGit) Pull(_ context.Context, _ string) error                 { return nil }
 
 // ---------------------------------------------------------------------------
 // Mock: git.PRCreator

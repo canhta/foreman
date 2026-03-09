@@ -281,6 +281,8 @@ func (m *mockGitForEngine) AddWorktree(_ context.Context, _, _, _, _ string) err
 func (m *mockGitForEngine) RemoveWorktree(_ context.Context, _, _ string) error    { return nil }
 func (m *mockGitForEngine) MergeNoFF(_ context.Context, _, _ string) error         { return nil }
 func (m *mockGitForEngine) DeleteBranch(_ context.Context, _, _ string) error      { return nil }
+func (m *mockGitForEngine) Checkout(_ context.Context, _, _ string) error          { return nil }
+func (m *mockGitForEngine) Pull(_ context.Context, _ string) error                 { return nil }
 
 func TestEngine_ExecuteAgentSDK(t *testing.T) {
 	workDir := t.TempDir()
