@@ -7,16 +7,25 @@ import (
 	"sort"
 
 	"github.com/canhta/foreman/internal/models"
+	"github.com/canhta/foreman/internal/prompts"
 )
 
 // Implementer generates code changes for a task via LLM using TDD.
 type Implementer struct {
-	llm LLMProvider
+	llm      LLMProvider
+	registry *prompts.Registry
 }
 
 // NewImplementer creates an Implementer with the given LLM provider.
 func NewImplementer(provider LLMProvider) *Implementer {
 	return &Implementer{llm: provider}
+}
+
+// WithRegistry attaches a prompt registry so the implementer uses registry.Render()
+// for the system prompt instead of the hardcoded buildImplementerSystemPrompt().
+func (impl *Implementer) WithRegistry(reg *prompts.Registry) *Implementer {
+	impl.registry = reg
+	return impl
 }
 
 // ImplementerInput holds all parameters for a single implementer call.
@@ -40,7 +49,22 @@ type ImplementerResult struct {
 
 // Execute runs the implementer step and returns the LLM response.
 func (impl *Implementer) Execute(ctx context.Context, input ImplementerInput) (*ImplementerResult, error) {
-	systemPrompt := buildImplementerSystemPrompt()
+	var systemPrompt string
+	if impl.registry != nil {
+		rendered, err := impl.registry.Render(prompts.KindRole, "implementer", map[string]any{
+			"task_title":          input.Task.Title,
+			"task_description":    input.Task.Description,
+			"acceptance_criteria": input.Task.AcceptanceCriteria,
+			"context_files":       input.ContextFiles,
+			"codebase_patterns":   "",
+		})
+		if err != nil {
+			return nil, fmt.Errorf("render implementer prompt: %w", err)
+		}
+		systemPrompt = rendered
+	} else {
+		systemPrompt = buildImplementerSystemPrompt()
+	}
 	userPrompt := buildImplementerUserPrompt(input)
 
 	resp, err := impl.llm.Complete(ctx, models.LlmRequest{

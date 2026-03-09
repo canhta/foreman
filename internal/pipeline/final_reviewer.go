@@ -7,6 +7,7 @@ import (
 
 	"github.com/canhta/foreman/internal/llm"
 	"github.com/canhta/foreman/internal/models"
+	"github.com/canhta/foreman/internal/prompts"
 )
 
 // TaskSummary is a brief task status for the final reviewer.
@@ -31,12 +32,20 @@ type FinalReviewRunner interface {
 
 // FinalReviewer performs a final review of the complete changeset before PR creation.
 type FinalReviewer struct {
-	llm llm.LlmProvider
+	llm      llm.LlmProvider
+	registry *prompts.Registry
 }
 
 // NewFinalReviewer creates a final reviewer.
 func NewFinalReviewer(provider llm.LlmProvider) *FinalReviewer {
 	return &FinalReviewer{llm: provider}
+}
+
+// WithRegistry attaches a prompt registry so the reviewer uses registry.Render()
+// instead of the legacy RenderPrompt() function.
+func (r *FinalReviewer) WithRegistry(reg *prompts.Registry) *FinalReviewer {
+	r.registry = reg
+	return r
 }
 
 // Compile-time check.
@@ -49,12 +58,25 @@ func (r *FinalReviewer) Review(ctx context.Context, input FinalReviewInput) (*mo
 		completedTasks[i] = CompletedTask(t)
 	}
 
-	system, err := RenderPrompt("final_reviewer", PromptContext{
-		TicketTitle:       input.TicketTitle,
-		TicketDescription: input.TicketDescription,
-		FullDiff:          input.FullDiff,
-		CompletedTasks:    completedTasks,
-	})
+	var (
+		system string
+		err    error
+	)
+	if r.registry != nil {
+		system, err = r.registry.Render(prompts.KindRole, "final-reviewer", map[string]any{
+			"ticket_title":       input.TicketTitle,
+			"ticket_description": input.TicketDescription,
+			"full_diff":          input.FullDiff,
+			"completed_tasks":    completedTasks,
+		})
+	} else {
+		system, err = RenderPrompt("final_reviewer", PromptContext{
+			TicketTitle:       input.TicketTitle,
+			TicketDescription: input.TicketDescription,
+			FullDiff:          input.FullDiff,
+			CompletedTasks:    completedTasks,
+		})
+	}
 	if err != nil {
 		return nil, fmt.Errorf("render final_reviewer prompt: %w", err)
 	}
