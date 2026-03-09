@@ -12,6 +12,12 @@ import (
 // ErrNotFound is returned by database methods when a requested record does not exist.
 var ErrNotFound = errors.New("not found")
 
+// RepoLockSentinel is a special file path that locks the entire repository.
+// When a ticket reserves this sentinel, no other ticket can reserve any files,
+// and no other ticket can acquire the repo lock. This is used by external agent
+// runners (e.g. claude, copilot) that may modify any file in the repo.
+const RepoLockSentinel = "__REPO_LOCK__"
+
 // DAGState records which tasks of a ticket's DAG are done and which are still pending.
 // It is persisted so that crash recovery can reconstruct and re-execute only the
 // pending/failed tasks without restarting the entire ticket.

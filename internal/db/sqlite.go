@@ -655,7 +655,30 @@ func (s *SQLiteDB) TryReserveFiles(ctx context.Context, ticketID string, paths [
 		return nil, fmt.Errorf("iterate reservation rows: %w", err)
 	}
 
-	// Check for conflicts.
+	// Check if any other ticket holds a repo lock — that blocks everything.
+	for path, owner := range reserved {
+		if path == RepoLockSentinel && owner != ticketID {
+			return []string{fmt.Sprintf("%s (held by %s)", RepoLockSentinel, owner)}, nil
+		}
+	}
+
+	// If this ticket is requesting the repo lock, check if ANY files are reserved by others.
+	requestingRepoLock := false
+	for _, p := range paths {
+		if p == RepoLockSentinel {
+			requestingRepoLock = true
+			break
+		}
+	}
+	if requestingRepoLock {
+		for path, owner := range reserved {
+			if owner != ticketID {
+				return []string{fmt.Sprintf("%s (held by %s)", path, owner)}, nil
+			}
+		}
+	}
+
+	// Check for conflicts on specific files.
 	var conflicts []string
 	for _, p := range paths {
 		if owner, ok := reserved[p]; ok && owner != ticketID {
