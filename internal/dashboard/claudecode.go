@@ -72,16 +72,21 @@ func parseClaudeCodeUsage() claudeCodeUsage {
 		return claudeCodeUsage{Available: false}
 	}
 
-	// Collect all JSONL files modified in last 7 days
+	// Collect all JSONL files modified in last 7 days.
+	// Store modtime alongside path to avoid a second os.Stat (TOCTOU).
 	cutoff := time.Now().AddDate(0, 0, -7)
-	var sessionFiles []string
+	type sessionFile struct {
+		path    string
+		modTime time.Time
+	}
+	var sessionFiles []sessionFile
 
 	_ = filepath.Walk(projectsDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
 			return nil
 		}
 		if strings.HasSuffix(path, ".jsonl") && info.ModTime().After(cutoff) {
-			sessionFiles = append(sessionFiles, path)
+			sessionFiles = append(sessionFiles, sessionFile{path: path, modTime: info.ModTime()})
 		}
 		return nil
 	})
@@ -94,10 +99,9 @@ func parseClaudeCodeUsage() claudeCodeUsage {
 	dailyStats := make(map[string]*claudeCodeDaySummary)
 	totalSessions := 0
 
-	for _, path := range sessionFiles {
+	for _, sf := range sessionFiles {
 		totalSessions++
-		info, _ := os.Stat(path)
-		dateKey := info.ModTime().Format("2006-01-02")
+		dateKey := sf.modTime.Format("2006-01-02")
 
 		day, exists := dailyStats[dateKey]
 		if !exists {
@@ -106,24 +110,26 @@ func parseClaudeCodeUsage() claudeCodeUsage {
 		}
 		day.Sessions++
 
-		f, err := os.Open(path)
+		f, err := os.Open(sf.path)
 		if err != nil {
 			continue
 		}
-		scanner := bufio.NewScanner(f)
-		scanner.Buffer(make([]byte, 0, 1024*1024), 10*1024*1024) // 10MB max line
-		for scanner.Scan() {
-			var msg jsonlMessage
-			if err := json.Unmarshal(scanner.Bytes(), &msg); err != nil {
-				continue
+		func() {
+			defer f.Close()
+			scanner := bufio.NewScanner(f)
+			scanner.Buffer(make([]byte, 0, 1024*1024), 10*1024*1024) // 10MB max line
+			for scanner.Scan() {
+				var msg jsonlMessage
+				if err := json.Unmarshal(scanner.Bytes(), &msg); err != nil {
+					continue
+				}
+				if msg.Usage != nil {
+					day.InputTokens += msg.Usage.InputTokens
+					day.OutputTokens += msg.Usage.OutputTokens
+					day.CacheReadTokens += msg.Usage.CacheReadInputTokens
+				}
 			}
-			if msg.Usage != nil {
-				day.InputTokens += msg.Usage.InputTokens
-				day.OutputTokens += msg.Usage.OutputTokens
-				day.CacheReadTokens += msg.Usage.CacheReadInputTokens
-			}
-		}
-		f.Close()
+		}()
 	}
 
 	// Build response
