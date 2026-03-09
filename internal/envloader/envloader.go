@@ -86,7 +86,7 @@ func copyFile(src, dest string) error {
 	}
 	defer in.Close()
 
-	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+	if err = os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		return err
 	}
 	out, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)

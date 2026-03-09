@@ -180,10 +180,10 @@ type configSummary struct {
 	Tracker     configTracker     `json:"tracker"`
 	Git         configGit         `json:"git"`
 	AgentRunner configAgentRunner `json:"agent_runner"`
-	Cost        configCost        `json:"cost"`
-	Daemon      configDaemon      `json:"daemon"`
 	Database    configDatabase    `json:"database"`
 	MCP         configMCP         `json:"mcp"`
+	Daemon      configDaemon      `json:"daemon"`
+	Cost        configCost        `json:"cost"`
 	RateLimit   configRateLimit   `json:"rate_limit"`
 }
 
@@ -217,10 +217,10 @@ type configCost struct {
 }
 
 type configDaemon struct {
-	MaxParallelTickets int    `json:"max_parallel_tickets"`
-	MaxParallelTasks   int    `json:"max_parallel_tasks"`
 	WorkDir            string `json:"work_dir"`
 	LogLevel           string `json:"log_level"`
+	MaxParallelTickets int    `json:"max_parallel_tickets"`
+	MaxParallelTasks   int    `json:"max_parallel_tasks"`
 }
 
 type configDatabase struct {
@@ -275,12 +275,12 @@ type recentLlmCall struct {
 	Role        string  `json:"role"`
 	Runner      string  `json:"runner"`
 	Model       string  `json:"model"`
+	Status      string  `json:"status"`
+	Timestamp   string  `json:"timestamp"`
+	CostUSD     float64 `json:"cost_usd"`
 	TokensIn    int     `json:"tokens_in"`
 	TokensOut   int     `json:"tokens_out"`
-	CostUSD     float64 `json:"cost_usd"`
-	Status      string  `json:"status"`
 	DurationMs  int     `json:"duration_ms"`
-	Timestamp   string  `json:"timestamp"`
 }
 
 // redactKey returns a redacted version of an API key for display purposes.

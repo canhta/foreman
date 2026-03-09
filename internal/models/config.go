@@ -58,22 +58,22 @@ type MCPServerEntry struct {
 }
 
 type DaemonConfig struct {
-	WorkDir                string `mapstructure:"work_dir"`
-	LogLevel               string `mapstructure:"log_level"`
-	LogFormat              string `mapstructure:"log_format"`
-	PollIntervalSecs       int    `mapstructure:"poll_interval_secs"`
-	IdlePollIntervalSecs   int    `mapstructure:"idle_poll_interval_secs"`
-	MaxParallelTickets     int    `mapstructure:"max_parallel_tickets"`
-	MaxParallelTasks       int    `mapstructure:"max_parallel_tasks"`
-	TaskTimeoutMinutes     int    `mapstructure:"task_timeout_minutes"`
-	MergeCheckIntervalSecs int    `mapstructure:"merge_check_interval_secs"`
-	LockTTLSeconds         int    `mapstructure:"lock_ttl_seconds"`
 	// EnvFiles maps worktree-relative destination paths to absolute source paths
 	// on disk (outside the repo). Each file is copied into every task worktree
 	// and all vars are loaded into the process environment.
 	// Use ~/ prefix for home-relative paths (not $HOME — shell vars are not expanded).
 	// Example: {".env": "~/.foreman/envs/myproject.env"}
-	EnvFiles map[string]string `mapstructure:"env_files"`
+	EnvFiles               map[string]string `mapstructure:"env_files"`
+	WorkDir                string            `mapstructure:"work_dir"`
+	LogLevel               string            `mapstructure:"log_level"`
+	LogFormat              string            `mapstructure:"log_format"`
+	PollIntervalSecs       int               `mapstructure:"poll_interval_secs"`
+	IdlePollIntervalSecs   int               `mapstructure:"idle_poll_interval_secs"`
+	MaxParallelTickets     int               `mapstructure:"max_parallel_tickets"`
+	MaxParallelTasks       int               `mapstructure:"max_parallel_tasks"`
+	TaskTimeoutMinutes     int               `mapstructure:"task_timeout_minutes"`
+	MergeCheckIntervalSecs int               `mapstructure:"merge_check_interval_secs"`
+	LockTTLSeconds         int               `mapstructure:"lock_ttl_seconds"`
 }
 
 type DashboardConfig struct {

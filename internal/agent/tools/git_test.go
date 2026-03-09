@@ -42,8 +42,8 @@ func (m *mockGitProvider) Log(_ context.Context, _ string, count int) ([]git.Com
 	}
 	return m.logEntries, nil
 }
-func (m *mockGitProvider) StageAll(_ context.Context, _ string) error         { return nil }
-func (m *mockGitProvider) CleanWorkingTree(_ context.Context, _ string) error { return nil }
+func (m *mockGitProvider) StageAll(_ context.Context, _ string) error             { return nil }
+func (m *mockGitProvider) CleanWorkingTree(_ context.Context, _ string) error     { return nil }
 func (m *mockGitProvider) AddWorktree(_ context.Context, _, _, _, _ string) error { return nil }
 func (m *mockGitProvider) RemoveWorktree(_ context.Context, _, _ string) error    { return nil }
 func (m *mockGitProvider) MergeNoFF(_ context.Context, _, _ string) error         { return nil }

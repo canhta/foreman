@@ -11,10 +11,10 @@ import (
 )
 
 type claudeCodeUsage struct {
-	Available     bool                  `json:"available"`
 	Today         *claudeCodeDaySummary `json:"today,omitempty"`
 	Last7Days     []claudeCodeDay       `json:"last_7_days,omitempty"`
 	TotalSessions int                   `json:"total_sessions,omitempty"`
+	Available     bool                  `json:"available"`
 }
 
 type claudeCodeDaySummary struct {
@@ -34,10 +34,10 @@ type claudeCodeDay struct {
 
 // jsonlMessage represents a single message in a Claude Code JSONL session file.
 type jsonlMessage struct {
+	// Usage fields can appear at the top level or nested
+	Usage   *jsonlUsage     `json:"usage,omitempty"`
 	Type    string          `json:"type"`
 	Message json.RawMessage `json:"message,omitempty"`
-	// Usage fields can appear at the top level or nested
-	Usage *jsonlUsage `json:"usage,omitempty"`
 }
 
 type jsonlUsage struct {
@@ -76,8 +76,8 @@ func parseClaudeCodeUsage() claudeCodeUsage {
 	// Store modtime alongside path to avoid a second os.Stat (TOCTOU).
 	cutoff := time.Now().AddDate(0, 0, -7)
 	type sessionFile struct {
-		path    string
 		modTime time.Time
+		path    string
 	}
 	var sessionFiles []sessionFile
 

@@ -111,10 +111,10 @@ func (a *DAGTaskAdapter) Run(ctx context.Context, taskID string) daemon.TaskResu
 			runnerToUse = a.runner.CloneWithWorkDir(worktreeDir)
 			// Reload env vars from disk and copy files into the worktree.
 			if len(a.envFiles) > 0 {
-				if err := envloader.Load(a.envFiles); err != nil {
+				if err = envloader.Load(a.envFiles); err != nil {
 					log.Warn().Err(err).Str("task_id", taskID).Msg("env reload failed for worktree")
 				}
-				if err := envloader.CopyInto(a.envFiles, worktreeDir); err != nil {
+				if err = envloader.CopyInto(a.envFiles, worktreeDir); err != nil {
 					log.Warn().Err(err).Str("task_id", taskID).Msg("env file copy into worktree failed")
 				}
 			}

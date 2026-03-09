@@ -909,12 +909,12 @@ func (s *SQLiteDB) GetLlmCallAggregates(ctx context.Context, since time.Time) ([
 	var byRunner []RunnerAggregate
 	for rows.Next() {
 		var r RunnerAggregate
-		if err := rows.Scan(&r.Runner, &r.Calls, &r.TokensIn, &r.TokensOut, &r.CostUSD); err != nil {
+		if err = rows.Scan(&r.Runner, &r.Calls, &r.TokensIn, &r.TokensOut, &r.CostUSD); err != nil {
 			return nil, nil, nil, fmt.Errorf("scan runner row: %w", err)
 		}
 		byRunner = append(byRunner, r)
 	}
-	if err := rows.Err(); err != nil {
+	if err = rows.Err(); err != nil {
 		return nil, nil, nil, err
 	}
 
@@ -931,12 +931,12 @@ func (s *SQLiteDB) GetLlmCallAggregates(ctx context.Context, since time.Time) ([
 	var byModel []ModelAggregate
 	for rows2.Next() {
 		var m ModelAggregate
-		if err := rows2.Scan(&m.Model, &m.Calls, &m.TokensIn, &m.TokensOut, &m.CostUSD); err != nil {
+		if err = rows2.Scan(&m.Model, &m.Calls, &m.TokensIn, &m.TokensOut, &m.CostUSD); err != nil {
 			return nil, nil, nil, fmt.Errorf("scan model row: %w", err)
 		}
 		byModel = append(byModel, m)
 	}
-	if err := rows2.Err(); err != nil {
+	if err = rows2.Err(); err != nil {
 		return nil, nil, nil, err
 	}
 

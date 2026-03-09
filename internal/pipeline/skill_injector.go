@@ -66,7 +66,7 @@ func (si *SkillInjector) mergeSettings(claudeDir string) error {
 		return fmt.Errorf("read embedded settings: %w", err)
 	}
 	var foremanSettings map[string]interface{}
-	if err := json.Unmarshal(templateData, &foremanSettings); err != nil {
+	if err = json.Unmarshal(templateData, &foremanSettings); err != nil {
 		return fmt.Errorf("parse embedded settings: %w", err)
 	}
 
