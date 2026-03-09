@@ -62,6 +62,7 @@ func NewRegistryWithMCP(gitProvider git.GitProvider, cmdRunner runner.CommandRun
 	registerCode(r, cmdRunner)
 	registerExec(r, cmdRunner, mcpMgr)
 	r.Register(&batchTool{reg: r})
+	registerLSP(r)
 	return r
 }
 
