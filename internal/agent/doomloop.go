@@ -23,23 +23,22 @@ func (d *DoomLoopDetector) Check(toolName, input string) bool {
 	key := hash(toolName, input)
 	d.history = append(d.history, key)
 
-	// Only check the last `threshold` entries
+	// Cap the slice to the last `threshold` entries to bound memory growth.
+	if len(d.history) > d.threshold {
+		d.history = d.history[len(d.history)-d.threshold:]
+	}
+
+	// Only trigger once we have a full window.
 	if len(d.history) < d.threshold {
 		return false
 	}
 
-	last := d.history[len(d.history)-d.threshold:]
-	for _, h := range last {
+	for _, h := range d.history {
 		if h != key {
 			return false
 		}
 	}
 	return true
-}
-
-// Reset clears the history.
-func (d *DoomLoopDetector) Reset() {
-	d.history = nil
 }
 
 func hash(tool, input string) string {

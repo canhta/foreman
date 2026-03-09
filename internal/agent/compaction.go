@@ -16,16 +16,21 @@ const pruneNotice = "[tool output truncated by compaction]"
 // recent ones. Works backwards from the most recent messages, protecting the last
 // `protectChars` worth of tool output content.
 //
+// Tool results in Foreman's pipeline are carried in user messages with Role "user"
+// and a non-empty ToolResults slice. Each ToolResult.Content is measured and
+// truncated individually.
+//
 // This implements the pruning-first compaction strategy: pruning happens before
 // LLM summarization to minimize token usage and preserve conversation structure.
 func PruneOldToolOutputs(messages []models.Message, protectChars int) []models.Message {
 	result := make([]models.Message, len(messages))
 	copy(result, messages)
 
-	// Collect tool message indices (oldest first)
+	// Collect tool-result message indices (oldest first).
+	// Tool results are user messages that carry a non-empty ToolResults slice.
 	var toolIndices []int
 	for i, m := range result {
-		if m.Role == "tool" {
+		if m.Role == "user" && len(m.ToolResults) > 0 {
 			toolIndices = append(toolIndices, i)
 		}
 	}
@@ -38,7 +43,10 @@ func PruneOldToolOutputs(messages []models.Message, protectChars int) []models.M
 	protectedSet := make(map[int]bool)
 	for i := len(toolIndices) - 1; i >= 0; i-- {
 		idx := toolIndices[i]
-		size := len(result[idx].Content)
+		size := 0
+		for _, tr := range result[idx].ToolResults {
+			size += len(tr.Content)
+		}
 		if protected > 0 && protected+size > protectChars {
 			// Adding this older output would exceed the budget; stop here.
 			break
@@ -47,10 +55,18 @@ func PruneOldToolOutputs(messages []models.Message, protectChars int) []models.M
 		protectedSet[idx] = true
 	}
 
-	// Truncate non-protected tool outputs.
+	// Truncate non-protected tool result content.
 	for _, idx := range toolIndices {
 		if !protectedSet[idx] {
-			result[idx].Content = pruneNotice
+			newResults := make([]models.ToolResult, len(result[idx].ToolResults))
+			for j, tr := range result[idx].ToolResults {
+				newResults[j] = models.ToolResult{
+					ToolCallID: tr.ToolCallID,
+					Content:    pruneNotice,
+					IsError:    tr.IsError,
+				}
+			}
+			result[idx].ToolResults = newResults
 		}
 	}
 

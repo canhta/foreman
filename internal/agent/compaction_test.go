@@ -185,22 +185,26 @@ func TestSummarizeHistory_LLMFailure(t *testing.T) {
 }
 
 func TestPruneOldToolOutputs(t *testing.T) {
+	largeOutput := strings.Repeat("x", 10000)
+	recentOutput := strings.Repeat("y", 5000)
 	messages := []models.Message{
 		{Role: "user", Content: "implement auth"},
-		{Role: "assistant", Content: "I'll read the file"},
-		{Role: "tool", Content: strings.Repeat("x", 10000)}, // large tool output
-		{Role: "assistant", Content: "Now I'll edit"},
-		{Role: "user", Content: "looks good"},
-		{Role: "assistant", Content: "I'll read another file"},
-		{Role: "tool", Content: strings.Repeat("y", 5000)}, // recent tool output
+		{Role: "assistant", Content: "I'll read the file", ToolCalls: []models.ToolCall{{ID: "call_1", Name: "Read"}}},
+		// Old tool result: large output, Role "user" with ToolResults
+		{Role: "user", ToolResults: []models.ToolResult{{ToolCallID: "call_1", Content: largeOutput}}},
+		{Role: "assistant", Content: "Now I'll edit", ToolCalls: []models.ToolCall{{ID: "call_2", Name: "Edit"}}},
+		// Recent tool result: smaller output
+		{Role: "user", ToolResults: []models.ToolResult{{ToolCallID: "call_2", Content: recentOutput}}},
 	}
 
 	pruned := PruneOldToolOutputs(messages, 8000)
 
-	// Old tool output should be truncated, recent one kept
-	assert.Less(t, len(pruned[2].Content), 10000)
-	// At minimum the message structure is preserved (7 messages)
-	assert.Len(t, pruned, 7)
+	// Message structure must be preserved
+	assert.Len(t, pruned, 5)
+	// Old tool result (index 2) should be truncated
+	assert.Equal(t, pruneNotice, pruned[2].ToolResults[0].Content)
+	// Recent tool result (index 4) should be kept intact
+	assert.Equal(t, recentOutput, pruned[4].ToolResults[0].Content)
 }
 
 func TestPruneOldToolOutputs_NoToolMessages(t *testing.T) {
