@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/flosch/pongo2/v6"
+	"gopkg.in/yaml.v3"
 )
 
 // EntryKind distinguishes the type of prompt entry.
@@ -260,6 +261,48 @@ func (r *Registry) ForClaude(workDir string, vars map[string]any) error {
 	}
 
 	return nil
+}
+
+// SkillStep represents a single step in a skill workflow.
+type SkillStep struct {
+	ID            string   `yaml:"id"`
+	Type          string   `yaml:"type"`
+	Prompt        string   `yaml:"prompt,omitempty"`
+	Model         string   `yaml:"model,omitempty"`
+	Command       string   `yaml:"command,omitempty"`
+	AllowedTools  []string `yaml:"allowed_tools,omitempty"`
+	MaxTurns      int      `yaml:"max_turns,omitempty"`
+	TimeoutSecs   int      `yaml:"timeout_secs,omitempty"`
+	MaxTokens     int      `yaml:"max_tokens,omitempty"`
+	OutputFormat  string   `yaml:"output_format,omitempty"`
+	FallbackModel string   `yaml:"fallback_model,omitempty"`
+	SkillRef      string   `yaml:"skill_ref,omitempty"`
+	AllowFailure  bool     `yaml:"allow_failure,omitempty"`
+}
+
+// SkillSteps extracts the step definitions from a skill entry's frontmatter.
+func (r *Registry) SkillSteps(name string) ([]SkillStep, error) {
+	entry, err := r.Get(KindSkill, name)
+	if err != nil {
+		return nil, err
+	}
+
+	rawSteps, ok := entry.Metadata["steps"]
+	if !ok || rawSteps == nil {
+		return nil, nil
+	}
+
+	// Re-marshal and unmarshal to get typed steps
+	stepsYAML, err := yaml.Marshal(rawSteps)
+	if err != nil {
+		return nil, fmt.Errorf("marshal steps for %s: %w", name, err)
+	}
+
+	var steps []SkillStep
+	if err := yaml.Unmarshal(stepsYAML, &steps); err != nil {
+		return nil, fmt.Errorf("parse steps for %s: %w", name, err)
+	}
+	return steps, nil
 }
 
 // RenderEntry renders a single entry with the given variables.

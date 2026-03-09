@@ -200,3 +200,47 @@ func TestRegistryForClaude(t *testing.T) {
 	_, err = os.Stat(settingsFile)
 	assert.NoError(t, err)
 }
+
+func TestRegistrySkillSteps(t *testing.T) {
+	dir := setupTestFixtures(t)
+	reg, err := Load(dir)
+	require.NoError(t, err)
+
+	steps, err := reg.SkillSteps("bug-fix")
+	require.NoError(t, err)
+	require.Len(t, steps, 1)
+	assert.Equal(t, "regression-check", steps[0].ID)
+	assert.Equal(t, "llm_call", steps[0].Type)
+	assert.Contains(t, steps[0].Prompt, "Check for regressions")
+}
+
+func TestRegistrySkillSteps_NotFound(t *testing.T) {
+	dir := setupTestFixtures(t)
+	reg, err := Load(dir)
+	require.NoError(t, err)
+
+	_, err = reg.SkillSteps("nonexistent")
+	assert.Error(t, err)
+}
+
+func TestRegistrySkillSteps_NoSteps(t *testing.T) {
+	dir := setupTestFixtures(t)
+
+	// Create skill with no steps
+	mkdirp(t, filepath.Join(dir, "skills", "empty"))
+	writeFile(t, filepath.Join(dir, "skills", "empty", "SKILL.md"), `---
+name: empty
+description: "Empty skill"
+trigger: post_lint
+---
+
+No steps here.
+`)
+
+	reg, err := Load(dir)
+	require.NoError(t, err)
+
+	steps, err := reg.SkillSteps("empty")
+	require.NoError(t, err)
+	assert.Empty(t, steps)
+}
