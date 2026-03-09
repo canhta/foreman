@@ -318,13 +318,15 @@ export function connectWebSocket() {
           };
         }
         if (evt.EventType === 'agent_tool_end') {
-          const existing = appState.activeTaskProgress[evt.TaskID];
-          if (existing) {
-            existing.lastTool = details.tool_name;
-            existing.lastToolTime = evt.CreatedAt;
+          if (appState.activeTaskProgress[evt.TaskID]) {
+            appState.activeTaskProgress[evt.TaskID] = {
+              ...appState.activeTaskProgress[evt.TaskID],
+              lastTool: details.tool_name,
+              lastToolTime: evt.CreatedAt,
+            };
           }
         }
-        if (evt.EventType === 'task_completed' || evt.EventType === 'task_failed') {
+        if (evt.EventType === 'task_done' || evt.EventType === 'task_failed') {
           delete appState.activeTaskProgress[evt.TaskID];
         }
       } catch { /* ignore parse errors */ }
