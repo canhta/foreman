@@ -96,6 +96,9 @@ func NewEngine(llmProvider llm.LlmProvider, cmdRunner runner.CommandRunner, work
 // If a step has AllowFailure=false and fails, execution stops immediately and
 // an error is returned.
 func (e *Engine) Execute(ctx context.Context, skill *Skill, sCtx *SkillContext) error {
+	if sCtx.Steps == nil {
+		sCtx.Steps = make(map[string]*StepResult)
+	}
 	for _, step := range skill.Steps {
 		result, err := e.executeStep(ctx, step, sCtx)
 		if err != nil {
