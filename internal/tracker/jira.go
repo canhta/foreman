@@ -71,8 +71,8 @@ type jiraCommentBlock struct {
 }
 
 type jiraComment struct {
-	Author jiraUser `json:"author"`
-	Body   string   `json:"body"`
+	Author jiraUser        `json:"author"`
+	Body   json.RawMessage `json:"body"`
 }
 
 // adfToText extracts plain text from an Atlassian Document Format (ADF) value.
