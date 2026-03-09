@@ -100,6 +100,8 @@ export interface EventRecord {
   submitter?: string;
   seq?: number;
   isNew?: boolean;
+  runner?: string;
+  model?: string;
 }
 
 export interface LlmCallRecord {
@@ -136,4 +138,35 @@ export interface StatusResponse {
   version: string;
   channels: Record<string, { connected: boolean }>;
   mcp_servers?: Record<string, { status: string; error?: string }>;
+}
+
+export interface ConfigSummary {
+  llm: { provider: string; models: Record<string, string>; api_key: string };
+  tracker: { provider: string; poll_interval: string };
+  git: { provider: string; clone_url: string; branch_prefix: string; auto_merge: boolean };
+  agent_runner: { provider: string; turn_limit: number; token_budget: number };
+  cost: { daily_budget: number; monthly_budget: number; per_ticket_budget: number; alert_threshold: number };
+  daemon: { max_parallel_tickets: number; max_parallel_tasks: number; work_dir: string; log_level: string };
+  database: { driver: string; path: string };
+  mcp: { servers: string[] };
+  rate_limit: { requests_per_minute: number };
+}
+
+export interface ClaudeCodeUsage {
+  available: boolean;
+  today?: { sessions: number; input_tokens: number; output_tokens: number; cache_read_tokens: number; estimated_cost_usd: number };
+  last_7_days?: { date: string; input_tokens: number; output_tokens: number; cost_usd: number }[];
+  total_sessions?: number;
+}
+
+export interface ActivityBreakdown {
+  by_runner: { runner: string; calls: number; tokens_in: number; tokens_out: number; cost_usd: number }[];
+  by_model: { model: string; calls: number; tokens_in: number; tokens_out: number; cost_usd: number }[];
+  by_role: { role: string; runner: string; model: string; calls: number; cost_usd: number }[];
+  recent_calls: {
+    ticket_id: string; ticket_title: string; task_title: string;
+    role: string; runner: string; model: string;
+    tokens_in: number; tokens_out: number; cost_usd: number;
+    status: string; duration_ms: number; timestamp: string;
+  }[];
 }

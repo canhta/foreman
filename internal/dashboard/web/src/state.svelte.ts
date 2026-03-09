@@ -2,6 +2,7 @@ import { fetchJSON, postJSON, postJSONBody, deleteJSON, getToken, clearToken, se
 import type {
   Ticket, TicketSummary, Task, EventRecord, LlmCallRecord,
   TeamStat, DayCost, StatusResponse,
+  ConfigSummary, ClaudeCodeUsage, ActivityBreakdown,
 } from './types';
 
 // ── Toasts ──
@@ -45,6 +46,23 @@ class AppState {
   recentPRs = $state<Ticket[]>([]);
 
   toasts = $state<Toast[]>([]);
+
+  settingsOpen = $state(false);
+  settingsTab = $state<'config' | 'usage'>('config');
+  configSummary = $state<ConfigSummary | null>(null);
+  claudeCodeUsage = $state<ClaudeCodeUsage | null>(null);
+  activityBreakdown = $state<ActivityBreakdown | null>(null);
+
+  // Live task progress from WebSocket events
+  activeTaskProgress = $state<Record<string, {
+    turn: number;
+    maxTurns: number;
+    tokensUsed: number;
+    runner: string;
+    model: string;
+    lastTool?: string;
+    lastToolTime?: string;
+  }>>({});
 
   activePanel = $state<'tickets' | 'detail' | 'feed' | 'health'>('tickets');
   filter = $state<'all' | 'active' | 'done' | 'fail'>('all');
@@ -180,6 +198,35 @@ export async function loadTeamStats() {
   } catch { /* ignore */ }
 }
 
+export async function fetchConfigSummary(): Promise<void> {
+  try {
+    appState.configSummary = await fetchJSON<ConfigSummary>('/api/config/summary');
+  } catch { /* ignore */ }
+}
+
+export async function fetchClaudeCodeUsage(): Promise<void> {
+  try {
+    appState.claudeCodeUsage = await fetchJSON<ClaudeCodeUsage>('/api/usage/claude-code');
+  } catch { /* ignore */ }
+}
+
+export async function fetchActivityBreakdown(): Promise<void> {
+  try {
+    appState.activityBreakdown = await fetchJSON<ActivityBreakdown>('/api/usage/activity');
+  } catch { /* ignore */ }
+}
+
+export function openSettings() {
+  appState.settingsOpen = true;
+  fetchConfigSummary();
+  fetchClaudeCodeUsage();
+  fetchActivityBreakdown();
+}
+
+export function closeSettings() {
+  appState.settingsOpen = false;
+}
+
 // ── Actions ──
 
 export async function pauseDaemon() {
@@ -255,6 +302,33 @@ export function connectWebSocket() {
   ws.onmessage = (e) => {
     const evt: EventRecord = JSON.parse(e.data);
     evt.isNew = true;
+
+    // Track active task progress from agent events
+    if (evt.TaskID && evt.Details) {
+      try {
+        const details = JSON.parse(evt.Details);
+        if (evt.EventType === 'agent_turn_start') {
+          appState.activeTaskProgress[evt.TaskID] = {
+            ...(appState.activeTaskProgress[evt.TaskID] || {}),
+            turn: details.turn_number || 0,
+            maxTurns: details.max_turns || 50,
+            tokensUsed: details.tokens_used || 0,
+            runner: evt.runner || details.runner || '',
+            model: evt.model || details.model || '',
+          };
+        }
+        if (evt.EventType === 'agent_tool_end') {
+          const existing = appState.activeTaskProgress[evt.TaskID];
+          if (existing) {
+            existing.lastTool = details.tool_name;
+            existing.lastToolTime = evt.CreatedAt;
+          }
+        }
+        if (evt.EventType === 'task_completed' || evt.EventType === 'task_failed') {
+          delete appState.activeTaskProgress[evt.TaskID];
+        }
+      } catch { /* ignore parse errors */ }
+    }
 
     appState.events = [evt, ...appState.events.slice(0, 49)];
     setTimeout(() => { evt.isNew = false; }, 1200);
@@ -339,6 +413,11 @@ export function logout() {
   appState.teamStats = [];
   appState.recentPRs = [];
   appState.toasts = [];
+  appState.settingsOpen = false;
+  appState.configSummary = null;
+  appState.claudeCodeUsage = null;
+  appState.activityBreakdown = null;
+  appState.activeTaskProgress = {};
   loggedOut = false;
 }
 
