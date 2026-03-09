@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -328,6 +329,13 @@ func newStartCmd() *cobra.Command {
 			// 10. Signal context.
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
+
+			// Write PID file so `foreman status` can detect the running daemon.
+			pidFile := pidFilePath()
+			if err := os.MkdirAll(filepath.Dir(pidFile), 0o755); err == nil {
+				_ = os.WriteFile(pidFile, []byte(fmt.Sprintf("%d\n", os.Getpid())), 0o644)
+				defer os.Remove(pidFile)
+			}
 
 			// 11. Dashboard in background.
 			if cfg.Dashboard.Enabled {

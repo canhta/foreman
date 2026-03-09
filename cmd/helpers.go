@@ -2,12 +2,23 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/canhta/foreman/internal/config"
 	"github.com/canhta/foreman/internal/db"
 	"github.com/canhta/foreman/internal/models"
 )
+
+// pidFilePath returns the path to the foreman PID file.
+func pidFilePath() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		home = "."
+	}
+	return filepath.Join(home, ".foreman", "foreman.pid")
+}
 
 // loadConfigAndDB loads the configuration and opens the database.
 // Used by CLI commands that need read access to foreman state.
