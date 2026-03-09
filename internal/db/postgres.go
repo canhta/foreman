@@ -778,6 +778,104 @@ func (p *PostgresDB) ListLlmCalls(ctx context.Context, ticketID string) ([]model
 	return calls, nil
 }
 
+func (p *PostgresDB) GetLlmCallAggregates(ctx context.Context, since time.Time) ([]RunnerAggregate, []ModelAggregate, []RoleAggregate, error) {
+	// By runner
+	rows, err := p.db.QueryContext(ctx,
+		`SELECT COALESCE(NULLIF(agent_runner,''),'builtin'), COUNT(*),
+		        COALESCE(SUM(tokens_input),0), COALESCE(SUM(tokens_output),0), COALESCE(SUM(cost_usd),0)
+		 FROM llm_calls WHERE created_at >= $1
+		 GROUP BY COALESCE(NULLIF(agent_runner,''),'builtin')
+		 ORDER BY SUM(cost_usd) DESC`, since)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("aggregate by runner: %w", err)
+	}
+	defer rows.Close()
+	var byRunner []RunnerAggregate
+	for rows.Next() {
+		var r RunnerAggregate
+		if err := rows.Scan(&r.Runner, &r.Calls, &r.TokensIn, &r.TokensOut, &r.CostUSD); err != nil {
+			return nil, nil, nil, fmt.Errorf("scan runner row: %w", err)
+		}
+		byRunner = append(byRunner, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, nil, err
+	}
+
+	// By model
+	rows2, err := p.db.QueryContext(ctx,
+		`SELECT model, COUNT(*),
+		        COALESCE(SUM(tokens_input),0), COALESCE(SUM(tokens_output),0), COALESCE(SUM(cost_usd),0)
+		 FROM llm_calls WHERE created_at >= $1
+		 GROUP BY model ORDER BY SUM(cost_usd) DESC`, since)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("aggregate by model: %w", err)
+	}
+	defer rows2.Close()
+	var byModel []ModelAggregate
+	for rows2.Next() {
+		var m ModelAggregate
+		if err := rows2.Scan(&m.Model, &m.Calls, &m.TokensIn, &m.TokensOut, &m.CostUSD); err != nil {
+			return nil, nil, nil, fmt.Errorf("scan model row: %w", err)
+		}
+		byModel = append(byModel, m)
+	}
+	if err := rows2.Err(); err != nil {
+		return nil, nil, nil, err
+	}
+
+	// By role + runner + model
+	rows3, err := p.db.QueryContext(ctx,
+		`SELECT role, COALESCE(NULLIF(agent_runner,''),'builtin'), model, COUNT(*), COALESCE(SUM(cost_usd),0)
+		 FROM llm_calls WHERE created_at >= $1
+		 GROUP BY role, COALESCE(NULLIF(agent_runner,''),'builtin'), model
+		 ORDER BY SUM(cost_usd) DESC`, since)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("aggregate by role: %w", err)
+	}
+	defer rows3.Close()
+	var byRole []RoleAggregate
+	for rows3.Next() {
+		var ro RoleAggregate
+		if err := rows3.Scan(&ro.Role, &ro.Runner, &ro.Model, &ro.Calls, &ro.CostUSD); err != nil {
+			return nil, nil, nil, fmt.Errorf("scan role row: %w", err)
+		}
+		byRole = append(byRole, ro)
+	}
+	if err := rows3.Err(); err != nil {
+		return nil, nil, nil, err
+	}
+
+	return byRunner, byModel, byRole, nil
+}
+
+func (p *PostgresDB) GetRecentLlmCalls(ctx context.Context, limit int) ([]RecentLlmCall, error) {
+	rows, err := p.db.QueryContext(ctx,
+		`SELECT c.ticket_id, COALESCE(t.title,''), COALESCE(tk.title,''),
+		        c.role, COALESCE(NULLIF(c.agent_runner,''),'builtin'), c.model,
+		        c.tokens_input, c.tokens_output, c.cost_usd, c.status, c.duration_ms, c.created_at
+		 FROM llm_calls c
+		 LEFT JOIN tickets t ON t.id = c.ticket_id
+		 LEFT JOIN tasks tk ON tk.id = c.task_id
+		 ORDER BY c.created_at DESC LIMIT $1`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("recent llm calls: %w", err)
+	}
+	defer rows.Close()
+
+	var calls []RecentLlmCall
+	for rows.Next() {
+		var c RecentLlmCall
+		if err := rows.Scan(&c.TicketID, &c.TicketTitle, &c.TaskTitle,
+			&c.Role, &c.Runner, &c.Model,
+			&c.TokensIn, &c.TokensOut, &c.CostUSD, &c.Status, &c.DurationMs, &c.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan recent call: %w", err)
+		}
+		calls = append(calls, c)
+	}
+	return calls, rows.Err()
+}
+
 // --- Events ---
 
 func (p *PostgresDB) RecordEvent(ctx context.Context, e *models.EventRecord) error {

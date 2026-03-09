@@ -131,6 +131,14 @@ func (m *mockDashboardDB) GetGlobalEvents(_ context.Context, _, _ int) ([]models
 	return m.events, nil
 }
 
+func (m *mockDashboardDB) GetLlmCallAggregates(_ context.Context, _ time.Time) ([]db.RunnerAggregate, []db.ModelAggregate, []db.RoleAggregate, error) {
+	return nil, nil, nil, nil
+}
+
+func (m *mockDashboardDB) GetRecentLlmCalls(_ context.Context, _ int) ([]db.RecentLlmCall, error) {
+	return nil, nil
+}
+
 // mockDaemonStatus implements DaemonStatusProvider for tests.
 type mockDaemonStatus struct {
 	running bool

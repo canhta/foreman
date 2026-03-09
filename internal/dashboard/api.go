@@ -49,6 +49,8 @@ type DashboardDB interface {
 	AppendTicketDescription(ctx context.Context, id, text string) error
 	GetTaskContextStats(ctx context.Context, taskID string) (TaskContextStats, error)
 	UpdateTaskContextStats(ctx context.Context, taskID string, stats TaskContextStats) error
+	GetLlmCallAggregates(ctx context.Context, since time.Time) (byRunner []db.RunnerAggregate, byModel []db.ModelAggregate, byRole []db.RoleAggregate, err error)
+	GetRecentLlmCalls(ctx context.Context, limit int) ([]db.RecentLlmCall, error)
 }
 
 // EventSubscriber is the subset of EventEmitter needed for WebSocket.
@@ -232,6 +234,53 @@ type configMCP struct {
 
 type configRateLimit struct {
 	RequestsPerMinute int `json:"requests_per_minute"`
+}
+
+// activityBreakdown is the JSON response for GET /api/usage/activity.
+type activityBreakdown struct {
+	ByRunner    []runnerStat    `json:"by_runner"`
+	ByModel     []modelStat     `json:"by_model"`
+	ByRole      []roleStat      `json:"by_role"`
+	RecentCalls []recentLlmCall `json:"recent_calls"`
+}
+
+type runnerStat struct {
+	Runner    string  `json:"runner"`
+	Calls     int     `json:"calls"`
+	TokensIn  int64   `json:"tokens_in"`
+	TokensOut int64   `json:"tokens_out"`
+	CostUSD   float64 `json:"cost_usd"`
+}
+
+type modelStat struct {
+	Model     string  `json:"model"`
+	Calls     int     `json:"calls"`
+	TokensIn  int64   `json:"tokens_in"`
+	TokensOut int64   `json:"tokens_out"`
+	CostUSD   float64 `json:"cost_usd"`
+}
+
+type roleStat struct {
+	Role    string  `json:"role"`
+	Runner  string  `json:"runner"`
+	Model   string  `json:"model"`
+	Calls   int     `json:"calls"`
+	CostUSD float64 `json:"cost_usd"`
+}
+
+type recentLlmCall struct {
+	TicketID    string  `json:"ticket_id"`
+	TicketTitle string  `json:"ticket_title"`
+	TaskTitle   string  `json:"task_title"`
+	Role        string  `json:"role"`
+	Runner      string  `json:"runner"`
+	Model       string  `json:"model"`
+	TokensIn    int     `json:"tokens_in"`
+	TokensOut   int     `json:"tokens_out"`
+	CostUSD     float64 `json:"cost_usd"`
+	Status      string  `json:"status"`
+	DurationMs  int     `json:"duration_ms"`
+	Timestamp   string  `json:"timestamp"`
 }
 
 // redactKey returns a redacted version of an API key for display purposes.
@@ -785,6 +834,54 @@ func (a *API) handlePromptVersions(w http.ResponseWriter, r *http.Request) {
 		snapshots = []db.PromptSnapshot{}
 	}
 	writeJSON(w, http.StatusOK, snapshots)
+}
+
+func (a *API) handleActivityBreakdown(w http.ResponseWriter, r *http.Request) {
+	days := 7
+	if v := r.URL.Query().Get("days"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 90 {
+			days = n
+		}
+	}
+
+	since := time.Now().AddDate(0, 0, -days)
+	byRunner, byModel, byRole, err := a.db.GetLlmCallAggregates(r.Context(), since)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	recent, err := a.db.GetRecentLlmCalls(r.Context(), 10)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	resp := activityBreakdown{
+		ByRunner:    make([]runnerStat, len(byRunner)),
+		ByModel:     make([]modelStat, len(byModel)),
+		ByRole:      make([]roleStat, len(byRole)),
+		RecentCalls: make([]recentLlmCall, len(recent)),
+	}
+	for i, r := range byRunner {
+		resp.ByRunner[i] = runnerStat{Runner: r.Runner, Calls: r.Calls, TokensIn: r.TokensIn, TokensOut: r.TokensOut, CostUSD: r.CostUSD}
+	}
+	for i, m := range byModel {
+		resp.ByModel[i] = modelStat{Model: m.Model, Calls: m.Calls, TokensIn: m.TokensIn, TokensOut: m.TokensOut, CostUSD: m.CostUSD}
+	}
+	for i, ro := range byRole {
+		resp.ByRole[i] = roleStat{Role: ro.Role, Runner: ro.Runner, Model: ro.Model, Calls: ro.Calls, CostUSD: ro.CostUSD}
+	}
+	for i, c := range recent {
+		resp.RecentCalls[i] = recentLlmCall{
+			TicketID: c.TicketID, TicketTitle: c.TicketTitle, TaskTitle: c.TaskTitle,
+			Role: c.Role, Runner: c.Runner, Model: c.Model,
+			TokensIn: c.TokensIn, TokensOut: c.TokensOut, CostUSD: c.CostUSD,
+			Status: c.Status, DurationMs: c.DurationMs, Timestamp: c.CreatedAt.Format(time.RFC3339),
+		}
+	}
+
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {

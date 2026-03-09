@@ -58,6 +58,49 @@ type TaskContextStats struct {
 	CacheHits     int
 }
 
+// RunnerAggregate holds aggregated LLM call stats for a single agent runner.
+type RunnerAggregate struct {
+	Runner    string
+	Calls     int
+	TokensIn  int64
+	TokensOut int64
+	CostUSD   float64
+}
+
+// ModelAggregate holds aggregated LLM call stats for a single model.
+type ModelAggregate struct {
+	Model     string
+	Calls     int
+	TokensIn  int64
+	TokensOut int64
+	CostUSD   float64
+}
+
+// RoleAggregate holds aggregated LLM call stats for a role+runner+model combination.
+type RoleAggregate struct {
+	Role    string
+	Runner  string
+	Model   string
+	Calls   int
+	CostUSD float64
+}
+
+// RecentLlmCall represents a recent LLM call enriched with ticket and task context.
+type RecentLlmCall struct {
+	CreatedAt   time.Time
+	TicketID    string
+	TicketTitle string
+	TaskTitle   string
+	Role        string
+	Runner      string
+	Model       string
+	Status      string
+	TokensIn    int
+	TokensOut   int
+	CostUSD     float64
+	DurationMs  int
+}
+
 type Database interface {
 	// Tickets
 	CreateTicket(ctx context.Context, t *models.Ticket) error
@@ -90,6 +133,8 @@ type Database interface {
 	ListLlmCalls(ctx context.Context, ticketID string) ([]models.LlmCallRecord, error)
 	StoreCallDetails(ctx context.Context, callID, fullPrompt, fullResponse string) error
 	GetCallDetails(ctx context.Context, callID string) (fullPrompt, fullResponse string, err error)
+	GetLlmCallAggregates(ctx context.Context, since time.Time) (byRunner []RunnerAggregate, byModel []ModelAggregate, byRole []RoleAggregate, err error)
+	GetRecentLlmCalls(ctx context.Context, limit int) ([]RecentLlmCall, error)
 
 	// Handoffs
 	SetHandoff(ctx context.Context, h *models.HandoffRecord) error
