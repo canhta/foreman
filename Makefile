@@ -1,4 +1,4 @@
-.PHONY: build test lint clean setup-hooks setup-dev coverage dev debug dashboard-build dashboard-dev dashboard-lint dashboard-test ci release docker
+.PHONY: build test lint clean reset setup-hooks setup-dev coverage dev debug dashboard-build dashboard-dev dashboard-lint dashboard-test ci release docker
 
 BINARY := foreman
 GOBIN  := $(shell go env GOPATH)/bin
@@ -47,6 +47,15 @@ dashboard-test:
 
 clean:
 	rm -f $(BINARY)
+
+# Reset common runtime data (database + work/cache directories).
+# Safe to run repeatedly. Keeps SSH keys in ~/.foreman/ssh untouched.
+reset:
+	@echo "Resetting Foreman runtime data..."
+	rm -f ~/.foreman/foreman.db ~/.foreman/foreman.db-wal ~/.foreman/foreman.db-shm
+	rm -f ~/.foreman/whatsapp.db ~/.foreman/whatsapp.db-wal ~/.foreman/whatsapp.db-shm
+	rm -rf ~/.foreman/work ./tmp/foreman
+	@echo "Reset complete."
 
 setup-hooks:
 	git config core.hooksPath .githooks
