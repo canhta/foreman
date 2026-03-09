@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/canhta/foreman/internal/db"
 	"github.com/canhta/foreman/internal/git"
 	"github.com/canhta/foreman/internal/models"
 	"github.com/canhta/foreman/internal/tracker"
@@ -162,6 +163,12 @@ func (m *daemonMockDB) GetGlobalEvents(_ context.Context, _, _ int) ([]models.Ev
 }
 
 func (m *daemonMockDB) DeleteTicket(_ context.Context, _ string) error { return nil }
+func (m *daemonMockDB) GetLlmCallAggregates(_ context.Context, _ time.Time) ([]db.RunnerAggregate, []db.ModelAggregate, []db.RoleAggregate, error) {
+	return nil, nil, nil, nil
+}
+func (m *daemonMockDB) GetRecentLlmCalls(_ context.Context, _ int) ([]db.RecentLlmCall, error) {
+	return nil, nil
+}
 
 // daemonMockTracker is a mock tracker for daemon-level ingestion tests.
 type daemonMockTracker struct {

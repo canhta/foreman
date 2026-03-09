@@ -240,6 +240,12 @@ func (m *orchMockDB) GetDAGState(_ context.Context, _ string) (*db.DAGState, err
 	return m.dagState, nil
 }
 func (m *orchMockDB) DeleteDAGState(_ context.Context, _ string) error { return nil }
+func (m *orchMockDB) GetLlmCallAggregates(_ context.Context, _ time.Time) ([]db.RunnerAggregate, []db.ModelAggregate, []db.RoleAggregate, error) {
+	return nil, nil, nil, nil
+}
+func (m *orchMockDB) GetRecentLlmCalls(_ context.Context, _ int) ([]db.RecentLlmCall, error) {
+	return nil, nil
+}
 
 func (m *orchMockDB) lastStatus(id string) models.TicketStatus {
 	for i := len(m.statusUpdates) - 1; i >= 0; i-- {

@@ -176,6 +176,12 @@ func (m *mockDB) GetDAGState(_ context.Context, _ string) (*db.DAGState, error) 
 	return nil, nil
 }
 func (m *mockDB) DeleteDAGState(_ context.Context, _ string) error { return nil }
+func (m *mockDB) GetLlmCallAggregates(_ context.Context, _ time.Time) ([]db.RunnerAggregate, []db.ModelAggregate, []db.RoleAggregate, error) {
+	return nil, nil, nil, nil
+}
+func (m *mockDB) GetRecentLlmCalls(_ context.Context, _ int) ([]db.RecentLlmCall, error) {
+	return nil, nil
+}
 
 // --- Helpers ---
 
