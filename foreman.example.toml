@@ -2,12 +2,15 @@
 # Copy to foreman.toml and customize.
 
 [daemon]
-poll_interval_secs = 60
-idle_poll_interval_secs = 300
-max_parallel_tickets = 3
-work_dir = "~/.foreman/work"
-log_level = "info"   # debug, info, warn, error
-log_format = "json"  # json, pretty
+poll_interval_secs        = 60
+idle_poll_interval_secs   = 300
+max_parallel_tickets      = 3       # Max 3 for SQLite; use PostgreSQL for more
+max_parallel_tasks        = 3       # Concurrent tasks per ticket (DAG executor)
+task_timeout_minutes      = 15      # Per-task timeout in minutes
+merge_check_interval_secs = 300     # How often to poll PR merge status
+work_dir                  = "~/.foreman/work"
+log_level                 = "info"  # trace | debug | info | warn | error
+log_format                = "json"  # json | pretty
 # lock_ttl_seconds controls how long a distributed ticket lock is held before expiry.
 # Must exceed the maximum expected ticket processing time (num_tasks * task_timeout_minutes * 60).
 # Default: 3600 (1 hour).
@@ -20,24 +23,62 @@ host = "127.0.0.1"   # override: FOREMAN_DASHBOARD_HOST (use 0.0.0.0 for Docker)
 auth_token = "${FOREMAN_DASHBOARD_TOKEN}"
 
 [tracker]
-provider = "local_file"  # local_file, jira, github, linear
-pickup_label = "foreman-ready"
-clarification_label = "foreman-needs-info"
+provider                    = "local_file"  # local_file | jira | github | linear
+pickup_label                = "foreman-ready"
+clarification_label         = "foreman-needs-info"
 clarification_timeout_hours = 72
 
+# ── GitHub Issues ──────────────────────────────────────
+# [tracker.github]
+# token    = "${GITHUB_TOKEN}"
+# owner    = "your-org"
+# repo     = "your-repo"
+# base_url = ""    # optional: override for GitHub Enterprise
+
+# ── Jira ───────────────────────────────────────────────
+# [tracker.jira]
+# base_url    = "https://yourcompany.atlassian.net"
+# email       = "bot@yourcompany.com"
+# api_token   = "${JIRA_API_TOKEN}"
+# project_key = "PROJ"
+# status_in_progress = "In Progress"
+# status_in_review   = "In Review"
+# status_done        = "Done"
+# status_blocked     = "Blocked"
+
+# ── Linear ─────────────────────────────────────────────
+# [tracker.linear]
+# api_key  = "${LINEAR_API_KEY}"
+# team_id  = "TEAM_ID"
+# base_url = ""   # optional override
+
+# ── Local File (default, no auth needed) ───────────────
+# [tracker.local_file]
+# path = "./tickets"
+
 [git]
-provider = "github"
-backend = "native"
-clone_url = "https://github.com/your-org/your-repo.git"
-default_branch = "main"
-auto_push = true
-pr_draft = true
-pr_reviewers = []
-branch_prefix = "foreman"
+provider         = "github"
+backend          = "native"
+clone_url        = "https://github.com/your-org/your-repo.git"
+default_branch   = "main"
+auto_push        = true
+pr_draft         = true
+pr_reviewers     = []
+branch_prefix    = "foreman"
 rebase_before_pr = true
 
+[git.github]
+token    = "${GITHUB_TOKEN}"
+# base_url = ""    # optional: GitHub Enterprise URL
+
+# [git.gitlab]
+# token    = "${GITLAB_TOKEN}"
+# base_url = "https://gitlab.com"   # override for self-hosted
+
 [llm]
-default_provider = "anthropic"
+default_provider   = "anthropic"
+# embedding_provider = ""    # "openai" | "anthropic"
+# embedding_model    = ""    # e.g. "text-embedding-3-small"
 
 [llm.anthropic]
 api_key = "${ANTHROPIC_API_KEY}"
@@ -63,18 +104,27 @@ alert_threshold_percent = 80
 max_llm_calls_per_task = 8
 
 [limits]
-max_tasks_per_ticket = 20
-max_implementation_retries = 2
-max_spec_review_cycles = 2
-max_quality_review_cycles = 1
-max_task_duration_secs = 600
-max_total_duration_secs = 7200
-context_token_budget = 80000
-enable_partial_pr = true
-enable_clarification = true
-enable_tdd_verification = true
-search_replace_similarity = 0.92
+max_tasks_per_ticket             = 20
+max_implementation_retries       = 2
+max_spec_review_cycles           = 2
+max_quality_review_cycles        = 1
+max_task_duration_secs           = 600
+max_total_duration_secs          = 7200
+context_token_budget             = 80000
+enable_partial_pr                = true
+enable_clarification             = true
+enable_tdd_verification          = true
+search_replace_similarity        = 0.92
 search_replace_min_context_lines = 3
+
+# Plan quality gate
+plan_confidence_threshold        = 0.60   # Clarify if plan confidence below this (0 = disabled)
+
+# Cross-task consistency review
+intermediate_review_interval     = 3      # Review every N completed tasks (0 = disabled)
+
+# Rebase conflict resolution
+conflict_resolution_token_budget = 40000
 
 [secrets]
 enabled = true
@@ -104,11 +154,80 @@ busy_timeout_ms = 5000
 wal_mode = true
 event_flush_interval_ms = 100
 
+[decompose]
+enabled            = false
+max_ticket_words   = 150
+max_scope_keywords = 2
+approval_label     = "foreman-ready"
+parent_label       = "foreman-decomposed"
+llm_assist         = false   # use LLM heuristic (slower but smarter)
+# llm_assist_model = ""      # override model; empty = [models].planner
+
 [pipeline.hooks]
-post_lint = []
-pre_pr = []
-post_pr = []
+post_lint  = []
+pre_pr     = []
+post_pr    = []
 post_merge = []
+
+[context]
+context_generate_max_tokens = 32000   # Token budget for `foreman context generate`
+context_feedback_boost      = 1.5     # Score multiplier for files from prior similar tasks
+
+# ─── Core Pipeline Agent Runner ───────────────────────
+# Configures the agent runner used by the main pipeline (not skills).
+# See [skills.agent_runner] for the skills-specific runner.
+
+[agent_runner]
+provider = "builtin"   # builtin | claudecode | copilot
+
+[agent_runner.builtin]
+max_turns           = 15
+max_context_tokens  = 100000
+reflection_interval = 5      # Self-reflection turn every N tool rounds (0 = disabled)
+# model = ""                 # override; empty = [models].implementer
+
+# [agent_runner.claudecode]
+# bin                  = "claude"
+# max_turns_default    = 15
+# timeout_secs_default = 300
+# # model = "sonnet"
+
+# [agent_runner.copilot]
+# cli_path             = "copilot"
+# github_token         = "${GITHUB_TOKEN}"
+# model                = "gpt-4o"
+# timeout_secs_default = 300
+
+# ─── Messaging Channel ────────────────────────────────
+# Bidirectional WhatsApp channel for commands and ticket creation.
+# Omit [channel] entirely to disable.
+
+# [channel]
+# provider = "whatsapp"
+#
+# [channel.whatsapp]
+# session_db      = "~/.foreman/whatsapp.db"
+# pairing_mode    = "phone"          # phone | qr
+# dm_policy       = "allowlist"      # allowlist | pairing
+# allowed_numbers = ["+84123456789"] # E.164 format
+
+# ─── MCP Servers ──────────────────────────────────────
+# Connect Foreman's builtin agent to external MCP servers via stdin/stdout.
+
+# [mcp]
+# resource_max_bytes = 524288   # Max bytes per MCP resource read (default: 512 KB)
+
+# [[mcp.servers]]
+# name    = "internal-db"
+# command = "npx"
+# args    = ["-y", "@company/db-mcp-server"]
+# allowed_tools          = ["query", "schema"]
+# restart_policy         = "on-failure"
+# max_restarts           = 3
+# restart_delay_secs     = 2
+# health_check_interval_secs = 30
+# [mcp.servers.env]
+# DB_URL = "${DATABASE_URL}"
 
 # ─── Skills Agent Runner ────────────────────────────────
 # Which runner backs the "agentsdk" step type in YAML skills.
