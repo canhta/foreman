@@ -127,16 +127,14 @@ func (a *API) enrichEvent(ctx context.Context, evt *models.EventRecord) *enriche
 		}
 	}
 
-	// Extract runner and model from Details JSON if present
+	// Extract runner and model from Details JSON if present.
+	// Event metadata is always map[string]string (see telemetry.EventEmitter.Emit),
+	// so absent keys return "" which is the desired zero value for omitempty.
 	if evt.Details != "" {
-		var details map[string]interface{}
+		var details map[string]string
 		if err := json.Unmarshal([]byte(evt.Details), &details); err == nil {
-			if r, ok := details["runner"].(string); ok {
-				enriched.Runner = r
-			}
-			if m, ok := details["model"].(string); ok {
-				enriched.Model = m
-			}
+			enriched.Runner = details["runner"]
+			enriched.Model = details["model"]
 		}
 	}
 
