@@ -267,18 +267,18 @@ func (r *Registry) ForClaude(workDir string, vars map[string]any) error {
 
 // SkillStep represents a single step in a skill workflow.
 type SkillStep struct {
-	ID            string   `yaml:"id"`
+	OutputFormat  string   `yaml:"output_format,omitempty"`
 	Type          string   `yaml:"type"`
 	Prompt        string   `yaml:"prompt,omitempty"`
 	Model         string   `yaml:"model,omitempty"`
 	Command       string   `yaml:"command,omitempty"`
+	ID            string   `yaml:"id"`
+	FallbackModel string   `yaml:"fallback_model,omitempty"`
+	SkillRef      string   `yaml:"skill_ref,omitempty"`
 	AllowedTools  []string `yaml:"allowed_tools,omitempty"`
 	MaxTurns      int      `yaml:"max_turns,omitempty"`
 	TimeoutSecs   int      `yaml:"timeout_secs,omitempty"`
 	MaxTokens     int      `yaml:"max_tokens,omitempty"`
-	OutputFormat  string   `yaml:"output_format,omitempty"`
-	FallbackModel string   `yaml:"fallback_model,omitempty"`
-	SkillRef      string   `yaml:"skill_ref,omitempty"`
 	AllowFailure  bool     `yaml:"allow_failure,omitempty"`
 }
 

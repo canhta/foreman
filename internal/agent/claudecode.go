@@ -24,10 +24,10 @@ type ClaudeCodeConfig struct {
 // ClaudeCodeRunner invokes the Claude Agent SDK via CLI subprocess.
 // Uses `claude -p --output-format json` and parses the SDKResultMessage.
 type ClaudeCodeRunner struct {
-	bin      string
 	runner   runner.CommandRunner
-	config   ClaudeCodeConfig
 	registry *prompts.Registry
+	bin      string
+	config   ClaudeCodeConfig
 }
 
 // NewClaudeCodeRunner creates a runner that shells out to the claude CLI.

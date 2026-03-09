@@ -75,7 +75,7 @@ func TestClaudeCodeRunner_Run_ModelFromSDK(t *testing.T) {
 	resultJSON, _ := json.Marshal(sdkResult)
 
 	r := NewClaudeCodeRunner(&mockCmdRunner{stdout: string(resultJSON), exitCode: 0}, ClaudeCodeConfig{
-		Model:          "claude-sonnet-4-6-20250514",
+		Model:              "claude-sonnet-4-6-20250514",
 		TimeoutSecsDefault: 120,
 	})
 

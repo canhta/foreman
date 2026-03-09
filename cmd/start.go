@@ -124,10 +124,10 @@ type taskRunnerFactory struct {
 	db              fullTaskRunnerDB
 	gitProv         git.GitProvider
 	cmdRunner       runner.CommandRunner
-	metrics         *telemetry.Metrics
 	agentRunner     agent.AgentRunner
-	agentRunnerName string
+	metrics         *telemetry.Metrics
 	registry        *prompts.Registry
+	agentRunnerName string
 }
 
 // fullTaskRunnerDB is the combined interface required by taskRunnerFactory.

@@ -97,28 +97,20 @@ type ReviewResult struct {
 
 // AgentResult holds the output of an agent task.
 type AgentResult struct {
-	// Structured holds arbitrary structured output when the request specified an OutputSchema.
-	Structured interface{}
-	// ReviewResult holds a parsed review decision when the agent output contained a STATUS: line.
-	// Nil when no STATUS: pattern was found.
+	Structured   interface{}
 	ReviewResult *ReviewResult
-	// Metadata holds arbitrary key-value pairs for runner-specific annotations.
-	Metadata map[string]string
-	// Output is the raw text output from the agent's final response.
-	Output string
-	// FileChanges holds parsed file modifications extracted from the agent output.
-	// Populated when the output contains NEW FILE / MODIFY FILE blocks.
-	FileChanges []FileChange
-	// Usage tracks token and cost consumption for the task.
-	Usage AgentUsage
+	Metadata     map[string]string
+	Output       string
+	FileChanges  []FileChange
+	Usage        AgentUsage
 }
 
 // AgentUsage tracks resource consumption for an agent task.
 type AgentUsage struct {
+	Model        string
 	InputTokens  int
 	OutputTokens int
-	CostUSD      float64 // Estimated; 0 if runner doesn't expose it
-	NumTurns     int     // Number of agentic turns used
-	DurationMs   int     // Total execution time in milliseconds
-	Model        string  // Actual model used by the runner at runtime
+	CostUSD      float64
+	NumTurns     int
+	DurationMs   int
 }
