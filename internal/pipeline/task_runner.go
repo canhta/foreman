@@ -15,6 +15,7 @@ import (
 	dbpkg "github.com/canhta/foreman/internal/db"
 	"github.com/canhta/foreman/internal/git"
 	"github.com/canhta/foreman/internal/models"
+	"github.com/canhta/foreman/internal/prompts"
 	"github.com/canhta/foreman/internal/runner"
 	"github.com/canhta/foreman/internal/skills"
 	"github.com/canhta/foreman/internal/telemetry"
@@ -133,6 +134,18 @@ func NewPipelineTaskRunner(
 // SetMetrics attaches a Metrics instance for instrumentation.
 func (r *PipelineTaskRunner) SetMetrics(m *telemetry.Metrics) {
 	r.metrics = m
+}
+
+// WithRegistry attaches a prompt registry to all pipeline components that support it.
+// Passing nil is a no-op. Returns the runner for chaining.
+func (r *PipelineTaskRunner) WithRegistry(reg *prompts.Registry) *PipelineTaskRunner {
+	if reg == nil {
+		return r
+	}
+	r.implementer.WithRegistry(reg)
+	r.specReviewer.WithRegistry(reg)
+	r.qualityReviewer.WithRegistry(reg)
+	return r
 }
 
 // CloneWithWorkDir returns a shallow copy of the runner with a different WorkDir.

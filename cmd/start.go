@@ -25,6 +25,7 @@ import (
 	"github.com/canhta/foreman/internal/llm"
 	"github.com/canhta/foreman/internal/models"
 	"github.com/canhta/foreman/internal/pipeline"
+	"github.com/canhta/foreman/internal/prompts"
 	"github.com/canhta/foreman/internal/runner"
 	"github.com/canhta/foreman/internal/skills"
 	"github.com/canhta/foreman/internal/sshkey"
@@ -126,6 +127,7 @@ type taskRunnerFactory struct {
 	metrics         *telemetry.Metrics
 	agentRunner     agent.AgentRunner
 	agentRunnerName string
+	registry        *prompts.Registry
 }
 
 // fullTaskRunnerDB is the combined interface required by taskRunnerFactory.
@@ -157,6 +159,9 @@ func (f *taskRunnerFactory) Create(input daemon.TaskRunnerFactoryInput) daemon.T
 		AgentRunnerName:            f.agentRunnerName,
 	}
 	tr := pipeline.NewPipelineTaskRunner(f.llm, f.db, f.gitProv, f.cmdRunner, cfg)
+	if f.registry != nil {
+		tr.WithRegistry(f.registry)
+	}
 	if f.metrics != nil {
 		tr.SetMetrics(f.metrics)
 	}
@@ -207,6 +212,15 @@ func newStartCmd() *cobra.Command {
 					}
 				}
 				log.Info().Int("count", len(hashes)).Str("prompts_dir", promptsDir).Msg("prompt templates hashed")
+			}
+
+			// 1d. Load prompt registry (graceful — nil registry if dir missing or empty).
+			var promptRegistry *prompts.Registry
+			if reg, regErr := prompts.Load(promptsDir); regErr != nil {
+				log.Warn().Err(regErr).Str("prompts_dir", promptsDir).Msg("could not load prompt registry; pipeline components will use legacy prompts")
+			} else {
+				promptRegistry = reg
+				log.Info().Str("prompts_dir", promptsDir).Msg("prompt registry loaded")
 			}
 
 			// 2. Initialize LLM provider.
@@ -273,6 +287,12 @@ func newStartCmd() *cobra.Command {
 				if arErr != nil {
 					return fmt.Errorf("pipeline agent runner: %w", arErr)
 				}
+				// Wire prompt registry into ClaudeCodeRunner when applicable.
+				if promptRegistry != nil {
+					if ccr, ok := pipelineAgentRunner.(*agent.ClaudeCodeRunner); ok {
+						ccr.WithRegistry(promptRegistry)
+					}
+				}
 				if closer, ok := pipelineAgentRunner.(interface{ Close() error }); ok {
 					defer closer.Close()
 				}
@@ -313,6 +333,7 @@ func newStartCmd() *cobra.Command {
 					metrics:         appMetrics,
 					agentRunner:     pipelineAgentRunner,
 					agentRunnerName: agentRunnerName,
+					registry:        promptRegistry,
 				},
 				log.Logger,
 				daemon.OrchestratorConfig{
@@ -395,14 +416,29 @@ func newStartCmd() *cobra.Command {
 			orch.SetEventEmitter(emitter)
 
 			// 9d. Build skill hook runner (best-effort — non-fatal if skills dir missing).
-			// Skills are loaded from "./skills" in the working directory.
-			// If the directory does not exist, hooks are silently disabled.
+			// Skills are loaded from "./skills" in the working directory, and also
+			// from the prompt registry (skills/ subdirectory) when available.
+			// If neither source exists, hooks are silently disabled.
 			{
 				skillsDir := "./skills"
 				loadedSkills, loadErr := skills.LoadSkillsDir(skillsDir)
 				if loadErr != nil {
 					log.Warn().Err(loadErr).Str("skills_dir", skillsDir).Msg("failed to load skills directory; skill hooks disabled")
-				} else {
+					loadedSkills = nil
+				}
+
+				// Supplement YAML skills with registry-based skills (SKILL.md files).
+				if promptRegistry != nil {
+					regSkills, regErr := skills.LoadFromRegistry(promptRegistry)
+					if regErr != nil {
+						log.Warn().Err(regErr).Msg("failed to load skills from prompt registry; skipping registry skills")
+					} else if len(regSkills) > 0 {
+						loadedSkills = append(loadedSkills, regSkills...)
+						log.Info().Int("count", len(regSkills)).Msg("registry skills loaded")
+					}
+				}
+
+				if len(loadedSkills) > 0 {
 					engine := skills.NewEngine(llmProv, cmdRunner, cfg.Daemon.WorkDir, cfg.Git.DefaultBranch)
 					hr := skills.NewHookRunner(engine, loadedSkills)
 					orch.SetHookRunner(hr)
