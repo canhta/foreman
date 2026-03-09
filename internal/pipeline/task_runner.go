@@ -360,6 +360,18 @@ func (r *PipelineTaskRunner) runTaskWithAgent(ctx context.Context, task *models.
 	pb := NewPromptBuilder(r.llm)
 	feedback := NewFeedbackAccumulator()
 
+	// Inject Claude Code skills if applicable.
+	if r.config.AgentRunnerName == "claudecode" {
+		injector := NewSkillInjector(SkillInjectorConfig{
+			TestCommand: r.config.TestCommand,
+			Language:    r.config.CodebasePatterns,
+		})
+		if err := injector.Inject(r.config.WorkDir); err != nil {
+			log.Warn().Err(err).Msg("skill injection failed, proceeding without skills")
+		}
+		defer injector.Cleanup(r.config.WorkDir)
+	}
+
 	for attempt := 1; attempt <= r.config.MaxImplementationRetries+1; attempt++ {
 		if attempt > 1 {
 			feedback.ResetKeepingSummary()
