@@ -92,6 +92,11 @@ type MCPHealthProvider interface {
 	HealthStatus() map[string]bool
 }
 
+// ConfigProvider supplies the active configuration for the dashboard.
+type ConfigProvider interface {
+	GetConfig() *models.Config
+}
+
 // PromptSnapshotQuerier returns the recorded prompt template snapshots.
 // Defined as a separate interface to avoid widening DashboardDB.
 type PromptSnapshotQuerier interface {
@@ -109,6 +114,7 @@ type API struct {
 	syncer          TrackerSyncer
 	mcpHealth       MCPHealthProvider
 	promptSnapshots PromptSnapshotQuerier
+	configProvider  ConfigProvider
 	channelHealth   map[string]interface{ IsConnected() bool }
 	version         string
 	costCfg         models.CostConfig
@@ -146,6 +152,11 @@ func (a *API) SetTrackerSyncer(s TrackerSyncer) {
 // SetPromptSnapshotQuerier wires a PromptSnapshotQuerier for the versions endpoint.
 func (a *API) SetPromptSnapshotQuerier(q PromptSnapshotQuerier) {
 	a.promptSnapshots = q
+}
+
+// SetConfigProvider wires a ConfigProvider for the config summary endpoint.
+func (a *API) SetConfigProvider(p ConfigProvider) {
+	a.configProvider = p
 }
 
 // NewAPI creates a new API instance.

@@ -11,7 +11,11 @@ import (
 	"github.com/canhta/foreman/internal/models"
 )
 
-// pidFilePath returns the path to the foreman PID file.
+// staticConfigProvider wraps a *models.Config to satisfy dashboard.ConfigProvider.
+type staticConfigProvider struct{ cfg *models.Config }
+
+func (s *staticConfigProvider) GetConfig() *models.Config { return s.cfg }
+
 func pidFilePath() string {
 	home, err := os.UserHomeDir()
 	if err != nil {

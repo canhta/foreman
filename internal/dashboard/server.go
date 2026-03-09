@@ -197,6 +197,11 @@ func (s *Server) SetTrackerSyncer(syncer TrackerSyncer) {
 	s.api.SetTrackerSyncer(syncer)
 }
 
+// SetConfigProvider wires a ConfigProvider for the config summary endpoint.
+func (s *Server) SetConfigProvider(p ConfigProvider) {
+	s.api.SetConfigProvider(p)
+}
+
 // Handler returns the HTTP handler, useful for testing with httptest.NewServer.
 func (s *Server) Handler() http.Handler {
 	return s.server.Handler

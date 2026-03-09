@@ -53,6 +53,7 @@ var dashboardCmd = &cobra.Command{
 		}
 
 		srv := dashboard.NewServer(database, emitter, nil, reg, cfg.Cost, "0.1.0", host, port)
+		srv.SetConfigProvider(&staticConfigProvider{cfg: cfg})
 
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()

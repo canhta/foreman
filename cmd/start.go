@@ -431,6 +431,7 @@ func newStartCmd() *cobra.Command {
 				}
 				host := cfg.Dashboard.Host
 				srv := dashboard.NewServer(database, emitter, d, promReg, cfg.Cost, "0.1.0", host, port)
+				srv.SetConfigProvider(&staticConfigProvider{cfg: cfg})
 				srv.SetDaemonController(d)
 				srv.SetTrackerSyncer(d)
 				srv.SetPromptSnapshotQuerier(database)
