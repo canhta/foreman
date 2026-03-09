@@ -11,6 +11,7 @@ import (
 
 	dbpkg "github.com/canhta/foreman/internal/db"
 	"github.com/canhta/foreman/internal/models"
+	"github.com/canhta/foreman/internal/snapshot"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -350,4 +351,67 @@ func TestLoadContextFiles_NoBudget_AllFilesIncluded(t *testing.T) {
 	assert.Contains(t, result, "a.txt")
 	assert.Contains(t, result, "b.txt")
 	assert.Contains(t, result, "c.txt")
+}
+
+// TestTaskRunner_SnapshotRestoreOnExhaustedRetries verifies that when a task
+// runner with a Snapshot attached exhausts all implementation retries, the
+// working tree is rolled back to the pre-implementation state.
+//
+// The test uses a real Snapshot (integration style): the LLM produces valid
+// output that creates a new file, but a stubbed test command always fails.
+// After retries are exhausted, the snapshot restore must remove the new file
+// and leave the working tree as it was when RunTask was first entered.
+func TestTaskRunner_SnapshotRestoreOnExhaustedRetries(t *testing.T) {
+	workDir := t.TempDir()
+	dataDir := t.TempDir()
+
+	// Pre-existing file that must survive the failed task.
+	existingFile := filepath.Join(workDir, "existing.go")
+	require.NoError(t, os.WriteFile(existingFile, []byte("package main"), 0o644))
+
+	// Create and attach a snapshot. RunTask will call Track() on entry,
+	// snapshotting the state that contains only existing.go.
+	snap := snapshot.New(workDir, dataDir)
+
+	db := newMockTaskRunnerDB()
+	// LLM always returns a valid NEW FILE response so applyChanges writes a new file.
+	llm := &mockLLM{
+		responses: map[string]string{
+			"implementer": "=== NEW FILE: generated.go ===\npackage main\n=== END FILE ===",
+		},
+	}
+	// Command runner that always reports test failure so the retry loop never succeeds.
+	cmd := &realMockCmdRunner{exitCode: 1, stdout: "FAIL: tests failed"}
+
+	r := &PipelineTaskRunner{
+		llm:             llm,
+		db:              db,
+		cmdRunner:       cmd,
+		implementer:     NewImplementer(llm),
+		specReviewer:    NewSpecReviewer(llm),
+		qualityReviewer: NewQualityReviewer(llm),
+		snap:            snap,
+		config: TaskRunnerConfig{
+			WorkDir:                  workDir,
+			MaxImplementationRetries: 1,
+			MaxLlmCallsPerTask:       8,
+			TestCommand:              "false", // always fails
+			SearchReplaceSimilarity:  0.8,
+		},
+	}
+
+	// RunTask should fail after exhausting retries, then restore the snapshot.
+	err := r.RunTask(context.Background(), &models.Task{ID: "snap-t1", Title: "Snapshot rollback task"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed after")
+
+	// After restore, the generated file must no longer exist (it was not present
+	// when Track() was called at the start of RunTask).
+	_, statErr := os.Stat(filepath.Join(workDir, "generated.go"))
+	assert.True(t, os.IsNotExist(statErr), "generated.go must be removed by snapshot restore")
+
+	// The pre-existing file must still be present.
+	data, readErr := os.ReadFile(existingFile)
+	require.NoError(t, readErr)
+	assert.Equal(t, "package main", string(data), "existing.go must be unmodified after restore")
 }

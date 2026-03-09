@@ -2,6 +2,7 @@ package snapshot
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -74,12 +75,45 @@ func (s *Snapshot) Diff(hash string) (string, error) {
 }
 
 // Restore reverts the working tree to the given snapshot hash.
+// Files that existed in the snapshot are restored to their snapshotted content.
+// Files that were added after the snapshot (not present in the hash) are removed.
 func (s *Snapshot) Restore(hash string) error {
+	// Stage the current state so we can compute what was added since the snapshot.
+	if err := s.add(); err != nil {
+		return fmt.Errorf("stage before restore: %w", err)
+	}
+
+	// Identify files added since the snapshot (status 'A'): these must be deleted.
+	addedOut, err := s.git("diff", "--name-status", "--diff-filter=A", hash)
+	if err != nil {
+		return fmt.Errorf("diff added files: %w", err)
+	}
+	var toDelete []string
+	for _, line := range strings.Split(strings.TrimSpace(addedOut), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		// Format: "A\t<path>"
+		parts := strings.SplitN(line, "\t", 2)
+		if len(parts) == 2 {
+			toDelete = append(toDelete, filepath.Join(s.workDir, parts[1]))
+		}
+	}
+
+	// Load snapshot contents into the index and check out all tracked files.
 	if _, err := s.git("read-tree", hash); err != nil {
 		return fmt.Errorf("read-tree: %w", err)
 	}
 	if _, err := s.git("checkout-index", "-a", "-f"); err != nil {
 		return fmt.Errorf("checkout-index: %w", err)
+	}
+
+	// Remove files that were added after the snapshot.
+	for _, f := range toDelete {
+		if removeErr := os.Remove(f); removeErr != nil && !os.IsNotExist(removeErr) {
+			return fmt.Errorf("remove added file %s: %w", f, removeErr)
+		}
 	}
 	return nil
 }

@@ -18,6 +18,7 @@ import (
 	"github.com/canhta/foreman/internal/prompts"
 	"github.com/canhta/foreman/internal/runner"
 	"github.com/canhta/foreman/internal/skills"
+	"github.com/canhta/foreman/internal/snapshot"
 	"github.com/canhta/foreman/internal/telemetry"
 )
 
@@ -108,6 +109,7 @@ type PipelineTaskRunner struct {
 	specReviewer    *SpecReviewer
 	qualityReviewer *QualityReviewer
 	metrics         *telemetry.Metrics
+	snap            *snapshot.Snapshot
 	config          TaskRunnerConfig
 }
 
@@ -145,6 +147,13 @@ func (r *PipelineTaskRunner) WithRegistry(reg *prompts.Registry) *PipelineTaskRu
 	r.implementer.WithRegistry(reg)
 	r.specReviewer.WithRegistry(reg)
 	r.qualityReviewer.WithRegistry(reg)
+	return r
+}
+
+// WithSnapshot attaches a Snapshot instance for pre-implementation rollback.
+// Returns the runner for chaining.
+func (r *PipelineTaskRunner) WithSnapshot(s *snapshot.Snapshot) *PipelineTaskRunner {
+	r.snap = s
 	return r
 }
 
@@ -217,6 +226,13 @@ func (r *PipelineTaskRunner) RunTask(ctx context.Context, task *models.Task) err
 	}
 
 	feedback := NewFeedbackAccumulator()
+
+	// Snapshot the working tree before any implementation attempt so we can
+	// restore a clean state when all retries are exhausted.
+	var preImplHash string
+	if r.snap != nil {
+		preImplHash, _ = r.snap.Track()
+	}
 
 	// currentRetryErrorType holds the error type for the current retry.
 	// Zero value on attempt 1 is intentional — buildImplementerUserPrompt
@@ -380,7 +396,13 @@ func (r *PipelineTaskRunner) RunTask(ctx context.Context, task *models.Task) err
 		return nil
 	}
 
-	// All retries exhausted.
+	// All retries exhausted — restore to the pre-implementation snapshot so the
+	// working tree is left in a known-good state for subsequent tasks.
+	if r.snap != nil && preImplHash != "" {
+		if restoreErr := r.snap.Restore(preImplHash); restoreErr != nil {
+			log.Warn().Err(restoreErr).Str("task_id", task.ID).Msg("snapshot restore failed after exhausted retries (non-fatal)")
+		}
+	}
 	_ = r.db.UpdateTaskStatus(ctx, task.ID, models.TaskStatusFailed)
 	feedbackText := feedback.Render()
 	if r.metrics != nil {
