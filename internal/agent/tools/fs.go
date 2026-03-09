@@ -173,10 +173,11 @@ func (t *editTool) Execute(_ context.Context, workDir string, input json.RawMess
 	if err != nil {
 		return "", fmt.Errorf("edit: %w", err)
 	}
-	if !strings.Contains(string(content), args.OldString) {
-		return "", fmt.Errorf("edit: old_string not found in %s", args.Path)
+	updated, strategy, err := ApplyEditWithFallback(string(content), args.OldString, args.NewString)
+	if err != nil {
+		return "", fmt.Errorf("edit: %w", err)
 	}
-	updated := strings.Replace(string(content), args.OldString, args.NewString, 1)
+	_ = strategy // strategy used for the match (e.g. "simple", "fuzzy")
 	if err := os.WriteFile(abs, []byte(updated), 0644); err != nil {
 		return "", fmt.Errorf("edit: %w", err)
 	}
@@ -216,10 +217,11 @@ func (t *multiEditTool) Execute(_ context.Context, workDir string, input json.Ra
 		if err := CheckSecrets(args.Path, edit.NewString); err != nil {
 			return "", fmt.Errorf("MultiEdit edit %d: %w", i, err)
 		}
-		if !strings.Contains(result, edit.OldString) {
-			return "", fmt.Errorf("MultiEdit edit %d: old_string not found", i)
+		var editErr error
+		result, _, editErr = ApplyEditWithFallback(result, edit.OldString, edit.NewString)
+		if editErr != nil {
+			return "", fmt.Errorf("MultiEdit edit %d: %w", i, editErr)
 		}
-		result = strings.Replace(result, edit.OldString, edit.NewString, 1)
 	}
 	if err := os.WriteFile(abs, []byte(result), 0644); err != nil {
 		return "", fmt.Errorf("MultiEdit: %w", err)
