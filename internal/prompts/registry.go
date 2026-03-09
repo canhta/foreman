@@ -2,6 +2,7 @@
 package prompts
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -203,6 +204,62 @@ func (r *Registry) Render(kind EntryKind, name string, vars map[string]any) (str
 		return "", err
 	}
 	return r.RenderEntry(entry, vars)
+}
+
+// ForClaude writes .claude/ directory structure into workDir for Claude Code runner.
+// Renders all agents as .claude/agents/*.md, commands as .claude/commands/*.md,
+// and generates settings.json with permissions.
+func (r *Registry) ForClaude(workDir string, vars map[string]any) error {
+	claudeDir := filepath.Join(workDir, ".claude")
+
+	// Write agents
+	agentsDir := filepath.Join(claudeDir, "agents")
+	if err := os.MkdirAll(agentsDir, 0o755); err != nil {
+		return fmt.Errorf("mkdir agents: %w", err)
+	}
+	for _, agent := range r.List(KindAgent) {
+		rendered, err := r.RenderEntry(agent, vars)
+		if err != nil {
+			return fmt.Errorf("render agent %s: %w", agent.Name, err)
+		}
+		path := filepath.Join(agentsDir, agent.Name+".md")
+		if err := os.WriteFile(path, []byte(rendered), 0o644); err != nil {
+			return fmt.Errorf("write agent %s: %w", agent.Name, err)
+		}
+	}
+
+	// Write commands
+	cmdsDir := filepath.Join(claudeDir, "commands")
+	if err := os.MkdirAll(cmdsDir, 0o755); err != nil {
+		return fmt.Errorf("mkdir commands: %w", err)
+	}
+	for _, cmd := range r.List(KindCommand) {
+		rendered, err := r.RenderEntry(cmd, vars)
+		if err != nil {
+			return fmt.Errorf("render command %s: %w", cmd.Name, err)
+		}
+		path := filepath.Join(cmdsDir, cmd.Name+".md")
+		if err := os.WriteFile(path, []byte(rendered), 0o644); err != nil {
+			return fmt.Errorf("write command %s: %w", cmd.Name, err)
+		}
+	}
+
+	// Write settings.json
+	settings := map[string]any{
+		"permissions": map[string]any{
+			"allow": []string{"Read", "Edit", "Write", "Glob", "Grep", "Bash"},
+		},
+	}
+	settingsData, err := json.MarshalIndent(settings, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal settings: %w", err)
+	}
+	settingsPath := filepath.Join(claudeDir, "settings.json")
+	if err := os.WriteFile(settingsPath, settingsData, 0o644); err != nil {
+		return fmt.Errorf("write settings: %w", err)
+	}
+
+	return nil
 }
 
 // RenderEntry renders a single entry with the given variables.

@@ -177,3 +177,26 @@ func TestRegistryRenderNotFound(t *testing.T) {
 	_, err = reg.Render(KindRole, "missing", nil)
 	assert.Error(t, err)
 }
+
+func TestRegistryForClaude(t *testing.T) {
+	dir := setupTestFixtures(t)
+	reg, err := Load(dir)
+	require.NoError(t, err)
+
+	workDir := t.TempDir()
+	err = reg.ForClaude(workDir, map[string]any{
+		"test_command": "go test ./...",
+	})
+	require.NoError(t, err)
+
+	// Check .claude/agents/ exists with rendered agent files
+	agentFile := filepath.Join(workDir, ".claude", "agents", "tdd-writer.md")
+	data, err := os.ReadFile(agentFile)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "Write failing tests")
+
+	// Check .claude/settings.json exists
+	settingsFile := filepath.Join(workDir, ".claude", "settings.json")
+	_, err = os.Stat(settingsFile)
+	assert.NoError(t, err)
+}
