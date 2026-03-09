@@ -10,6 +10,53 @@ import (
 	"github.com/canhta/foreman/internal/models"
 )
 
+const pruneNotice = "[tool output truncated by compaction]"
+
+// PruneOldToolOutputs truncates old tool outputs to free tokens while preserving
+// recent ones. Works backwards from the most recent messages, protecting the last
+// `protectChars` worth of tool output content.
+//
+// This implements the pruning-first compaction strategy: pruning happens before
+// LLM summarization to minimize token usage and preserve conversation structure.
+func PruneOldToolOutputs(messages []models.Message, protectChars int) []models.Message {
+	result := make([]models.Message, len(messages))
+	copy(result, messages)
+
+	// Collect tool message indices (oldest first)
+	var toolIndices []int
+	for i, m := range result {
+		if m.Role == "tool" {
+			toolIndices = append(toolIndices, i)
+		}
+	}
+
+	// Count total chars in tool outputs, protecting recent ones.
+	// Walk backwards from newest: protect outputs until the cumulative total
+	// would exceed protectChars. Stop before adding an output that pushes us over.
+	// This preserves the most recent tool outputs up to the protectChars budget.
+	protected := 0
+	protectedSet := make(map[int]bool)
+	for i := len(toolIndices) - 1; i >= 0; i-- {
+		idx := toolIndices[i]
+		size := len(result[idx].Content)
+		if protected > 0 && protected+size > protectChars {
+			// Adding this older output would exceed the budget; stop here.
+			break
+		}
+		protected += size
+		protectedSet[idx] = true
+	}
+
+	// Truncate non-protected tool outputs.
+	for _, idx := range toolIndices {
+		if !protectedSet[idx] {
+			result[idx].Content = pruneNotice
+		}
+	}
+
+	return result
+}
+
 // CompactMessages reduces the token footprint of a message history to fit within budgetTokens.
 //
 // Strategy:

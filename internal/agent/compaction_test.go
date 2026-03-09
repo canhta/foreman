@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/canhta/foreman/internal/llm"
 	"github.com/canhta/foreman/internal/models"
 )
@@ -180,6 +182,35 @@ func TestSummarizeHistory_LLMFailure(t *testing.T) {
 	if !strings.Contains(msg.Content, "summarization failed") {
 		t.Errorf("expected fallback message to mention 'summarization failed', got: %q", msg.Content)
 	}
+}
+
+func TestPruneOldToolOutputs(t *testing.T) {
+	messages := []models.Message{
+		{Role: "user", Content: "implement auth"},
+		{Role: "assistant", Content: "I'll read the file"},
+		{Role: "tool", Content: strings.Repeat("x", 10000)}, // large tool output
+		{Role: "assistant", Content: "Now I'll edit"},
+		{Role: "user", Content: "looks good"},
+		{Role: "assistant", Content: "I'll read another file"},
+		{Role: "tool", Content: strings.Repeat("y", 5000)}, // recent tool output
+	}
+
+	pruned := PruneOldToolOutputs(messages, 8000)
+
+	// Old tool output should be truncated, recent one kept
+	assert.Less(t, len(pruned[2].Content), 10000)
+	// At minimum the message structure is preserved (7 messages)
+	assert.Len(t, pruned, 7)
+}
+
+func TestPruneOldToolOutputs_NoToolMessages(t *testing.T) {
+	messages := []models.Message{
+		{Role: "user", Content: "hello"},
+		{Role: "assistant", Content: "hi"},
+	}
+	pruned := PruneOldToolOutputs(messages, 1000)
+	assert.Len(t, pruned, 2)
+	assert.Equal(t, "hello", pruned[0].Content)
 }
 
 // TestSplitForSummarization_KeepsLastThreeTurns verifies that the split preserves

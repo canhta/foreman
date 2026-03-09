@@ -318,6 +318,21 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 			p2Threshold := int(float64(budget) * summarizationThreshold) // 85%
 			currentTokens := countAllTokens(messages)
 
+			// Phase 0 (70%): pruning-first — truncate old tool outputs before LLM summarization.
+			// Preserves the last 25% of the budget worth of tool output content.
+			// This is cheaper than LLM summarization and should be tried first.
+			if currentTokens > p1Threshold {
+				protectChars := budget / 4
+				messages = PruneOldToolOutputs(messages, protectChars)
+				if pruned := countAllTokens(messages); pruned < currentTokens {
+					log.Info().
+						Int("tokens_before", currentTokens).
+						Int("tokens_after", pruned).
+						Msg("builtin: old tool outputs pruned")
+					currentTokens = pruned
+				}
+			}
+
 			// Phase 2 (85%): LLM summarization takes priority — preserve as much context as possible.
 			// Skip if the first message is already a summary (avoid progressive fidelity loss).
 			if currentTokens > p2Threshold {
