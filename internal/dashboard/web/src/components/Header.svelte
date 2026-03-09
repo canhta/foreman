@@ -1,6 +1,6 @@
 <script lang="ts">
   import {
-    appState, pauseDaemon, resumeDaemon, setActivePanel, syncTracker,
+    appState, pauseDaemon, resumeDaemon, setActivePanel, syncTracker, openSettings,
   } from '../state.svelte';
   import { formatCost } from '../format';
   import ConfirmDialog from './ConfirmDialog.svelte';
@@ -157,6 +157,13 @@
       class="px-3 text-muted hover:text-accent hover:bg-surface-hover transition-colors tracking-wider hidden md:block"
       onclick={() => setActivePanel('health')}
     >SYS</button>
+
+    <button
+      class="px-3 text-muted hover:text-accent hover:bg-surface-hover transition-colors tracking-wider"
+      onclick={openSettings}
+      title="Settings & Usage"
+      aria-label="Open settings drawer"
+    >CFG</button>
   </div>
 </header>
 

@@ -13,6 +13,7 @@
   import SystemHealth from './components/SystemHealth.svelte';
   import LiveFeed from './components/LiveFeed.svelte';
   import Toasts from './components/Toasts.svelte';
+  import SettingsDrawer from './components/SettingsDrawer.svelte';
 
   let tokenInput = $state('');
   let sessionExpired = $state(false);
@@ -187,5 +188,6 @@
     </footer>
 
     <Toasts />
+    <SettingsDrawer />
   </div>
 {/if}
