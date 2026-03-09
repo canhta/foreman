@@ -50,17 +50,23 @@ post_merge = []
 
 ## Skill File Format
 
-Skills are YAML files located in the `skills/` directory. Community contributions go in `skills/community/`. Each skill has a unique `id`, a `description`, a `trigger`, and a list of `steps`.
+Skills are Markdown files with YAML frontmatter, located in `prompts/skills/*/SKILL.md`. Legacy YAML skills in `skills/` are still supported for backwards compatibility. Community contributions go in `prompts/skills/community/`. Each skill has a unique `name`, a `description`, a `trigger`, and a list of `steps` defined in the frontmatter.
 
-```yaml
-id: my-skill            # Must be unique; used in foreman.toml hooks config
+```markdown
+---
+name: my-skill          # Must be unique; used in foreman.toml hooks config
 description: "What this skill does"
 trigger: post_lint      # post_lint | pre_pr | post_pr | post_merge
 steps:
   - id: step-id
     type: step-type
     # ... step-type-specific fields
+---
+
+Optional markdown body (documentation, notes, or additional context).
 ```
+
+The prompt registry (`internal/prompts`) loads all `SKILL.md` files at startup from the directory specified by `prompts_dir` in `foreman.toml` (default: `prompts/`). If `prompts_dir` does not exist, the registry is nil and the legacy YAML loader is used as a fallback.
 
 ---
 

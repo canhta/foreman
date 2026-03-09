@@ -23,6 +23,8 @@ lock_ttl_seconds = 3600
 # ".env" = "~/.foreman/envs/myproject.env"
 # "packages/api/.env" = "~/.foreman/envs/myproject-api.env"
 
+# prompts_dir = "prompts"  # Path to unified prompt registry directory (ROLE.md, AGENT.md, SKILL.md, COMMAND.md)
+
 [dashboard]
 enabled = true
 port = 8080           # override: FOREMAN_DASHBOARD_PORT or --dashboard-port

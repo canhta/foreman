@@ -45,6 +45,7 @@ CGO is required (go-sqlite3). Ensure a C toolchain is available.
 | `agent/tools` | Typed tool registry: Read, ReadRange, Write, Edit, MultiEdit, ApplyPatch, ListDir, Glob, Grep, GetDiff, GetCommitLog, TreeSummary, GetSymbol, GetErrors, get_type_definition, semantic_search, Bash, RunTest, Subagent, ListMCPTools, ReadMCPResource |
 | `agent/mcp` | MCP Manager, StdioClient (JSON-RPC 2.0 over stdin/stdout), tool name normalization; MCPServerConfig for Anthropic API-side MCP |
 | `skills` | YAML skill engine for extensible pipeline hooks — subskill composition, output_format validation, ContextProvider |
+| `prompts` | Unified prompt registry — loads ROLE.md/AGENT.md/SKILL.md/COMMAND.md files, renders pongo2 templates, writes .claude/ structure |
 | `dashboard` | Web UI server, REST API, WebSocket, bearer token auth |
 | `telemetry` | Cost controller, Prometheus metrics, structured events |
 | `models` | Domain models (Ticket, Task, LlmCall, pipeline states) |
@@ -87,6 +88,30 @@ Extensible workflow hooks in `skills/` — composable YAML files triggered at `p
 Step types: `llm_call`, `run_command`, `file_write`, `git_diff`, `agentsdk`, `subskill`.
 
 `agentsdk` steps support `output_format` (json/diff/checklist), `output_schema`, and `fallback_model`.
+
+### Prompt Registry
+
+All prompts, agent definitions, skills, and commands live as Markdown files with YAML frontmatter in `prompts/`:
+
+```
+prompts/
+  roles/*/ROLE.md          # Pipeline stage system prompts (7 roles)
+  agents/*/AGENT.md        # Claude Code agent personas (.claude/agents/)
+  skills/*/SKILL.md        # Workflow hooks (replacing skills/*.yml)
+  commands/*/COMMAND.md    # Claude Code slash commands (.claude/commands/)
+  fragments/*.md           # Reusable prompt pieces (included by roles/agents)
+```
+
+A Go registry (`internal/prompts`) loads them at startup, resolves includes, and renders pongo2 templates. Builtin runner calls `registry.Render()` for prompt strings. Claude Code runner calls `registry.ForClaude()` to write the `.claude/` directory structure.
+
+The registry is loaded from `prompts_dir` in `foreman.toml` (default: `prompts/`). If the directory doesn't exist, registry is nil and components fall back to legacy behavior.
+
+**File formats:**
+- **ROLE.md**: YAML frontmatter (name, description, model_hint, max_tokens, temperature, includes) + pongo2 template body
+- **AGENT.md**: YAML frontmatter (name, description, mode, tools) + markdown body
+- **SKILL.md**: YAML frontmatter (name, description, trigger, steps) + optional body
+- **COMMAND.md**: YAML frontmatter (name, description) + command prompt body
+- **Fragment .md**: No frontmatter, plain markdown, included via `{% include "fragments/name.md" %}`
 
 ### Project Context Injection
 
