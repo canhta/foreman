@@ -9,8 +9,8 @@ export type TaskStatus =
   | 'spec_review' | 'quality_review' | 'done' | 'failed' | 'skipped' | 'escalated';
 
 export const ACTIVE_STATUSES: TicketStatus[] = [
-  'planning', 'plan_validating', 'implementing', 'reviewing',
-  'pr_created', 'awaiting_merge', 'clarification_needed', 'decomposing',
+  'queued', 'planning', 'plan_validating', 'implementing', 'reviewing',
+  'pr_created', 'pr_updated', 'awaiting_merge', 'clarification_needed', 'decomposing',
 ];
 export const DONE_STATUSES: TicketStatus[] = ['done', 'merged'];
 export const FAIL_STATUSES: TicketStatus[] = ['failed', 'blocked', 'partial'];

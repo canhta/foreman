@@ -3,13 +3,13 @@
     appState, deselectTicket,
   } from '../state.svelte';
   import { DONE_STATUSES, FAIL_STATUSES, ACTIVE_STATUSES } from '../types';
-  import { formatCost } from '../format';
+  import { formatCost, localDateStr } from '../format';
 
   let queuedCount = $derived(appState.tickets.filter(t => t.Status === 'queued').length);
   let doneToday = $derived(
     appState.tickets.filter(t =>
       DONE_STATUSES.includes(t.Status) &&
-      t.CreatedAt?.slice(0, 10) === new Date().toISOString().slice(0, 10)
+      t.CreatedAt?.slice(0, 10) === localDateStr()
     ).length
   );
   let failedCount = $derived(appState.tickets.filter(t => FAIL_STATUSES.includes(t.Status)).length);

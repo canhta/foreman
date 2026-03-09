@@ -3,7 +3,7 @@
     appState, selectTicket,
   } from '../state.svelte';
   import { ACTIVE_STATUSES, DONE_STATUSES, FAIL_STATUSES } from '../types';
-  import { formatSender, formatRelative, formatCost } from '../format';
+  import { formatSender, formatRelative, formatCost, localDateStr } from '../format';
 
   const STUCK_THRESHOLD_MS = 30 * 60 * 1000;
 
@@ -18,7 +18,7 @@
     })
   );
 
-  let todayStr = new Date().toISOString().slice(0, 10);
+  let todayStr = localDateStr();
   let todayTickets = $derived(appState.tickets.filter(t => t.CreatedAt?.slice(0, 10) === todayStr));
   let todayActive = $derived(todayTickets.filter(t => ACTIVE_STATUSES.includes(t.Status)).length);
   let todayDone = $derived(todayTickets.filter(t => DONE_STATUSES.includes(t.Status)).length);
