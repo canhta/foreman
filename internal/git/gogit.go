@@ -182,3 +182,11 @@ func (g *GoGitProvider) MergeNoFF(_ context.Context, _, _ string) error {
 func (g *GoGitProvider) DeleteBranch(_ context.Context, _, _ string) error {
 	return fmt.Errorf("go-git: worktree operations not supported")
 }
+
+func (g *GoGitProvider) Checkout(_ context.Context, _, _ string) error {
+	return fmt.Errorf("go-git: Checkout not supported")
+}
+
+func (g *GoGitProvider) Pull(_ context.Context, _ string) error {
+	return fmt.Errorf("go-git: Pull not supported")
+}

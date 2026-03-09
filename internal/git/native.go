@@ -217,6 +217,18 @@ func (g *NativeGitProvider) CleanWorkingTree(ctx context.Context, workDir string
 	return nil
 }
 
+// Checkout switches the working tree to an existing branch.
+func (g *NativeGitProvider) Checkout(ctx context.Context, workDir, branch string) error {
+	_, err := g.run(ctx, workDir, "git", "checkout", branch)
+	return err
+}
+
+// Pull fast-forwards the current branch from its upstream.
+func (g *NativeGitProvider) Pull(ctx context.Context, workDir string) error {
+	_, err := g.run(ctx, workDir, "git", "pull")
+	return err
+}
+
 // AddWorktree creates a new git worktree with a new branch rooted at startPoint.
 func (g *NativeGitProvider) AddWorktree(ctx context.Context, repoDir, worktreeDir, newBranch, startPoint string) error {
 	_, err := g.run(ctx, repoDir, "git", "worktree", "add", "-b", newBranch, worktreeDir, startPoint)

@@ -18,6 +18,8 @@ type GitProvider interface {
 	Log(ctx context.Context, workDir string, count int) ([]CommitEntry, error)
 	StageAll(ctx context.Context, workDir string) error
 	CleanWorkingTree(ctx context.Context, workDir string) error
+	Checkout(ctx context.Context, workDir, branch string) error
+	Pull(ctx context.Context, workDir string) error
 	// Worktree operations for parallel task isolation.
 	AddWorktree(ctx context.Context, repoDir, worktreeDir, newBranch, startPoint string) error
 	RemoveWorktree(ctx context.Context, repoDir, worktreeDir string) error
