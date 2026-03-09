@@ -1,0 +1,195 @@
+// internal/prompts/registry.go
+package prompts
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+)
+
+// EntryKind distinguishes the type of prompt entry.
+type EntryKind string
+
+const (
+	KindRole     EntryKind = "role"
+	KindAgent    EntryKind = "agent"
+	KindSkill    EntryKind = "skill"
+	KindCommand  EntryKind = "command"
+	KindFragment EntryKind = "fragment"
+)
+
+// Entry is a single loaded prompt/agent/skill/command/fragment.
+type Entry struct {
+	Name        string
+	Kind        EntryKind
+	Description string
+	Metadata    map[string]any
+	RawContent  string
+	Path        string
+	Includes    []string
+}
+
+// Registry holds all loaded prompt entries indexed by kind and name.
+type Registry struct {
+	entries map[EntryKind]map[string]*Entry
+	baseDir string
+}
+
+// dirForKind maps each kind to its subdirectory name and file convention.
+var dirForKind = map[EntryKind]struct {
+	dir      string
+	filename string
+}{
+	KindRole:    {dir: "roles", filename: "ROLE.md"},
+	KindAgent:   {dir: "agents", filename: "AGENT.md"},
+	KindSkill:   {dir: "skills", filename: "SKILL.md"},
+	KindCommand: {dir: "commands", filename: "COMMAND.md"},
+}
+
+// Load scans baseDir for all prompt entries and returns a populated Registry.
+func Load(baseDir string) (*Registry, error) {
+	r := &Registry{
+		entries: make(map[EntryKind]map[string]*Entry),
+		baseDir: baseDir,
+	}
+	for kind := range dirForKind {
+		r.entries[kind] = make(map[string]*Entry)
+	}
+	r.entries[KindFragment] = make(map[string]*Entry)
+
+	// Load structured entries (roles, agents, skills, commands)
+	for kind, info := range dirForKind {
+		dir := filepath.Join(baseDir, info.dir)
+		if err := r.scanDir(dir, kind, info.filename); err != nil {
+			// Directory might not exist — not an error
+			if !os.IsNotExist(err) {
+				return nil, fmt.Errorf("scan %s: %w", info.dir, err)
+			}
+		}
+	}
+
+	// Load fragments
+	fragDir := filepath.Join(baseDir, "fragments")
+	if err := r.scanFragments(fragDir); err != nil && !os.IsNotExist(err) {
+		return nil, fmt.Errorf("scan fragments: %w", err)
+	}
+
+	return r, nil
+}
+
+func (r *Registry) scanDir(dir string, kind EntryKind, filename string) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		path := filepath.Join(dir, e.Name(), filename)
+		if _, statErr := os.Stat(path); statErr != nil {
+			// Recurse into subdirectories (e.g., skills/community/)
+			subDir := filepath.Join(dir, e.Name())
+			_ = r.scanDir(subDir, kind, filename)
+			continue
+		}
+		if err := r.loadEntry(path, kind); err != nil {
+			return fmt.Errorf("load %s: %w", path, err)
+		}
+	}
+	return nil
+}
+
+func (r *Registry) scanFragments(dir string) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+			continue
+		}
+		path := filepath.Join(dir, e.Name())
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		name := strings.TrimSuffix(e.Name(), ".md")
+		r.entries[KindFragment][name] = &Entry{
+			Name:       name,
+			Kind:       KindFragment,
+			RawContent: string(data),
+			Path:       path,
+		}
+	}
+	return nil
+}
+
+func (r *Registry) loadEntry(path string, kind EntryKind) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+
+	fm, body, err := ParseFrontmatter(string(data))
+	if err != nil {
+		return fmt.Errorf("parse %s: %w", path, err)
+	}
+
+	name, _ := fm["name"].(string)
+	if name == "" {
+		return fmt.Errorf("%s: missing 'name' in frontmatter", path)
+	}
+
+	desc, _ := fm["description"].(string)
+
+	var includes []string
+	if inc, ok := fm["includes"]; ok {
+		if list, ok := inc.([]any); ok {
+			for _, item := range list {
+				if s, ok := item.(string); ok {
+					includes = append(includes, s)
+				}
+			}
+		}
+	}
+
+	r.entries[kind][name] = &Entry{
+		Name:        name,
+		Kind:        kind,
+		Description: desc,
+		Metadata:    fm,
+		RawContent:  body,
+		Path:        path,
+		Includes:    includes,
+	}
+	return nil
+}
+
+// Get retrieves a single entry by kind and name.
+func (r *Registry) Get(kind EntryKind, name string) (*Entry, error) {
+	m, ok := r.entries[kind]
+	if !ok {
+		return nil, fmt.Errorf("unknown entry kind: %s", kind)
+	}
+	entry, ok := m[name]
+	if !ok {
+		return nil, fmt.Errorf("%s %q not found", kind, name)
+	}
+	return entry, nil
+}
+
+// List returns all entries of a given kind, sorted by name.
+func (r *Registry) List(kind EntryKind) []*Entry {
+	m := r.entries[kind]
+	result := make([]*Entry, 0, len(m))
+	for _, e := range m {
+		result = append(result, e)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Name < result[j].Name
+	})
+	return result
+}
