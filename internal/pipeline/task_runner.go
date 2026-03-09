@@ -437,6 +437,12 @@ func (r *PipelineTaskRunner) runTaskWithAgent(ctx context.Context, task *models.
 		// Write a synthetic LlmCallRecord so the dashboard can show cost/tokens
 		// for external runners (claudecode, copilot) alongside builtin calls.
 		tc := telemetry.TraceFromContext(ctx)
+		// Use the actual model reported by the agent runner at runtime.
+		// Fall back to config only if the runner didn't report a model.
+		syntheticModel := result.Usage.Model
+		if syntheticModel == "" {
+			syntheticModel = r.config.Models.Implementer
+		}
 		syntheticCall := &models.LlmCallRecord{
 			ID:           fmt.Sprintf("agent-%d", time.Now().UnixNano()),
 			TicketID:     tc.TicketID,
@@ -444,7 +450,7 @@ func (r *PipelineTaskRunner) runTaskWithAgent(ctx context.Context, task *models.
 			Role:         "implementing",
 			Stage:        "implementing",
 			Provider:     r.config.AgentRunnerName,
-			Model:        r.config.Models.Implementer,
+			Model:        syntheticModel,
 			AgentRunner:  r.config.AgentRunnerName,
 			TokensInput:  result.Usage.InputTokens,
 			TokensOutput: result.Usage.OutputTokens,

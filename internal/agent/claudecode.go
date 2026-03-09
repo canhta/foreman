@@ -86,7 +86,15 @@ func (r *ClaudeCodeRunner) Run(ctx context.Context, req AgentRequest) (AgentResu
 		return AgentResult{}, fmt.Errorf("claudecode: exit %d: %s", out.ExitCode, truncate(out.Stderr, 500))
 	}
 
-	return parseSDKResultMessage(out.Stdout)
+	result, err := parseSDKResultMessage(out.Stdout)
+	if err != nil {
+		return AgentResult{}, err
+	}
+	// Fall back to configured model when SDK doesn't report one.
+	if result.Usage.Model == "" && r.config.Model != "" {
+		result.Usage.Model = r.config.Model
+	}
+	return result, nil
 }
 
 // sdkResultMessage mirrors the Claude Agent SDK's SDKResultMessage JSON output.
@@ -95,6 +103,7 @@ type sdkResultMessage struct {
 	Type             string      `json:"type"`
 	Subtype          string      `json:"subtype"`
 	Result           string      `json:"result"`
+	Model            string      `json:"model"`
 	Errors           []string    `json:"errors"`
 	Usage            struct {
 		InputTokens  int `json:"input_tokens"`
@@ -143,6 +152,7 @@ func parseSDKResultMessage(stdout string) (AgentResult, error) {
 			CostUSD:      msg.TotalCostUSD,
 			NumTurns:     msg.NumTurns,
 			DurationMs:   msg.DurationMs,
+			Model:        msg.Model,
 		},
 	}), nil
 }

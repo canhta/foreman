@@ -31,6 +31,7 @@ func TestClaudeCodeRunner_Run_Success(t *testing.T) {
 	sdkResult := map[string]interface{}{
 		"type": "result", "subtype": "success",
 		"result":         "Fixed the bug by adding nil check",
+		"model":          "claude-sonnet-4-6-20250514",
 		"total_cost_usd": 0.035, "num_turns": 3, "duration_ms": 4500, "is_error": false,
 		"usage": map[string]interface{}{"input_tokens": 2000, "output_tokens": 800},
 	}
@@ -57,6 +58,58 @@ func TestClaudeCodeRunner_Run_Success(t *testing.T) {
 	}
 	if result.Usage.InputTokens != 2000 {
 		t.Fatalf("expected 2000 input tokens, got %d", result.Usage.InputTokens)
+	}
+	if result.Usage.Model != "claude-sonnet-4-6-20250514" {
+		t.Fatalf("expected model 'claude-sonnet-4-6-20250514', got %q", result.Usage.Model)
+	}
+}
+
+func TestClaudeCodeRunner_Run_ModelFromSDK(t *testing.T) {
+	sdkResult := map[string]interface{}{
+		"type": "result", "subtype": "success",
+		"result":         "done",
+		"model":          "claude-opus-4-6-20250610",
+		"total_cost_usd": 0.10, "num_turns": 1, "duration_ms": 1000, "is_error": false,
+		"usage": map[string]interface{}{"input_tokens": 500, "output_tokens": 200},
+	}
+	resultJSON, _ := json.Marshal(sdkResult)
+
+	r := NewClaudeCodeRunner(&mockCmdRunner{stdout: string(resultJSON), exitCode: 0}, ClaudeCodeConfig{
+		Model:          "claude-sonnet-4-6-20250514",
+		TimeoutSecsDefault: 120,
+	})
+
+	result, err := r.Run(context.Background(), AgentRequest{Prompt: "Do it", WorkDir: "/tmp"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Should use model from SDK output, not from config
+	if result.Usage.Model != "claude-opus-4-6-20250610" {
+		t.Fatalf("expected model from SDK output 'claude-opus-4-6-20250610', got %q", result.Usage.Model)
+	}
+}
+
+func TestClaudeCodeRunner_Run_NoModelFallsBackToConfig(t *testing.T) {
+	sdkResult := map[string]interface{}{
+		"type": "result", "subtype": "success",
+		"result":         "done",
+		"total_cost_usd": 0.01, "num_turns": 1, "duration_ms": 500, "is_error": false,
+		"usage": map[string]interface{}{"input_tokens": 100, "output_tokens": 50},
+	}
+	resultJSON, _ := json.Marshal(sdkResult)
+
+	r := NewClaudeCodeRunner(&mockCmdRunner{stdout: string(resultJSON), exitCode: 0}, ClaudeCodeConfig{
+		Model:              "claude-sonnet-4-6-20250514",
+		TimeoutSecsDefault: 120,
+	})
+
+	result, err := r.Run(context.Background(), AgentRequest{Prompt: "Do it", WorkDir: "/tmp"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// When SDK doesn't report model, fall back to configured model
+	if result.Usage.Model != "claude-sonnet-4-6-20250514" {
+		t.Fatalf("expected fallback model 'claude-sonnet-4-6-20250514', got %q", result.Usage.Model)
 	}
 }
 

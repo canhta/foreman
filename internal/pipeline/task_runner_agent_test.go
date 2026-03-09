@@ -30,7 +30,7 @@ func TestRunTask_AgentRunner_DelegatesToAgent(t *testing.T) {
 	mockAgent := &mockAgentRunnerForTask{
 		result: agent.AgentResult{
 			Output: "done",
-			Usage:  agent.AgentUsage{CostUSD: 0.05, InputTokens: 1000, OutputTokens: 500},
+			Usage:  agent.AgentUsage{CostUSD: 0.05, InputTokens: 1000, OutputTokens: 500, Model: "claude-sonnet-4-6-20250514"},
 		},
 	}
 	mockDB := newMockTaskRunnerDB()
@@ -59,6 +59,45 @@ func TestRunTask_AgentRunner_DelegatesToAgent(t *testing.T) {
 
 	// Should have updated status to Done.
 	assert.Equal(t, models.TaskStatusDone, mockDB.statuses["task-1"])
+}
+
+func TestRunTask_AgentRunner_SyntheticLlmCall_UsesActualModel(t *testing.T) {
+	workDir := t.TempDir()
+	mockAgent := &mockAgentRunnerForTask{
+		result: agent.AgentResult{
+			Output: "done",
+			Usage: agent.AgentUsage{
+				CostUSD:      0.05,
+				InputTokens:  1000,
+				OutputTokens: 500,
+				Model:        "claude-sonnet-4-6-20250514",
+			},
+		},
+	}
+	mockDB := newMockTaskRunnerDB()
+	mockGit := &realMockGitProvider{diffOutput: "diff --git a/file.go ...", commitSHA: "abc123"}
+
+	cfg := TaskRunnerConfig{
+		WorkDir:                  workDir,
+		MaxImplementationRetries: 0,
+		AgentRunner:              mockAgent,
+		AgentRunnerName:          "claudecode",
+		Models:                   models.ModelsConfig{Implementer: "openai:gpt-5.4"}, // wrong config value
+	}
+	tr := NewPipelineTaskRunner(nil, mockDB, mockGit, nil, cfg)
+
+	task := &models.Task{ID: "task-1", TicketID: "ticket-1", Title: "Add feature"}
+	err := tr.RunTask(context.Background(), task)
+	require.NoError(t, err)
+
+	// Verify the synthetic LLM call uses the actual model from agent result,
+	// not the config value.
+	require.Len(t, mockDB.llmCalls, 1)
+	call := mockDB.llmCalls[0]
+	assert.Equal(t, "claude-sonnet-4-6-20250514", call.Model, "synthetic call should use actual model from agent, not config")
+	assert.Equal(t, "claudecode", call.AgentRunner)
+	assert.Equal(t, "claudecode", call.Provider)
+	assert.Equal(t, 0.05, call.CostUSD)
 }
 
 func TestRunTask_AgentRunner_EmptyDiff_Retries(t *testing.T) {

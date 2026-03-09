@@ -100,3 +100,18 @@ func TestCopilotRunner_Close_NilClient(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestCopilotRunner_ReportsConfiguredModel(t *testing.T) {
+	// CopilotRunner should expose its configured model via ConfiguredModel()
+	r := &CopilotRunner{config: CopilotConfig{Model: "gpt-4o"}}
+	if r.ConfiguredModel() != "gpt-4o" {
+		t.Fatalf("expected 'gpt-4o', got %q", r.ConfiguredModel())
+	}
+}
+
+func TestCopilotRunner_EmptyModel(t *testing.T) {
+	r := &CopilotRunner{config: CopilotConfig{}}
+	if r.ConfiguredModel() != "" {
+		t.Fatalf("expected empty model, got %q", r.ConfiguredModel())
+	}
+}

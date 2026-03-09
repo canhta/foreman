@@ -120,4 +120,5 @@ type AgentUsage struct {
 	CostUSD      float64 // Estimated; 0 if runner doesn't expose it
 	NumTurns     int     // Number of agentic turns used
 	DurationMs   int     // Total execution time in milliseconds
+	Model        string  // Actual model used by the runner at runtime
 }

@@ -21,6 +21,7 @@ type mockTaskRunnerDB struct {
 	tasks      map[string]*models.Task
 	callCounts map[string]int
 	statuses   map[string]models.TaskStatus
+	llmCalls   []*models.LlmCallRecord
 	updateErr  error
 }
 
@@ -56,7 +57,8 @@ func (m *mockTaskRunnerDB) IncrementTaskLlmCalls(_ context.Context, id string) (
 func (m *mockTaskRunnerDB) SetTaskErrorType(_ context.Context, _, _ string) error   { return nil }
 func (m *mockTaskRunnerDB) SetTaskAgentRunner(_ context.Context, _, _ string) error { return nil }
 
-func (m *mockTaskRunnerDB) RecordLlmCall(_ context.Context, _ *models.LlmCallRecord) error {
+func (m *mockTaskRunnerDB) RecordLlmCall(_ context.Context, call *models.LlmCallRecord) error {
+	m.llmCalls = append(m.llmCalls, call)
 	return nil
 }
 func (m *mockTaskRunnerDB) WriteContextFeedback(_ context.Context, _ dbpkg.ContextFeedbackRow) error {

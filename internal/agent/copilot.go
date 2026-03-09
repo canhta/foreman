@@ -87,6 +87,7 @@ func (r *CopilotRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 		output = *result.Data.Content
 	}
 
+	usage.Model = r.config.Model
 	return enrichResult(AgentResult{Output: output, Usage: usage}), nil
 }
 
@@ -94,6 +95,8 @@ func (r *CopilotRunner) HealthCheck(ctx context.Context) error {
 	_, err := r.client.Ping(ctx, "foreman-health")
 	return err
 }
+
+func (r *CopilotRunner) ConfiguredModel() string { return r.config.Model }
 
 func (r *CopilotRunner) Close() error {
 	if r.client != nil {

@@ -151,7 +151,7 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 
 	fallbackModel := req.FallbackModel
 	messages := []models.Message{{Role: "user", Content: req.Prompt}}
-	var usage AgentUsage
+	usage := AgentUsage{Model: r.model}
 
 	// Tool call deduplication: fingerprint → count of times called.
 	// Guidance-only — injects a warning but does NOT block execution.
