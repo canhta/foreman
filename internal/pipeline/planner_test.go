@@ -3,11 +3,13 @@ package pipeline
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/canhta/foreman/internal/agent"
 	"github.com/canhta/foreman/internal/models"
 	"github.com/canhta/foreman/internal/telemetry"
 	"github.com/prometheus/client_golang/prometheus"
@@ -309,4 +311,68 @@ func TestPlanner_ConfidenceScoring_LLMErrorIsNonFatal(t *testing.T) {
 
 	// No handoff stored because scoring failed.
 	assert.Empty(t, store.records)
+}
+
+// ---------------------------------------------------------------------------
+// Task 5: Structured output plan parsing (REQ-PIPE-003)
+// ---------------------------------------------------------------------------
+
+// structuredOutputLLM simulates the builtin runner's mock LLM that immediately
+// calls the structured_output tool with a valid plan JSON payload.
+type structuredOutputLLM struct {
+	payload json.RawMessage
+}
+
+func (s *structuredOutputLLM) Complete(_ context.Context, req models.LlmRequest) (*models.LlmResponse, error) {
+	return &models.LlmResponse{
+		StopReason: models.StopReasonToolUse,
+		ToolCalls: []models.ToolCall{
+			{ID: "so_1", Name: "structured_output", Input: s.payload},
+		},
+		TokensInput: 100, TokensOutput: 50, Model: req.Model,
+	}, nil
+}
+func (s *structuredOutputLLM) ProviderName() string                { return "structured-mock" }
+func (s *structuredOutputLLM) HealthCheck(_ context.Context) error { return nil }
+
+// TestPlanner_UsesStructuredOutputWhenBuiltinRunnerSet verifies that when
+// WithAgentRunner is set to a *BuiltinRunner, the planner uses the structured
+// output path and parses the plan from AgentResult.Structured.
+func TestPlanner_UsesStructuredOutputWhenBuiltinRunnerSet(t *testing.T) {
+	workDir := plannerWorkDir(t)
+
+	// Build a JSON payload matching PlannerResult but only "tasks" (as the schema requires).
+	planPayload := json.RawMessage(`{
+		"status": "OK",
+		"tasks": [
+			{
+				"title": "Structured task",
+				"description": "Created via structured output",
+				"acceptance_criteria": ["it works"],
+				"estimated_complexity": "simple",
+				"depends_on": []
+			}
+		]
+	}`)
+
+	mockLLM := &structuredOutputLLM{payload: planPayload}
+	builtinRunner := agent.NewBuiltinRunner(mockLLM, "test-model", agent.BuiltinConfig{MaxTurnsDefault: 5}, nil, nil)
+
+	// The planner still needs an LLMProvider for the non-builtin path, but it won't be used.
+	planner := NewPlanner(&stageLLM{planResponse: "should not be called"}, &models.LimitsConfig{
+		MaxTasksPerTicket:  20,
+		ContextTokenBudget: 30000,
+	}).WithAgentRunner(builtinRunner)
+
+	ticket := &models.Ticket{
+		Title:       "Structured output test",
+		Description: "Verify that the planner uses structured output when builtin runner is configured.",
+	}
+
+	result, err := planner.Plan(context.Background(), workDir, ticket)
+	require.NoError(t, err)
+	require.Equal(t, "OK", result.Status)
+	require.Len(t, result.Tasks, 1)
+	assert.Equal(t, "Structured task", result.Tasks[0].Title)
+	assert.Equal(t, "Created via structured output", result.Tasks[0].Description)
 }

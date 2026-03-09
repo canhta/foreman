@@ -3,16 +3,45 @@ package pipeline
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
 	appcontext "github.com/canhta/foreman/internal/context"
+	"github.com/canhta/foreman/internal/agent"
 	"github.com/canhta/foreman/internal/models"
 	"github.com/canhta/foreman/internal/telemetry"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 )
+
+// planOutputSchema is the JSON schema for structured plan output.
+// When the builtin runner is used, this schema is passed as OutputSchema
+// so the LLM produces a schema-validated JSON payload instead of YAML.
+var planOutputSchema = json.RawMessage(`{
+	"type": "object",
+	"properties": {
+		"tasks": {
+			"type": "array",
+			"items": {
+				"type": "object",
+				"properties": {
+					"title": {"type": "string"},
+					"description": {"type": "string"},
+					"acceptance_criteria": {"type": "array", "items": {"type": "string"}},
+					"files_to_read": {"type": "array", "items": {"type": "string"}},
+					"files_to_modify": {"type": "array", "items": {"type": "string"}},
+					"test_assertions": {"type": "array", "items": {"type": "string"}},
+					"estimated_complexity": {"type": "string", "enum": ["simple", "medium", "complex"]},
+					"depends_on": {"type": "array", "items": {"type": "string"}}
+				},
+				"required": ["title", "description", "acceptance_criteria"]
+			}
+		}
+	},
+	"required": ["tasks"]
+}`)
 
 // LLMProvider is the interface for making LLM calls (matches llm.LlmProvider).
 type LLMProvider interface {
@@ -35,6 +64,7 @@ const (
 // Planner decomposes a ticket into implementation tasks via LLM.
 type Planner struct {
 	llm          LLMProvider
+	agentRunner  agent.AgentRunner
 	handoffStore HandoffStorer
 	metrics      *telemetry.Metrics
 	limits       *models.LimitsConfig
@@ -76,6 +106,14 @@ func (p *Planner) WithMetrics(m *telemetry.Metrics) *Planner {
 	return p
 }
 
+// WithAgentRunner attaches an AgentRunner that can produce structured plan output.
+// When set and the runner is the builtin runner, Plan() will request structured JSON
+// output directly instead of relying on YAML parsing (REQ-PIPE-003).
+func (p *Planner) WithAgentRunner(r agent.AgentRunner) *Planner {
+	p.agentRunner = r
+	return p
+}
+
 // Plan generates a task plan for the given ticket.
 func (p *Planner) Plan(ctx context.Context, workDir string, ticket *models.Ticket) (*PlannerResult, error) {
 	// Extract per-ticket context cache (injected by the orchestrator via context.Context).
@@ -87,23 +125,58 @@ func (p *Planner) Plan(ctx context.Context, workDir string, ticket *models.Ticke
 		return nil, fmt.Errorf("assembling planner context: %w", err)
 	}
 
-	// Make LLM call
-	resp, err := p.llm.Complete(ctx, models.LlmRequest{
-		Model:        p.model,
-		SystemPrompt: assembled.SystemPrompt,
-		UserPrompt:   assembled.UserPrompt,
-		Stage:        "planning",
-		MaxTokens:    plannerMaxTokens,
-		Temperature:  plannerTemperature,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("planner LLM call: %w", err)
-	}
+	var result *PlannerResult
 
-	// Parse the output
-	result, err := ParsePlannerOutput(resp.Content)
-	if err != nil {
-		return nil, fmt.Errorf("parsing planner output: %w", err)
+	// Structured output path: use builtin runner with OutputSchema for reliable JSON output.
+	// Fall back to direct LLM call + YAML parsing when no builtin runner is configured.
+	if _, isBuiltin := p.agentRunner.(*agent.BuiltinRunner); p.agentRunner != nil && isBuiltin {
+		agentResp, agentErr := p.agentRunner.Run(ctx, agent.AgentRequest{
+			Prompt:       assembled.UserPrompt,
+			SystemPrompt: assembled.SystemPrompt,
+			WorkDir:      workDir,
+			OutputSchema: planOutputSchema,
+			MaxTurns:     10,
+		})
+		if agentErr != nil {
+			return nil, fmt.Errorf("planner agent call: %w", agentErr)
+		}
+		if agentResp.Structured != nil {
+			// Parse from structured JSON output (REQ-PIPE-003).
+			if raw, ok := agentResp.Structured.(json.RawMessage); ok && json.Valid(raw) {
+				var pr PlannerResult
+				if jsonErr := json.Unmarshal(raw, &pr); jsonErr == nil {
+					if pr.Status == "" {
+						pr.Status = "OK"
+					}
+					result = &pr
+					log.Info().Str("ticket_id", ticket.ID).Msg("planner: used structured output path")
+				}
+			}
+		}
+		// If structured output wasn't usable, fall through to YAML parsing of Output.
+		if result == nil {
+			result, err = ParsePlannerOutput(agentResp.Output)
+			if err != nil {
+				return nil, fmt.Errorf("parsing planner output (structured fallback): %w", err)
+			}
+		}
+	} else {
+		// Standard LLM call path.
+		resp, llmErr := p.llm.Complete(ctx, models.LlmRequest{
+			Model:        p.model,
+			SystemPrompt: assembled.SystemPrompt,
+			UserPrompt:   assembled.UserPrompt,
+			Stage:        "planning",
+			MaxTokens:    plannerMaxTokens,
+			Temperature:  plannerTemperature,
+		})
+		if llmErr != nil {
+			return nil, fmt.Errorf("planner LLM call: %w", llmErr)
+		}
+		result, err = ParsePlannerOutput(resp.Content)
+		if err != nil {
+			return nil, fmt.Errorf("parsing planner output: %w", err)
+		}
 	}
 
 	// If not OK, return early (clarification needed, too large, etc.)
