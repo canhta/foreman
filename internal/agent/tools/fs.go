@@ -419,8 +419,13 @@ func (t *applyPatchTool) Execute(_ context.Context, workDir string, input json.R
 		return "", fmt.Errorf("ApplyPatch: %w", err)
 	}
 
-	// Split into lines, preserving trailing newline awareness.
+	// Validate hunk context lines against the original file before applying.
 	content := string(contentBytes)
+	if validationErrs := ValidatePatchHunks(content, args.Patch); len(validationErrs) > 0 {
+		return "", fmt.Errorf("ApplyPatch: hunk validation failed:\n%s", strings.Join(validationErrs, "\n"))
+	}
+
+	// Split into lines, preserving trailing newline awareness.
 	lines := strings.Split(content, "\n")
 	// If the file ends with a newline, Split produces a trailing empty string — keep it.
 
