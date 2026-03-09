@@ -4,26 +4,27 @@ package models
 //
 //nolint:govet // fieldalignment: struct field order prioritises readability over padding
 type Config struct {
-	Models     ModelsConfig      `mapstructure:"models"`
-	Decompose  DecomposeConfig   `mapstructure:"decompose"`
-	Runner     RunnerConfig      `mapstructure:"runner"`
-	Pipeline   PipelineConfig    `mapstructure:"pipeline"`
-	Tracker    TrackerConfig     `mapstructure:"tracker"`
-	MCP        MCPConfig         `mapstructure:"mcp"`
-	Channel    ChannelConfig     `mapstructure:"channel"`
-	Agents     []AgentRoleConfig `mapstructure:"agents"`
-	LLM        LLMConfig         `mapstructure:"llm"`
-	Git        GitConfig         `mapstructure:"git"`
-	Secrets    SecretsConfig     `mapstructure:"secrets"`
-	Dashboard  DashboardConfig   `mapstructure:"dashboard"`
-	Database   DatabaseConfig    `mapstructure:"database"`
-	Cost       CostConfig        `mapstructure:"cost"`
-	Daemon     DaemonConfig      `mapstructure:"daemon"`
-	Skills     SkillsConfig      `mapstructure:"skills"`
-	Limits     LimitsConfig      `mapstructure:"limits"`
-	RateLimit  RateLimitConfig   `mapstructure:"rate_limit"`
-	Context    ContextConfig     `mapstructure:"context"`
-	PromptsDir string            `mapstructure:"prompts_dir"`
+	Models      ModelsConfig      `mapstructure:"models"`
+	Decompose   DecomposeConfig   `mapstructure:"decompose"`
+	Runner      RunnerConfig      `mapstructure:"runner"`
+	Pipeline    PipelineConfig    `mapstructure:"pipeline"`
+	Tracker     TrackerConfig     `mapstructure:"tracker"`
+	MCP         MCPConfig         `mapstructure:"mcp"`
+	Channel     ChannelConfig     `mapstructure:"channel"`
+	Agents      []AgentRoleConfig `mapstructure:"agents"`
+	LLM         LLMConfig         `mapstructure:"llm"`
+	Git         GitConfig         `mapstructure:"git"`
+	Secrets     SecretsConfig     `mapstructure:"secrets"`
+	Dashboard   DashboardConfig   `mapstructure:"dashboard"`
+	Database    DatabaseConfig    `mapstructure:"database"`
+	Cost        CostConfig        `mapstructure:"cost"`
+	Daemon      DaemonConfig      `mapstructure:"daemon"`
+	Skills      SkillsConfig      `mapstructure:"skills"`
+	AgentRunner AgentRunnerConfig `mapstructure:"agent_runner"`
+	Limits      LimitsConfig      `mapstructure:"limits"`
+	RateLimit   RateLimitConfig   `mapstructure:"rate_limit"`
+	Context     ContextConfig     `mapstructure:"context"`
+	PromptsDir  string            `mapstructure:"prompts_dir"`
 }
 
 // AgentRoleConfig defines a custom named agent with specific tools, model, and prompt.
@@ -313,6 +314,9 @@ type BuiltinRunnerConfig struct {
 	// (i.e., the pipeline's implementer model).
 	Model               string   `mapstructure:"model"`
 	DefaultAllowedTools []string `mapstructure:"default_allowed_tools"`
+	MaxTurns            int      `mapstructure:"max_turns"`
+	MaxContextTokens    int      `mapstructure:"max_context_tokens"`
+	ReflectionInterval  int      `mapstructure:"reflection_interval"`
 }
 
 type ClaudeCodeRunnerConfig struct {

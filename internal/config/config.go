@@ -129,12 +129,28 @@ func setDefaults(v *viper.Viper) {
 	// MCP defaults
 	v.SetDefault("mcp.resource_max_bytes", 512*1024) // 512 KB
 
+	// Core pipeline agent runner defaults
+	v.SetDefault("agent_runner.provider", "builtin")
+	v.SetDefault("agent_runner.builtin.max_turns", 15)
+	v.SetDefault("agent_runner.builtin.max_context_tokens", 100000)
+	v.SetDefault("agent_runner.builtin.reflection_interval", 5)
+	v.SetDefault("agent_runner.builtin.default_allowed_tools", []string{"Read", "Write", "Edit", "MultiEdit", "Glob", "Grep", "Bash", "GetErrors"})
+	v.SetDefault("agent_runner.claudecode.bin", "claude")
+	v.SetDefault("agent_runner.claudecode.max_turns_default", 15)
+	v.SetDefault("agent_runner.claudecode.timeout_secs_default", 300)
+	v.SetDefault("agent_runner.copilot.cli_path", "copilot")
+	v.SetDefault("agent_runner.copilot.model", "gpt-4o")
+	v.SetDefault("agent_runner.copilot.timeout_secs_default", 300)
+
 	// Skills agent runner defaults
 	v.SetDefault("skills.agent_runner.provider", "builtin")
 	v.SetDefault("skills.agent_runner.max_cost_per_ticket_usd", 2.0)
 	v.SetDefault("skills.agent_runner.max_turns_default", 10)
 	v.SetDefault("skills.agent_runner.timeout_secs_default", 120)
 	v.SetDefault("skills.agent_runner.builtin.default_allowed_tools", []string{"Read", "Glob", "Grep"})
+	v.SetDefault("skills.agent_runner.builtin.max_turns", 10)
+	v.SetDefault("skills.agent_runner.builtin.max_context_tokens", 50000)
+	v.SetDefault("skills.agent_runner.builtin.reflection_interval", 0)
 	v.SetDefault("skills.agent_runner.claudecode.bin", "claude")
 	v.SetDefault("skills.agent_runner.claudecode.default_allowed_tools", []string{"Read", "Edit", "Glob", "Grep", "Bash"})
 	v.SetDefault("skills.agent_runner.claudecode.max_turns_default", 10)
