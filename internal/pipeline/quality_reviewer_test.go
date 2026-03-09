@@ -18,7 +18,7 @@ STRENGTHS:
 - Clean error handling
 - Good test coverage`}
 
-	reviewer := NewQualityReviewer(mock)
+	reviewer := NewQualityReviewer(mock).WithRegistry(mustLoadTestRegistry(t))
 	result, err := reviewer.Review(context.Background(), QualityReviewInput{
 		Diff:             "diff --git a/handler.go\n+func GetUsers() {}",
 		CodebasePatterns: "go, stdlib, standard go conventions",
@@ -40,7 +40,7 @@ ISSUES:
 STRENGTHS:
 - Tests are comprehensive`}
 
-	reviewer := NewQualityReviewer(mock)
+	reviewer := NewQualityReviewer(mock).WithRegistry(mustLoadTestRegistry(t))
 	result, err := reviewer.Review(context.Background(), QualityReviewInput{
 		Diff:             "diff --git a/handler.go\n+db.Query(\"SELECT * WHERE id=\" + id)",
 		CodebasePatterns: "go, stdlib",

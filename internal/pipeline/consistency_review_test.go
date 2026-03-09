@@ -388,7 +388,7 @@ func TestDAGTaskAdapter_Run_IncrementsCompletedCount(t *testing.T) {
 		MaxLlmCallsPerTask:       8,
 		EnableTDDVerification:    false,
 		SearchReplaceSimilarity:  0.8,
-	})
+	}).WithRegistry(mustLoadTestRegistry(t))
 
 	cdb := &mockConsistencyDB{}
 	adapter := &DAGTaskAdapter{

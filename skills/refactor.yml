@@ -1,9 +1,0 @@
-id: refactor
-description: "Refactoring workflow — ensures behavior preservation"
-trigger: post_lint
-steps:
-  - id: behavior-check
-    type: run_command
-    command: "sh"
-    args: ["-c", "[ -f go.mod ] || exit 0; go test ./..."]
-    allow_failure: false

@@ -16,7 +16,7 @@ CHANGES: Added user model with validation, REST handler, and comprehensive tests
 CONCERNS: None significant.
 REVIEW_NOTES: Consider adding pagination in a follow-up ticket.`}
 
-	reviewer := NewFinalReviewer(mock)
+	reviewer := NewFinalReviewer(mock).WithRegistry(mustLoadTestRegistry(t))
 	result, err := reviewer.Review(context.Background(), FinalReviewInput{
 		TicketTitle:       "Add user management",
 		TicketDescription: "Create user CRUD endpoints",
@@ -41,7 +41,7 @@ CHANGES: User model and handler added but handler lacks input validation.
 CONCERNS: Handler does not validate request body, leading to panics.
 REVIEW_NOTES: Add input validation before merging.`}
 
-	reviewer := NewFinalReviewer(mock)
+	reviewer := NewFinalReviewer(mock).WithRegistry(mustLoadTestRegistry(t))
 	result, err := reviewer.Review(context.Background(), FinalReviewInput{
 		TicketTitle:       "Add user management",
 		TicketDescription: "Create user CRUD endpoints",

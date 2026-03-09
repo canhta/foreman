@@ -29,7 +29,7 @@ func newTaskRunnerForTest(t *testing.T, db TaskRunnerDB, llm LLMProvider, g git.
 	if cfg.SearchReplaceSimilarity == 0 {
 		cfg.SearchReplaceSimilarity = 0.8
 	}
-	return NewPipelineTaskRunner(llm, db, g, cmd, cfg)
+	return NewPipelineTaskRunner(llm, db, g, cmd, cfg).WithRegistry(mustLoadTestRegistry(t))
 }
 
 func simpleTask(id, title string) *models.Task {
@@ -833,7 +833,7 @@ func TestRunSpecReview_Approved(t *testing.T) {
 	}
 	r := &PipelineTaskRunner{
 		db:           db,
-		specReviewer: NewSpecReviewer(llm),
+		specReviewer: NewSpecReviewer(llm).WithRegistry(mustLoadTestRegistry(t)),
 		config: TaskRunnerConfig{
 			MaxLlmCallsPerTask: 8,
 		},
@@ -855,7 +855,7 @@ func TestRunSpecReview_Rejected_ReturnsSentinel(t *testing.T) {
 	}
 	r := &PipelineTaskRunner{
 		db:           db,
-		specReviewer: NewSpecReviewer(llm),
+		specReviewer: NewSpecReviewer(llm).WithRegistry(mustLoadTestRegistry(t)),
 		config:       TaskRunnerConfig{MaxLlmCallsPerTask: 8},
 	}
 	task := &models.Task{ID: "sr2", Title: "Failing spec", AcceptanceCriteria: []string{"do X"}}
@@ -882,7 +882,7 @@ func TestRunQualityReview_Approved(t *testing.T) {
 	}
 	r := &PipelineTaskRunner{
 		db:              db,
-		qualityReviewer: NewQualityReviewer(llm),
+		qualityReviewer: NewQualityReviewer(llm).WithRegistry(mustLoadTestRegistry(t)),
 		config:          TaskRunnerConfig{MaxLlmCallsPerTask: 8},
 	}
 	feedback := NewFeedbackAccumulator()
@@ -900,7 +900,7 @@ func TestRunQualityReview_CriticalIssue_ReturnsSentinel(t *testing.T) {
 	}
 	r := &PipelineTaskRunner{
 		db:              db,
-		qualityReviewer: NewQualityReviewer(llm),
+		qualityReviewer: NewQualityReviewer(llm).WithRegistry(mustLoadTestRegistry(t)),
 		config:          TaskRunnerConfig{MaxLlmCallsPerTask: 8},
 	}
 	feedback := NewFeedbackAccumulator()
@@ -927,7 +927,7 @@ func TestRunQualityReview_ImportantOnly_ReturnsRejection(t *testing.T) {
 	}
 	r := &PipelineTaskRunner{
 		db:              db,
-		qualityReviewer: NewQualityReviewer(llm),
+		qualityReviewer: NewQualityReviewer(llm).WithRegistry(mustLoadTestRegistry(t)),
 		config:          TaskRunnerConfig{MaxLlmCallsPerTask: 8},
 	}
 	feedback := NewFeedbackAccumulator()

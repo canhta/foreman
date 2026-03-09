@@ -252,7 +252,7 @@ func TestDAGTaskAdapter_Run_Success(t *testing.T) {
 		MaxLlmCallsPerTask:       8,
 		EnableTDDVerification:    false,
 		SearchReplaceSimilarity:  0.8,
-	})
+	}).WithRegistry(mustLoadTestRegistry(t))
 	adapter := NewDAGTaskAdapter(r, db, "ticket-1")
 
 	result := adapter.Run(context.Background(), "task-1")
