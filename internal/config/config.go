@@ -105,6 +105,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("limits.search_replace_similarity", 0.92)
 	v.SetDefault("limits.search_replace_min_context_lines", 3)
 	v.SetDefault("limits.intermediate_review_interval", 3)
+	v.SetDefault("limits.conflict_resolution_token_budget", 40000)
 
 	v.SetDefault("secrets.enabled", true)
 	v.SetDefault("secrets.always_exclude", []string{".env", ".env.*", "*.pem", "*.key", "*.p12"})
@@ -169,6 +170,7 @@ func setDefaults(v *viper.Viper) {
 
 	// Context assembly defaults (REQ-CTX-003)
 	v.SetDefault("context.context_feedback_boost", 1.5)
+	v.SetDefault("context.context_generate_max_tokens", 32000)
 }
 
 // bindEnvOverrides registers environment variable overrides.

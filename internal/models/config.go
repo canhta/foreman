@@ -210,6 +210,9 @@ type LimitsConfig struct {
 	// plan to proceed without triggering a clarification request (REQ-PIPE-002).
 	// A value of 0 disables confidence scoring entirely.
 	PlanConfidenceThreshold float64 `mapstructure:"plan_confidence_threshold"`
+	// ConflictResolutionTokenBudget is the token budget allocated for LLM-assisted
+	// merge conflict resolution. A value of 0 disables LLM assistance.
+	ConflictResolutionTokenBudget int `mapstructure:"conflict_resolution_token_budget"`
 }
 
 // ContextConfig holds configuration for the context assembly subsystem.
@@ -218,6 +221,9 @@ type ContextConfig struct {
 	// appears in files_touched of a prior similar task but was NOT in files_selected.
 	// Default: 1.5
 	ContextFeedbackBoost float64 `mapstructure:"context_feedback_boost"`
+	// ContextGenerateMaxTokens is the token budget for LLM prompt when generating AGENTS.md.
+	// Default: 32000
+	ContextGenerateMaxTokens int `mapstructure:"context_generate_max_tokens"`
 }
 
 type SecretsConfig struct {
