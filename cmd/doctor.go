@@ -138,26 +138,45 @@ func newDoctorCmd() *cobra.Command {
 }
 
 func buildTrackerForDoctor(cfg *models.Config) (tracker.IssueTracker, error) {
-	token := os.Getenv("GITHUB_TOKEN")
-	owner, repo := parseOwnerRepo(cfg.Git.CloneURL)
-
-	switch cfg.Tracker.Provider {
+	t := cfg.Tracker
+	switch t.Provider {
 	case "github":
+		gh := t.GitHub
+		token := gh.Token
 		if token == "" {
-			return nil, fmt.Errorf("GITHUB_TOKEN environment variable not set")
+			token = os.Getenv("GITHUB_TOKEN") // fallback for backwards compat
+		}
+		if token == "" {
+			return nil, fmt.Errorf("tracker.github.token (or GITHUB_TOKEN env) required for github tracker")
+		}
+		owner, repo := gh.Owner, gh.Repo
+		if owner == "" || repo == "" {
+			owner, repo = parseOwnerRepo(cfg.Git.CloneURL)
 		}
 		if owner == "" || repo == "" {
 			return nil, fmt.Errorf("cannot parse owner/repo from clone_url: %s", cfg.Git.CloneURL)
 		}
-		return tracker.NewGitHubIssuesTracker("", token, owner, repo, cfg.Tracker.PickupLabel), nil
+		return tracker.NewGitHubIssuesTracker(gh.BaseURL, token, owner, repo, t.PickupLabel), nil
 	case "jira":
-		return nil, fmt.Errorf("jira doctor check not yet implemented")
+		j := t.Jira
+		if j.BaseURL == "" || j.APIToken == "" || j.ProjectKey == "" {
+			return nil, fmt.Errorf("tracker.jira.base_url, api_token, and project_key are required")
+		}
+		return tracker.NewJiraTracker(j.BaseURL, j.Email, j.APIToken, j.ProjectKey, t.PickupLabel), nil
 	case "linear":
-		return nil, fmt.Errorf("linear doctor check not yet implemented")
+		l := t.Linear
+		if l.APIKey == "" {
+			return nil, fmt.Errorf("tracker.linear.api_key is required")
+		}
+		return tracker.NewLinearTracker(l.APIKey, t.PickupLabel, l.BaseURL), nil
 	case "local_file":
-		return tracker.NewLocalFileTracker(".", cfg.Tracker.PickupLabel), nil
+		path := t.LocalFile.Path
+		if path == "" {
+			path = "./tickets"
+		}
+		return tracker.NewLocalFileTracker(path, t.PickupLabel), nil
 	default:
-		return nil, fmt.Errorf("unknown tracker provider: %s", cfg.Tracker.Provider)
+		return nil, fmt.Errorf("unknown tracker provider: %s", t.Provider)
 	}
 }
 

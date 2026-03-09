@@ -371,23 +371,48 @@ func newStartCmd() *cobra.Command {
 
 // buildTracker creates an IssueTracker from config.
 func buildTracker(cfg *models.Config) (tracker.IssueTracker, error) {
-	token := os.Getenv("GITHUB_TOKEN")
-	owner, repo := parseOwnerRepo(cfg.Git.CloneURL)
-
-	switch cfg.Tracker.Provider {
+	t := cfg.Tracker
+	switch t.Provider {
 	case "github":
+		gh := t.GitHub
+		token := gh.Token
 		if token == "" {
-			return nil, fmt.Errorf("GITHUB_TOKEN environment variable required for github tracker")
+			token = os.Getenv("GITHUB_TOKEN") // fallback for backwards compat
 		}
-		return tracker.NewGitHubIssuesTracker("", token, owner, repo, cfg.Tracker.PickupLabel), nil
+		if token == "" {
+			return nil, fmt.Errorf("tracker.github.token (or GITHUB_TOKEN env) required for github tracker")
+		}
+		owner, repo := gh.Owner, gh.Repo
+		if owner == "" || repo == "" {
+			owner, repo = parseOwnerRepo(cfg.Git.CloneURL) // fallback
+		}
+		return tracker.NewGitHubIssuesTracker(gh.BaseURL, token, owner, repo, t.PickupLabel), nil
 	case "jira":
-		return tracker.NewJiraTracker("", "", "", "", cfg.Tracker.PickupLabel), nil
+		j := t.Jira
+		if j.BaseURL == "" {
+			return nil, fmt.Errorf("tracker.jira.base_url is required")
+		}
+		if j.APIToken == "" {
+			return nil, fmt.Errorf("tracker.jira.api_token is required")
+		}
+		if j.ProjectKey == "" {
+			return nil, fmt.Errorf("tracker.jira.project_key is required")
+		}
+		return tracker.NewJiraTracker(j.BaseURL, j.Email, j.APIToken, j.ProjectKey, t.PickupLabel), nil
 	case "linear":
-		return tracker.NewLinearTracker("", cfg.Tracker.PickupLabel, ""), nil
+		l := t.Linear
+		if l.APIKey == "" {
+			return nil, fmt.Errorf("tracker.linear.api_key is required")
+		}
+		return tracker.NewLinearTracker(l.APIKey, t.PickupLabel, l.BaseURL), nil
 	case "local_file":
-		return tracker.NewLocalFileTracker(".", cfg.Tracker.PickupLabel), nil
+		path := t.LocalFile.Path
+		if path == "" {
+			path = "./tickets"
+		}
+		return tracker.NewLocalFileTracker(path, t.PickupLabel), nil
 	default:
-		return nil, fmt.Errorf("unknown tracker provider: %s", cfg.Tracker.Provider)
+		return nil, fmt.Errorf("unknown tracker provider: %s", t.Provider)
 	}
 }
 
