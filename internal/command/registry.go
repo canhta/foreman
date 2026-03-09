@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 )
 
 // Command is a user-invokable action with a template.
@@ -17,8 +18,9 @@ type Command struct {
 	Source      string // "builtin", "config", "skill"
 }
 
-// Registry holds all available commands.
+// Registry holds all available commands. It is safe for concurrent use.
 type Registry struct {
+	mu       sync.RWMutex
 	commands map[string]Command
 }
 
@@ -29,11 +31,15 @@ func NewRegistry() *Registry {
 
 // Register adds or replaces a command.
 func (r *Registry) Register(cmd Command) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.commands[cmd.Name] = cmd
 }
 
 // Get retrieves a command by name.
 func (r *Registry) Get(name string) (Command, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	cmd, ok := r.commands[name]
 	if !ok {
 		return Command{}, fmt.Errorf("command %q not found", name)
@@ -43,6 +49,8 @@ func (r *Registry) Get(name string) (Command, error) {
 
 // List returns all commands sorted by name.
 func (r *Registry) List() []Command {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	result := make([]Command, 0, len(r.commands))
 	for _, cmd := range r.commands {
 		result = append(result, cmd)
