@@ -16,6 +16,13 @@ log_format                = "json"  # json | pretty
 # Default: 3600 (1 hour).
 lock_ttl_seconds = 3600
 
+# env_files maps worktree-relative destination paths to source paths on disk.
+# Source files live outside the repo so they are never accidentally committed.
+# Use ~/ prefix (not $HOME) for home-relative paths.
+# [daemon.env_files]
+# ".env" = "~/.foreman/envs/myproject.env"
+# "packages/api/.env" = "~/.foreman/envs/myproject-api.env"
+
 [dashboard]
 enabled = true
 port = 8080           # override: FOREMAN_DASHBOARD_PORT or --dashboard-port

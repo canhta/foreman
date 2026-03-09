@@ -71,6 +71,7 @@ type DaemonConfig struct {
 	// EnvFiles maps worktree-relative destination paths to absolute source paths
 	// on disk (outside the repo). Each file is copied into every task worktree
 	// and all vars are loaded into the process environment.
+	// Use ~/ prefix for home-relative paths (not $HOME — shell vars are not expanded).
 	// Example: {".env": "~/.foreman/envs/myproject.env"}
 	EnvFiles map[string]string `mapstructure:"env_files"`
 }
