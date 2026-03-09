@@ -101,8 +101,29 @@ func (g *GitHubPRCreator) CreatePR(ctx context.Context, req PrRequest) (*PrRespo
 	respBody, _ := io.ReadAll(resp.Body)
 
 	if resp.StatusCode != http.StatusCreated {
-		return nil, fmt.Errorf("GitHub API returned %d for %s/%s (head=%s base=%s): %s",
+		baseErr := fmt.Errorf("GitHub API returned %d for %s/%s (head=%s base=%s): %s",
 			resp.StatusCode, g.owner, g.repo, ghReq.Head, ghReq.Base, string(respBody))
+
+		if resp.StatusCode == http.StatusNotFound {
+			// GitHub returns 404 for private repos when the token lacks access,
+			// when the head branch doesn't exist on the remote, or when the
+			// repo itself doesn't exist. Check repo accessibility to narrow it down.
+			if !g.canAccessRepo(ctx) {
+				return nil, fmt.Errorf("%w (token lacks access to repo — check that git.github.token has 'repo' scope or fine-grained 'pull_requests:write' + 'contents:read' permissions)", baseErr)
+			}
+			if !g.branchExists(ctx, ghReq.Head) {
+				return nil, fmt.Errorf("%w (head branch %q not found on remote — ensure the branch is pushed before creating a PR)", baseErr, ghReq.Head)
+			}
+			if !g.branchExists(ctx, ghReq.Base) {
+				return nil, fmt.Errorf("%w (base branch %q not found on remote)", baseErr, ghReq.Base)
+			}
+		}
+
+		if resp.StatusCode == http.StatusUnprocessableEntity {
+			return nil, fmt.Errorf("%w (common causes: PR already exists, or head branch has no commits ahead of base)", baseErr)
+		}
+
+		return nil, baseErr
 	}
 
 	var ghResp githubPRResponse
@@ -115,6 +136,40 @@ func (g *GitHubPRCreator) CreatePR(ctx context.Context, req PrRequest) (*PrRespo
 		URL:     ghResp.URL,
 		HTMLURL: ghResp.HTMLURL,
 	}, nil
+}
+
+// canAccessRepo checks whether the configured token can access the repo.
+func (g *GitHubPRCreator) canAccessRepo(ctx context.Context) bool {
+	url := fmt.Sprintf("%s/repos/%s/%s", g.baseURL, g.owner, g.repo)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return false
+	}
+	req.Header.Set("Authorization", "Bearer "+g.token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	resp, err := g.client.Do(req)
+	if err != nil {
+		return false
+	}
+	resp.Body.Close()
+	return resp.StatusCode == http.StatusOK
+}
+
+// branchExists checks whether a branch exists on the remote.
+func (g *GitHubPRCreator) branchExists(ctx context.Context, branch string) bool {
+	url := fmt.Sprintf("%s/repos/%s/%s/branches/%s", g.baseURL, g.owner, g.repo, branch)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return false
+	}
+	req.Header.Set("Authorization", "Bearer "+g.token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	resp, err := g.client.Do(req)
+	if err != nil {
+		return false
+	}
+	resp.Body.Close()
+	return resp.StatusCode == http.StatusOK
 }
 
 // Ensure GitHubPRCreator implements PRCreator.
