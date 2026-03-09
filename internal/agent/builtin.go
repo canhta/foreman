@@ -117,6 +117,21 @@ func (r *BuiltinRunner) RunnerName() string { return "builtin" }
 func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult, error) {
 	systemPrompt := "You are a focused task executor. Complete the task and return only the result."
 
+	// Resolve agent mode: if req.Mode is set, look up its permissions and merge
+	// with any explicit req.Permissions (mode rules first, explicit rules override).
+	if req.Mode != "" {
+		if mode, ok := LookupMode(req.Mode); ok {
+			req.Permissions = Merge(mode.Permissions, req.Permissions)
+			if mode.ReadOnly {
+				systemPrompt += "\n\n[mode: " + mode.Name + "] You are in read-only mode. You MUST NOT create, edit, or delete any files. Only analysis and reporting are permitted."
+			}
+			// Use mode MaxTurns if not explicitly set in the request.
+			if req.MaxTurns == 0 && mode.MaxTurns > 0 {
+				req.MaxTurns = mode.MaxTurns
+			}
+		}
+	}
+
 	// Layer 1: inject AGENTS.md or .foreman/context.md if present
 	if fc := loadForemanContext(req.WorkDir); fc != "" {
 		systemPrompt = fc + "\n\n" + systemPrompt
