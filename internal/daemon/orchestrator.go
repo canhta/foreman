@@ -10,6 +10,7 @@ import (
 
 	"github.com/rs/zerolog"
 
+	"github.com/canhta/foreman/internal/agent"
 	"github.com/canhta/foreman/internal/channel"
 	appcontext "github.com/canhta/foreman/internal/context"
 	"github.com/canhta/foreman/internal/db"
@@ -73,6 +74,10 @@ type TaskRunnerFactoryInput struct {
 	// (and parallel tasks on their next LLM turn) can benefit (ARCH-S02).
 	// Optional — nil disables discovery sharing.
 	DiscoveryBoard *models.DiscoveryBoard
+	// AgentRunner is the optional external agent runner for task implementation.
+	AgentRunner agent.AgentRunner
+	// AgentRunnerName identifies the runner ("claudecode", "copilot", "").
+	AgentRunnerName string
 }
 
 // PlanResult mirrors pipeline.PlannerResult without creating an import cycle.

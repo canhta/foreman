@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/canhta/foreman/internal/agent"
 	"github.com/canhta/foreman/internal/agent/mcp"
 	"github.com/canhta/foreman/internal/channel"
 	"github.com/canhta/foreman/internal/channel/whatsapp"
@@ -115,11 +116,13 @@ func (a *clarityAdapter) CheckTicketClarity(ticket *models.Ticket) (bool, error)
 
 // taskRunnerFactory satisfies daemon.DAGTaskRunnerFactory.
 type taskRunnerFactory struct {
-	llm       pipeline.LLMProvider
-	db        fullTaskRunnerDB
-	gitProv   git.GitProvider
-	cmdRunner runner.CommandRunner
-	metrics   *telemetry.Metrics
+	llm             pipeline.LLMProvider
+	db              fullTaskRunnerDB
+	gitProv         git.GitProvider
+	cmdRunner       runner.CommandRunner
+	metrics         *telemetry.Metrics
+	agentRunner     agent.AgentRunner
+	agentRunnerName string
 }
 
 // fullTaskRunnerDB is the combined interface required by taskRunnerFactory.
@@ -147,6 +150,8 @@ func (f *taskRunnerFactory) Create(input daemon.TaskRunnerFactoryInput) daemon.T
 		PromptVersions:             input.PromptVersions,
 		HookRunner:                 input.HookRunner,
 		DiscoveryBoard:             input.DiscoveryBoard,
+		AgentRunner:                f.agentRunner,
+		AgentRunnerName:            f.agentRunnerName,
 	}
 	tr := pipeline.NewPipelineTaskRunner(f.llm, f.db, f.gitProv, f.cmdRunner, cfg)
 	if f.metrics != nil {
@@ -243,11 +248,37 @@ func newStartCmd() *cobra.Command {
 			promReg := prometheus.NewRegistry()
 			appMetrics := telemetry.NewMetrics(promReg)
 
-			// 8b. Build orchestrator adapters.
-			planner := pipeline.NewPlannerWithModel(llmProv, &cfg.Limits, cfg.Models.Planner).
-				WithConfidenceScoring(cfg.Limits.PlanConfidenceThreshold).
-				WithHandoffStore(database).
-				WithMetrics(appMetrics)
+			// 8b. Build pipeline agent runner (optional — only when provider != "builtin" and != "").
+			var pipelineAgentRunner agent.AgentRunner
+			agentRunnerName := cfg.AgentRunner.Provider
+			if agentRunnerName != "" && agentRunnerName != "builtin" {
+				var arErr error
+				pipelineAgentRunner, arErr = agent.NewAgentRunner(
+					cfg.AgentRunner, cmdRunner, llmProv, cfg.Models.Implementer,
+					database, cfg.LLM, mcpMgr, appMetrics,
+				)
+				if arErr != nil {
+					return fmt.Errorf("pipeline agent runner: %w", arErr)
+				}
+				if closer, ok := pipelineAgentRunner.(interface{ Close() error }); ok {
+					defer closer.Close()
+				}
+				log.Info().Str("provider", agentRunnerName).Msg("pipeline agent runner initialized")
+			}
+
+			// 8c. Build orchestrator adapters — select planner based on agent runner.
+			var ticketPlanner daemon.TicketPlanner
+			if pipelineAgentRunner != nil {
+				ap := pipeline.NewAgentPlanner(pipelineAgentRunner, &cfg.Limits)
+				ticketPlanner = &agentPlannerAdapter{planner: ap}
+				log.Info().Msg("using agent-based planner")
+			} else {
+				planner := pipeline.NewPlannerWithModel(llmProv, &cfg.Limits, cfg.Models.Planner).
+					WithConfidenceScoring(cfg.Limits.PlanConfidenceThreshold).
+					WithHandoffStore(database).
+					WithMetrics(appMetrics)
+				ticketPlanner = &plannerAdapter{planner: planner}
+			}
 			pipelineObj := pipeline.NewPipeline(pipeline.PipelineConfig{
 				EnableClarification: cfg.Limits.EnableClarification,
 			})
@@ -259,14 +290,16 @@ func newStartCmd() *cobra.Command {
 				prCreator,
 				costCtrl,
 				scheduler,
-				&plannerAdapter{planner: planner},
+				ticketPlanner,
 				&clarityAdapter{pipeline: pipelineObj},
 				&taskRunnerFactory{
-					llm:       llmProv,
-					db:        database,
-					gitProv:   gitProv,
-					cmdRunner: cmdRunner,
-					metrics:   appMetrics,
+					llm:             llmProv,
+					db:              database,
+					gitProv:         gitProv,
+					cmdRunner:       cmdRunner,
+					metrics:         appMetrics,
+					agentRunner:     pipelineAgentRunner,
+					agentRunnerName: agentRunnerName,
 				},
 				log.Logger,
 				daemon.OrchestratorConfig{
