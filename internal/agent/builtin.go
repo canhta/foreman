@@ -139,7 +139,7 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 	// can signal completion with a schema-validated JSON payload.
 	if req.OutputSchema != nil {
 		toolDefs = append(toolDefs, BuildStructuredOutputTool(req.OutputSchema))
-		systemPrompt += "\n\nYou MUST use the structured_output tool to provide your final answer."
+		systemPrompt += StructuredOutputPrompt
 	}
 
 	maxTurns := req.MaxTurns
@@ -148,12 +148,6 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 	}
 	if maxTurns == 0 {
 		maxTurns = 10
-	}
-
-	var outputSchema *json.RawMessage
-	if req.OutputSchema != nil {
-		s := req.OutputSchema
-		outputSchema = &s
 	}
 
 	fallbackModel := req.FallbackModel
@@ -211,7 +205,6 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 			Temperature:  0.2,
 			Messages:     messages,
 			Tools:        toolDefs,
-			OutputSchema: outputSchema,
 			Thinking:     req.Thinking,
 		}
 
@@ -260,7 +253,7 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 				for _, tc := range resp.ToolCalls {
 					if tc.Name == "structured_output" {
 						log.Info().Int("turn", turn+1).Msg("builtin: structured_output tool called, capturing result")
-						if err := ValidateStructuredOutput(req.OutputSchema, string(tc.Input)); err != nil {
+						if err := ValidateStructuredOutput(string(tc.Input)); err != nil {
 							log.Warn().Err(err).Msg("builtin: structured_output input is not valid JSON")
 							return AgentResult{}, fmt.Errorf("structured output validation failed: %w", err)
 						}

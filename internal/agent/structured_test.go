@@ -24,19 +24,11 @@ func TestBuildStructuredOutputTool(t *testing.T) {
 }
 
 func TestValidateStructuredOutput(t *testing.T) {
-	schema := json.RawMessage(`{
-		"type": "object",
-		"properties": {
-			"status": {"type": "string"}
-		},
-		"required": ["status"]
-	}`)
-
 	// Valid output
-	err := ValidateStructuredOutput(schema, `{"status": "APPROVED"}`)
+	err := ValidateStructuredOutput(`{"status": "APPROVED"}`)
 	require.NoError(t, err)
 
 	// Invalid output — not JSON
-	err = ValidateStructuredOutput(schema, "not json")
+	err = ValidateStructuredOutput("not json")
 	assert.Error(t, err)
 }

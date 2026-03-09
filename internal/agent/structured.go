@@ -7,6 +7,10 @@ import (
 	"github.com/canhta/foreman/internal/models"
 )
 
+// StructuredOutputPrompt is appended to the system prompt when OutputSchema is
+// set, instructing the LLM to use the structured_output tool for its response.
+const StructuredOutputPrompt = "\n\nYou MUST use the structured_output tool to provide your final answer."
+
 // BuildStructuredOutputTool creates a tool definition that instructs the LLM
 // to output structured JSON matching the given schema.
 func BuildStructuredOutputTool(schema json.RawMessage) models.ToolDef {
@@ -19,7 +23,7 @@ func BuildStructuredOutputTool(schema json.RawMessage) models.ToolDef {
 
 // ValidateStructuredOutput checks if output is valid JSON.
 // Schema validation is best-effort — we verify JSON validity.
-func ValidateStructuredOutput(schema json.RawMessage, output string) error {
+func ValidateStructuredOutput(output string) error {
 	if !json.Valid([]byte(output)) {
 		return fmt.Errorf("output is not valid JSON")
 	}

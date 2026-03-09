@@ -252,7 +252,7 @@ func (p *AnthropicProvider) Complete(ctx context.Context, req models.LlmRequest)
 		return nil, fmt.Errorf("failed to unmarshal response: %w", err)
 	}
 
-	return parseAnthropicResponse(resp, durationMs), nil
+	return parseAnthropicResponse(resp, durationMs, req.OutputSchema), nil
 }
 
 // buildAnthropicMessages converts models.Message slice to Anthropic API format.
@@ -298,8 +298,10 @@ func buildAnthropicMessages(messages []models.Message) []anthropicMessage {
 }
 
 // parseAnthropicResponse extracts text content and tool calls from the API response.
-// When a "structured_output" tool_use block is present, its input becomes resp.Content.
-func parseAnthropicResponse(resp anthropicResponse, durationMs int64) *models.LlmResponse {
+// When outputSchema is non-nil and a "structured_output" tool_use block is present,
+// its input becomes resp.Content. Without outputSchema, structured_output is treated
+// as a regular tool call so the builtin layer can intercept it.
+func parseAnthropicResponse(resp anthropicResponse, durationMs int64, outputSchema *json.RawMessage) *models.LlmResponse {
 	var content string
 	var toolCalls []models.ToolCall
 	var structuredOutput json.RawMessage
@@ -311,7 +313,7 @@ func parseAnthropicResponse(resp anthropicResponse, durationMs int64) *models.Ll
 		case "thinking":
 			// Extended thinking — informational only, not included in content
 		case "tool_use":
-			if block.Name == "structured_output" {
+			if block.Name == "structured_output" && outputSchema != nil {
 				structuredOutput = block.Input
 			} else {
 				toolCalls = append(toolCalls, models.ToolCall{
