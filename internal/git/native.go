@@ -121,6 +121,11 @@ func (g *NativeGitProvider) DiffWorking(ctx context.Context, workDir string) (st
 }
 
 func (g *NativeGitProvider) Push(ctx context.Context, workDir, branchName string) error {
+	// Fetch remote tracking refs so --force-with-lease has current state.
+	// On retry/re-clone the local tracking ref is missing or stale, causing
+	// "stale info" rejections. A full fetch updates all tracking refs via the
+	// configured refspec (unlike `fetch origin <branch>` which only updates FETCH_HEAD).
+	_, _ = g.run(ctx, workDir, "git", "fetch", "origin")
 	_, err := g.run(ctx, workDir, "git", "push", "--force-with-lease", "-u", "origin", branchName)
 	return err
 }
