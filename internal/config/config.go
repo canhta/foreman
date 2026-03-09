@@ -73,6 +73,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("git.pr_draft", true)
 	v.SetDefault("git.branch_prefix", "foreman")
 	v.SetDefault("git.rebase_before_pr", true)
+	v.SetDefault("git.gitlab.base_url", "https://gitlab.com")
 
 	v.SetDefault("llm.default_provider", "anthropic")
 	v.SetDefault("llm.outage.max_connection_retries", 3)
@@ -171,6 +172,8 @@ func expandEnvVars(cfg *models.Config) {
 	cfg.Tracker.Jira.APIToken = expandEnv(cfg.Tracker.Jira.APIToken)
 	cfg.Tracker.GitHub.Token = expandEnv(cfg.Tracker.GitHub.Token)
 	cfg.Tracker.Linear.APIKey = expandEnv(cfg.Tracker.Linear.APIKey)
+	cfg.Git.GitHub.Token = expandEnv(cfg.Git.GitHub.Token)
+	cfg.Git.GitLab.Token = expandEnv(cfg.Git.GitLab.Token)
 	cfg.Daemon.WorkDir = expandTilde(cfg.Daemon.WorkDir)
 	cfg.Database.SQLite.Path = expandTilde(cfg.Database.SQLite.Path)
 }

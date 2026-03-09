@@ -116,16 +116,29 @@ type LocalFileTrackerConfig struct {
 	Path string `mapstructure:"path"`
 }
 
+//nolint:govet // fieldalignment: struct field order prioritises readability over padding
 type GitConfig struct {
-	Provider       string   `mapstructure:"provider"`
-	Backend        string   `mapstructure:"backend"`
-	CloneURL       string   `mapstructure:"clone_url"`
-	DefaultBranch  string   `mapstructure:"default_branch"`
-	BranchPrefix   string   `mapstructure:"branch_prefix"`
-	PRReviewers    []string `mapstructure:"pr_reviewers"`
-	AutoPush       bool     `mapstructure:"auto_push"`
-	PRDraft        bool     `mapstructure:"pr_draft"`
-	RebaseBeforePR bool     `mapstructure:"rebase_before_pr"`
+	Provider       string       `mapstructure:"provider"`
+	Backend        string       `mapstructure:"backend"`
+	CloneURL       string       `mapstructure:"clone_url"`
+	DefaultBranch  string       `mapstructure:"default_branch"`
+	BranchPrefix   string       `mapstructure:"branch_prefix"`
+	PRReviewers    []string     `mapstructure:"pr_reviewers"`
+	AutoPush       bool         `mapstructure:"auto_push"`
+	PRDraft        bool         `mapstructure:"pr_draft"`
+	RebaseBeforePR bool         `mapstructure:"rebase_before_pr"`
+	GitHub         GitHubConfig `mapstructure:"github"`
+	GitLab         GitLabConfig `mapstructure:"gitlab"`
+}
+
+type GitHubConfig struct {
+	Token   string `mapstructure:"token"`
+	BaseURL string `mapstructure:"base_url"` // empty = https://api.github.com
+}
+
+type GitLabConfig struct {
+	Token   string `mapstructure:"token"`
+	BaseURL string `mapstructure:"base_url"` // default: https://gitlab.com
 }
 
 type LLMConfig struct {
