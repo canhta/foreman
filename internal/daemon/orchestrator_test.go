@@ -195,6 +195,7 @@ func (m *orchMockDB) GetGlobalEvents(_ context.Context, _, _ int) ([]models.Even
 }
 func (m *orchMockDB) DeleteTicket(_ context.Context, _ string) error           { return nil }
 func (m *orchMockDB) SetTaskErrorType(_ context.Context, _, _ string) error    { return nil }
+func (m *orchMockDB) SetTaskAgentRunner(_ context.Context, _, _ string) error  { return nil }
 func (m *orchMockDB) SetTicketPRHeadSHA(_ context.Context, _, _ string) error  { return nil }
 func (m *orchMockDB) StoreCallDetails(_ context.Context, _, _, _ string) error { return nil }
 func (m *orchMockDB) GetCallDetails(_ context.Context, _ string) (string, string, error) {
@@ -342,8 +343,8 @@ func (m *orchMockGit) FileTree(_ context.Context, _ string) ([]git.FileEntry, er
 func (m *orchMockGit) Log(_ context.Context, _ string, _ int) ([]git.CommitEntry, error) {
 	return nil, nil
 }
-func (m *orchMockGit) StageAll(_ context.Context, _ string) error         { return nil }
-func (m *orchMockGit) CleanWorkingTree(_ context.Context, _ string) error { return nil }
+func (m *orchMockGit) StageAll(_ context.Context, _ string) error             { return nil }
+func (m *orchMockGit) CleanWorkingTree(_ context.Context, _ string) error     { return nil }
 func (m *orchMockGit) AddWorktree(_ context.Context, _, _, _, _ string) error { return nil }
 func (m *orchMockGit) RemoveWorktree(_ context.Context, _, _ string) error    { return nil }
 func (m *orchMockGit) MergeNoFF(_ context.Context, _, _ string) error         { return nil }

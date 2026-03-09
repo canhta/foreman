@@ -71,7 +71,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("git.default_branch", "main")
 	v.SetDefault("git.auto_push", true)
 	v.SetDefault("git.pr_draft", true)
-	v.SetDefault("git.branch_prefix", "foreman")
+	v.SetDefault("git.branch_prefix", "foreman/")
 	v.SetDefault("git.rebase_before_pr", true)
 	v.SetDefault("git.gitlab.base_url", "https://gitlab.com")
 
@@ -256,6 +256,12 @@ func Validate(cfg *models.Config) []error {
 	// Validate dashboard auth token
 	if cfg.Dashboard.Enabled && cfg.Dashboard.AuthToken == "" {
 		errs = append(errs, fmt.Errorf("dashboard.auth_token is required when dashboard is enabled"))
+	}
+
+	// Validate branch_prefix ends with a separator so branch names are well-formed.
+	// e.g. "foreman" would produce "foremanSU-123" instead of "foreman/SU-123".
+	if cfg.Git.BranchPrefix != "" && !strings.HasSuffix(cfg.Git.BranchPrefix, "/") && !strings.HasSuffix(cfg.Git.BranchPrefix, "-") {
+		errs = append(errs, fmt.Errorf("git.branch_prefix %q must end with a separator (/ or -), e.g. \"foreman/\"", cfg.Git.BranchPrefix))
 	}
 
 	// Validate cost budgets are positive

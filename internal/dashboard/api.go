@@ -260,6 +260,10 @@ func (a *API) handleGetTicket(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
+	// Enrich with live cost aggregated from llm_calls (tickets.cost_usd may be stale for existing rows).
+	if cost, costErr := a.db.GetTicketCost(r.Context(), id); costErr == nil {
+		ticket.CostUSD = cost
+	}
 	writeJSON(w, http.StatusOK, ticket)
 }
 

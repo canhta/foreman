@@ -235,6 +235,40 @@ func TestValidateConfig_DashboardEnabledWithoutAuthToken(t *testing.T) {
 	}
 }
 
+func TestValidateConfig_BranchPrefixMissingSeparator(t *testing.T) {
+	cfg, _ := LoadDefaults()
+	cfg.LLM.Anthropic.APIKey = "sk-test"
+	cfg.Dashboard.AuthToken = "test-token"
+	cfg.Git.BranchPrefix = "foreman" // missing trailing / or -
+
+	errs := Validate(cfg)
+	found := false
+	for _, e := range errs {
+		if strings.Contains(e.Error(), "git.branch_prefix") && strings.Contains(e.Error(), "separator") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected branch_prefix separator validation error, got %v", errs)
+	}
+}
+
+func TestValidateConfig_BranchPrefixValidSeparators(t *testing.T) {
+	for _, prefix := range []string{"foreman/", "foreman-", ""} {
+		cfg, _ := LoadDefaults()
+		cfg.LLM.Anthropic.APIKey = "sk-test"
+		cfg.Dashboard.AuthToken = "test-token"
+		cfg.Git.BranchPrefix = prefix
+
+		errs := Validate(cfg)
+		for _, e := range errs {
+			if strings.Contains(e.Error(), "git.branch_prefix") {
+				t.Errorf("prefix %q should be valid, got error: %v", prefix, e)
+			}
+		}
+	}
+}
+
 // ── Task 1: tracker sub-config structs ────────────────────────────────────────
 
 func TestLoadConfig_TrackerJiraDefaultStatuses(t *testing.T) {

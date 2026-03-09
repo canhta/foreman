@@ -447,7 +447,13 @@ func (s *SQLiteDB) RecordLlmCall(ctx context.Context, call *models.LlmCallRecord
 	if call.TaskID != "" {
 		taskID = sql.NullString{String: call.TaskID, Valid: true}
 	}
-	_, err := s.db.ExecContext(ctx,
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin record llm call transaction: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	_, err = tx.ExecContext(ctx,
 		`INSERT INTO llm_calls (id, ticket_id, task_id, role, provider, model, attempt,
 		 tokens_input, tokens_output, cost_usd, duration_ms, prompt_hash, response_summary, status, error_message,
 		 cache_read_input_tokens, cache_creation_input_tokens, prompt_version, stage, agent_runner, created_at)
@@ -460,7 +466,26 @@ func (s *SQLiteDB) RecordLlmCall(ctx context.Context, call *models.LlmCallRecord
 	if err != nil {
 		return fmt.Errorf("record llm call: %w", err)
 	}
-	return nil
+	if call.TaskID != "" {
+		_, err = tx.ExecContext(ctx,
+			`UPDATE tasks SET cost_usd = cost_usd + ?, total_llm_calls = total_llm_calls + 1 WHERE id = ?`,
+			call.CostUSD, call.TaskID,
+		)
+		if err != nil {
+			return fmt.Errorf("update task cost: %w", err)
+		}
+	}
+	if call.TicketID != "" {
+		_, err = tx.ExecContext(ctx,
+			`UPDATE tickets SET cost_usd = cost_usd + ?, tokens_input = tokens_input + ?,
+			 tokens_output = tokens_output + ?, total_llm_calls = total_llm_calls + 1 WHERE id = ?`,
+			call.CostUSD, call.TokensInput, call.TokensOutput, call.TicketID,
+		)
+		if err != nil {
+			return fmt.Errorf("update ticket cost: %w", err)
+		}
+	}
+	return tx.Commit()
 }
 
 // GetTicketCostByStage returns a map of stage name → total cost_usd for a ticket.
@@ -1101,10 +1126,13 @@ func (s *SQLiteDB) GetRecentPRs(ctx context.Context, limit int) ([]models.Ticket
 func (s *SQLiteDB) GetTicketSummaries(ctx context.Context, filter models.TicketFilter) ([]models.TicketSummary, error) {
 	query := `SELECT t.id, t.external_id, t.title, t.description, t.status,
 	                 t.parent_ticket_id, t.channel_sender_id, t.decompose_depth,
-	                 t.cost_usd, t.created_at, t.updated_at,
+	                 COALESCE(lc.cost_usd, 0), t.created_at, t.updated_at,
 	                 COALESCE(task_counts.total, 0),
 	                 COALESCE(task_counts.done, 0)
 	          FROM tickets t
+	          LEFT JOIN (
+	              SELECT ticket_id, SUM(cost_usd) AS cost_usd FROM llm_calls GROUP BY ticket_id
+	          ) lc ON lc.ticket_id = t.id
 	          LEFT JOIN (
 	              SELECT ticket_id,
 	                     COUNT(*) as total,

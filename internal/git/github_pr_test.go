@@ -16,7 +16,8 @@ func TestGitHubPRCreator_CreatePR(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "POST", r.Method)
 		assert.Contains(t, r.URL.Path, "/repos/org/repo/pulls")
-		assert.Equal(t, "token test-token", r.Header.Get("Authorization"))
+		assert.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
+		assert.Equal(t, "2022-11-28", r.Header.Get("X-GitHub-Api-Version"))
 
 		var body map[string]interface{}
 		json.NewDecoder(r.Body).Decode(&body)

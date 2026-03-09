@@ -92,6 +92,7 @@ func (m *mockDB) UpdateTaskStatus(_ context.Context, _ string, _ models.TaskStat
 	return nil
 }
 func (m *mockDB) SetTaskErrorType(_ context.Context, _, _ string) error          { return nil }
+func (m *mockDB) SetTaskAgentRunner(_ context.Context, _, _ string) error        { return nil }
 func (m *mockDB) IncrementTaskLlmCalls(_ context.Context, _ string) (int, error) { return 0, nil }
 func (m *mockDB) ListTasks(_ context.Context, _ string) ([]models.Task, error)   { return nil, nil }
 func (m *mockDB) RecordLlmCall(_ context.Context, _ *models.LlmCallRecord) error { return nil }

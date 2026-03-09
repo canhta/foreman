@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+
+	"github.com/rs/zerolog/log"
 )
 
 // PRCreator abstracts PR creation across git hosts.
@@ -68,14 +70,27 @@ func (g *GitHubPRCreator) CreatePR(ctx context.Context, req PrRequest) (*PrRespo
 	}
 
 	url := fmt.Sprintf("%s/repos/%s/%s/pulls", g.baseURL, g.owner, g.repo)
+
+	log.Debug().
+		Str("url", url).
+		Str("owner", g.owner).
+		Str("repo", g.repo).
+		Str("head", ghReq.Head).
+		Str("base", ghReq.Base).
+		Str("title", ghReq.Title).
+		Bool("draft", ghReq.Draft).
+		Bool("token_set", g.token != "").
+		Msg("creating GitHub PR")
+
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("creating HTTP request: %w", err)
 	}
 
-	httpReq.Header.Set("Authorization", "token "+g.token)
+	httpReq.Header.Set("Authorization", "Bearer "+g.token)
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Accept", "application/vnd.github+json")
+	httpReq.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 
 	resp, err := g.client.Do(httpReq)
 	if err != nil {
@@ -86,7 +101,8 @@ func (g *GitHubPRCreator) CreatePR(ctx context.Context, req PrRequest) (*PrRespo
 	respBody, _ := io.ReadAll(resp.Body)
 
 	if resp.StatusCode != http.StatusCreated {
-		return nil, fmt.Errorf("GitHub API returned %d: %s", resp.StatusCode, string(respBody))
+		return nil, fmt.Errorf("GitHub API returned %d for %s/%s (head=%s base=%s): %s",
+			resp.StatusCode, g.owner, g.repo, ghReq.Head, ghReq.Base, string(respBody))
 	}
 
 	var ghResp githubPRResponse
