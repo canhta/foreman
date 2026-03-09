@@ -96,7 +96,9 @@ func (r *Registry) scanDir(dir string, kind EntryKind, filename string) error {
 		if _, statErr := os.Stat(path); statErr != nil {
 			// Recurse into subdirectories (e.g., skills/community/)
 			subDir := filepath.Join(dir, e.Name())
-			_ = r.scanDir(subDir, kind, filename)
+			if err := r.scanDir(subDir, kind, filename); err != nil && !os.IsNotExist(err) {
+				return fmt.Errorf("scan %s: %w", subDir, err)
+			}
 			continue
 		}
 		if err := r.loadEntry(path, kind); err != nil {
