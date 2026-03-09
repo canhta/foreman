@@ -66,8 +66,13 @@ Generate a dashboard token:
 
 ```toml
 [tracker]
-provider = "github"   # github | jira | linear | local_file
+provider                    = "github"            # github | jira | linear | local_file
+pickup_label                = "foreman-ready"     # Only issues with this label are picked up
+clarification_label         = "foreman-needs-info" # Label added when agent needs clarification
+clarification_timeout_hours = 72                  # Hours before a clarification request times out
 ```
+
+> **`pickup_label` is how you control which issues the agent works on.** Apply that label (e.g. `foreman-ready`) to an issue in GitHub/Jira/Linear to assign it to Foreman. Issues without the label are ignored.
 
 ### GitHub Issues
 
