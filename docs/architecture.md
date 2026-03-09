@@ -78,8 +78,9 @@ internal/
 ├── tracker/        Issue tracker interface + Jira, GitHub, Linear, local file
 ├── git/            Git operations interface + native CLI and go-git fallback
 ├── runner/         Command runner interface + local and Docker implementations
+├── envloader/      .env file parser: loads vars into process environment, copies files into worktrees
 ├── agent/          AgentRunner interface + builtin, claudecode, copilot runners; compaction.go (context window compaction)
-│   ├── tools/      Typed tool registry with parallel execution: Read, Write, Edit, MultiEdit, ListDir, Glob, Grep, GetDiff, GetCommitLog, TreeSummary, GetSymbol, GetErrors, Bash, RunTest, Subagent, ReadRange, ApplyPatch, ListMCPTools, ReadMCPResource
+│   ├── tools/      Typed tool registry with parallel execution: Read, ReadRange, Write, Edit, MultiEdit, ApplyPatch, ListDir, Glob, Grep, GetDiff, GetCommitLog, TreeSummary, GetSymbol, GetErrors, get_type_definition, semantic_search, Bash, RunTest, Subagent, ListMCPTools, ReadMCPResource
 │   └── mcp/        MCP Manager, stdio client (JSON-RPC 2.0), tool name normalization, health monitoring
 ├── skills/         YAML skill engine, loader, hook executor
 ├── dashboard/      HTTP server, REST API, WebSocket, bearer token auth
@@ -134,16 +135,34 @@ type GitProvider interface {
     CreateBranch(ctx context.Context, workDir, branchName string) error
     Commit(ctx context.Context, workDir, message string) (sha string, err error)
     Diff(ctx context.Context, workDir, base, head string) (string, error)
+    DiffWorking(ctx context.Context, workDir string) (string, error)
     Push(ctx context.Context, workDir, branchName string) error
     RebaseOnto(ctx context.Context, workDir, targetBranch string) (*RebaseResult, error)
-    CreatePR(ctx context.Context, req PrRequest) (*PrResponse, error)
     FileTree(ctx context.Context, workDir string) ([]FileEntry, error)
     Log(ctx context.Context, workDir string, count int) ([]CommitEntry, error)
-    CheckFileOverlap(ctx context.Context, workDir, branchA string, filesB []string) ([]string, error)
+    StageAll(ctx context.Context, workDir string) error
+    CleanWorkingTree(ctx context.Context, workDir string) error
+    Checkout(ctx context.Context, workDir, branch string) error
+    Pull(ctx context.Context, workDir string) error
+    // Worktree operations for parallel task isolation.
+    AddWorktree(ctx context.Context, repoDir, worktreeDir, newBranch, startPoint string) error
+    RemoveWorktree(ctx context.Context, repoDir, worktreeDir string) error
+    MergeNoFF(ctx context.Context, workDir, branch string) error
+    DeleteBranch(ctx context.Context, workDir, branch string) error
 }
 ```
 
 Default implementation: native `git` CLI (`native.go`). Fallback: `go-git/v5` (`gogit.go`).
+
+### PRCreator (`internal/git`)
+
+```go
+type PRCreator interface {
+    CreatePR(ctx context.Context, req PrRequest) (*PrResponse, error)
+}
+```
+
+Abstracts PR creation across git hosts. Implementation: `GitHubPRCreator` (`github_pr.go`).
 
 ### PRChecker (`internal/git`)
 

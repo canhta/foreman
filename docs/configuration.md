@@ -8,7 +8,7 @@ Environment variables can be interpolated using `${VAR_NAME}` syntax anywhere in
 
 | Section | Purpose |
 |---|---|
-| `[daemon]` | Poll intervals, parallelism limits, working directory, log level |
+| `[daemon]` | Poll intervals, parallelism limits, working directory, log level, env file injection |
 | `[dashboard]` | Web UI port, host binding, authentication token |
 | `[tracker]` | Issue tracker provider and credentials |
 | `[git]` | Repository clone URL, branch settings, PR options |
@@ -23,6 +23,9 @@ Environment variables can be interpolated using `${VAR_NAME}` syntax anywhere in
 | `[runner]` | Local or Docker command runner |
 | `[database]` | SQLite or PostgreSQL connection |
 | `[agent_runner]` | Agent runner type (builtin / claudecode / copilot) |
+| `[mcp]` | MCP server connections (stdio transport) |
+| `[channel]` | Messaging channel (WhatsApp) for inbound tickets and notifications |
+| `[context]` | Context assembly tuning (AGENTS.md generation, feedback boost) |
 
 ---
 
@@ -40,6 +43,12 @@ merge_check_interval_secs  = 300   # How often to poll PR merge status (seconds)
 work_dir   = "~/.foreman/work"  # Directory where repos are cloned
 log_level  = "info"             # trace | debug | info | warn | error
 log_format = "json"             # json | pretty
+
+# env_files maps worktree-relative destination paths to source file paths on disk.
+# Each file is copied into every task worktree and all vars are loaded into the
+# process environment before the pipeline runs. Use ~/ for home-relative paths.
+# [daemon.env_files]
+# ".env" = "~/.foreman/envs/myproject.env"
 ```
 
 ---

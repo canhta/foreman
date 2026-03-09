@@ -40,8 +40,9 @@ CGO is required (go-sqlite3). Ensure a C toolchain is available.
 | `tracker` | Issue tracker interface + implementations (Jira, GitHub, Linear, local file) |
 | `git` | Git operations interface — native CLI (default) and go-git fallback |
 | `runner` | Command execution — local and Docker modes |
+| `envloader` | `.env` file parser — loads vars into process environment, copies files into worktrees |
 | `agent` | Agent runner interface + builtin runner (parallel tool execution, context injection), Claude Code runner, Copilot runner |
-| `agent/tools` | Typed tool registry: Read, Write, Edit, MultiEdit, ListDir, Glob, Grep, GetDiff, GetCommitLog, TreeSummary, GetSymbol, GetErrors, Bash, RunTest, Subagent |
+| `agent/tools` | Typed tool registry: Read, ReadRange, Write, Edit, MultiEdit, ApplyPatch, ListDir, Glob, Grep, GetDiff, GetCommitLog, TreeSummary, GetSymbol, GetErrors, get_type_definition, semantic_search, Bash, RunTest, Subagent, ListMCPTools, ReadMCPResource |
 | `agent/mcp` | MCP Manager, StdioClient (JSON-RPC 2.0 over stdin/stdout), tool name normalization; MCPServerConfig for Anthropic API-side MCP |
 | `skills` | YAML skill engine for extensible pipeline hooks — subskill composition, output_format validation, ContextProvider |
 | `dashboard` | Web UI server, REST API, WebSocket, bearer token auth |

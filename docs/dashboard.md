@@ -374,7 +374,96 @@ Resumes a paused daemon.
 
 ---
 
-## WebSocket Live Events
+### Config & Usage
+
+**`GET /api/config/summary`**
+
+Returns a redacted summary of the active `foreman.toml` configuration — useful for the settings drawer in the dashboard UI. API keys are shown truncated (first 8 chars + `...`).
+
+```json
+{
+  "llm": {
+    "provider": "anthropic",
+    "models": {
+      "planner": "anthropic:claude-sonnet-4-6",
+      "implementer": "anthropic:claude-sonnet-4-6",
+      "spec_reviewer": "anthropic:claude-haiku-4-5",
+      "quality_reviewer": "anthropic:claude-haiku-4-5",
+      "final_reviewer": "anthropic:claude-sonnet-4-6"
+    },
+    "api_key": "sk-ant-a..."
+  },
+  "tracker": { "provider": "github", "poll_interval": "60s" },
+  "git": { "provider": "github", "clone_url": "git@github.com:org/repo.git", "branch_prefix": "foreman", "auto_merge": false },
+  "agent_runner": { "provider": "builtin", "max_turns": 20, "token_budget": 0 },
+  "daemon": { "work_dir": "~/.foreman/work", "log_level": "info", "max_parallel_tickets": 3, "max_parallel_tasks": 3 },
+  "database": { "driver": "sqlite", "path": "~/.foreman/foreman.db" },
+  "mcp": { "servers": [] },
+  "cost": { "daily_budget": 150.0, "monthly_budget": 3000.0, "per_ticket_budget": 15.0, "alert_threshold": 80 },
+  "rate_limit": { "requests_per_minute": 50 }
+}
+```
+
+---
+
+**`GET /api/usage/activity`**
+
+Returns LLM call attribution broken down by runner, model, and role for the last 7 days, plus the 20 most recent calls.
+
+```json
+{
+  "by_runner": [
+    { "runner": "builtin", "calls": 142, "tokens_in": 1820000, "tokens_out": 310000, "cost_usd": 8.23 }
+  ],
+  "by_model": [
+    { "model": "anthropic:claude-sonnet-4-6", "calls": 98, "tokens_in": 1200000, "tokens_out": 210000, "cost_usd": 6.75 }
+  ],
+  "by_role": [
+    { "role": "implementer", "runner": "builtin", "model": "anthropic:claude-sonnet-4-6", "calls": 60, "cost_usd": 4.20 }
+  ],
+  "recent_calls": [
+    {
+      "ticket_id": "uuid",
+      "ticket_title": "Add user auth",
+      "task_title": "Write auth middleware",
+      "role": "implementer",
+      "runner": "builtin",
+      "model": "anthropic:claude-sonnet-4-6",
+      "status": "success",
+      "timestamp": "2026-03-09T10:00:00Z",
+      "cost_usd": 0.14,
+      "tokens_in": 18000,
+      "tokens_out": 3200,
+      "duration_ms": 4200
+    }
+  ]
+}
+```
+
+---
+
+**`GET /api/usage/claude-code`**
+
+Returns aggregated usage data parsed from Claude Code's local session log files (`~/.claude/`). Returns `{ "available": false }` when the logs are not present on the host.
+
+```json
+{
+  "available": true,
+  "total_sessions": 24,
+  "today": {
+    "sessions": 3,
+    "cost_usd": 0.84
+  },
+  "last_7_days": [
+    { "date": "2026-03-09", "sessions": 3, "cost_usd": 0.84 }
+  ],
+  "estimate_note": "Costs are estimates derived from local Claude Code session logs."
+}
+```
+
+---
+
+
 
 Connect to `/ws/events` to receive real-time pipeline events as JSON objects.
 
