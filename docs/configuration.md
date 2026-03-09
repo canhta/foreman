@@ -73,12 +73,10 @@ provider = "github"   # github | jira | linear | local_file
 
 ```toml
 [tracker.github]
-owner  = "your-org"
-repo   = "your-repo"
-token  = "${GITHUB_TOKEN}"
-pickup_label               = "foreman-ready"
-clarification_label        = "foreman-needs-info"
-clarification_timeout_hours = 72
+owner    = "your-org"
+repo     = "your-repo"
+token    = "${GITHUB_TOKEN}"
+base_url = ""   # optional: override for GitHub Enterprise
 ```
 
 ### Jira
@@ -89,9 +87,6 @@ base_url    = "https://yourcompany.atlassian.net"
 email       = "bot@yourcompany.com"
 api_token   = "${JIRA_API_TOKEN}"
 project_key = "PROJ"
-pickup_label               = "foreman-ready"
-clarification_label        = "foreman-needs-info"
-clarification_timeout_hours = 72
 
 # Status transitions in your Jira workflow
 status_in_progress = "In Progress"
@@ -106,8 +101,7 @@ status_blocked     = "Blocked"
 [tracker.linear]
 api_key  = "${LINEAR_API_KEY}"
 team_id  = "TEAM_ID"
-pickup_label               = "foreman-ready"
-clarification_timeout_hours = 72
+base_url = ""   # optional override
 ```
 
 ### Local File Tracker
@@ -149,7 +143,9 @@ base_url = "https://gitlab.com"   # Override for self-hosted GitLab
 
 ```toml
 [llm]
-default_provider = "anthropic"   # anthropic | openai | openrouter | local
+default_provider   = "anthropic"   # anthropic | openai | openrouter | local
+embedding_provider = ""            # "openai" | "anthropic" — provider for embedding calls
+embedding_model    = ""            # e.g. "text-embedding-3-small", "voyage-code-3"
 ```
 
 ### Anthropic
@@ -296,6 +292,8 @@ max_ticket_words   = 150                # Word count threshold for decomposition
 max_scope_keywords = 2                  # Scope keyword count threshold ("and", "also", "plus", "additionally")
 approval_label     = "foreman-ready"    # Label for approved child tickets
 parent_label       = "foreman-decomposed"  # Label applied to decomposed parent tickets
+llm_assist         = false              # Use LLM to evaluate decomposition need (vs. keyword heuristic only)
+llm_assist_model   = ""                # Override model for decomposition LLM; empty = [models].planner
 ```
 
 When enabled, tickets exceeding the word count or scope keyword thresholds are decomposed by an LLM into 3–6 focused child tickets. Each child is created in the tracker with a `{approval_label}-pending` label. The parent is labelled with `parent_label` and its status changes to `decomposed`.
@@ -402,6 +400,7 @@ provider = "whatsapp"   # Currently only "whatsapp" is supported; omit to disabl
 
 [channel.whatsapp]
 session_db      = "~/.foreman/whatsapp.db"   # SQLite session storage for whatsmeow
+pairing_mode    = ""                          # "phone" | "qr" — login method (used by `foreman channel login`)
 dm_policy       = "allowlist"                 # allowlist | pairing
 allowed_numbers = ["+84123456789"]            # E.164 phone numbers allowed to send commands/tickets
 ```
@@ -540,6 +539,9 @@ timeout_secs_default = 180
 Connect Foreman's builtin agent runner to external MCP servers via stdin/stdout subprocess.
 
 ```toml
+[mcp]
+resource_max_bytes = 524288   # Max bytes per MCP resource read (default: 512 KB)
+
 [[mcp.servers]]
 name    = "internal-db"
 command = "npx"
@@ -549,7 +551,6 @@ restart_policy         = "on-failure"           # always | never | on-failure (d
 max_restarts           = 3                      # default: 3
 restart_delay_secs     = 2                      # default: 2
 health_check_interval_secs = 30                 # Ping interval; 0 = disabled (default: 30)
-mcp_resource_max_bytes = 524288                 # Max bytes per MCP resource read (default: 512KB)
 [mcp.servers.env]
 DB_URL = "${DATABASE_URL}"                      # explicit env passthrough only
 ```
@@ -564,7 +565,8 @@ If a server exceeds its restart budget, its tools are marked unavailable and the
 
 ```toml
 [context]
-context_generate_max_tokens = 32000  # Token budget for LLM prompt when generating AGENTS.md
+context_generate_max_tokens = 32000   # Token budget for LLM prompt when generating AGENTS.md
+context_feedback_boost      = 1.5     # Score multiplier for files seen in prior similar tasks
 ```
 
 See [Context Generate](getting-started.md#generating-agentsmd) for usage.
