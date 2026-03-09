@@ -49,6 +49,9 @@ func PruneOldToolOutputs(messages []models.Message, protectChars int) []models.M
 		}
 		if protected > 0 && protected+size > protectChars {
 			// Adding this older output would exceed the budget; stop here.
+			// The `protected > 0` guard ensures at least the most-recent tool
+			// output is always preserved — pruning with zero protected entries
+			// would leave the LLM with no recent tool context to reason about.
 			break
 		}
 		protected += size

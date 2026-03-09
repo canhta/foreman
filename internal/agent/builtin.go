@@ -25,9 +25,9 @@ const (
 	// contextWindowBudget is the token budget for the message history.
 	// Claude's context window is 200K tokens; we reserve headroom for system prompt and response.
 	contextWindowBudget = 150_000
-	// compactionThreshold is the fraction of budget at which Phase 1 compaction is triggered
-	// (truncate old tool outputs).
-	compactionThreshold = 0.70
+	// pruningThreshold is the fraction of budget at which Phase 1 (pruning) is triggered.
+	// Phase 1 truncates old tool outputs cheaply before attempting LLM summarization.
+	pruningThreshold = 0.70
 	// summarizationThreshold is the fraction of budget at which Phase 2 LLM summarization
 	// is triggered (replace old messages with a structured summary).
 	summarizationThreshold = 0.85
@@ -283,7 +283,7 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 					log.Warn().Str("tool", tc.Name).Msg("builtin: doom loop detected — injecting reconsideration message")
 					messages = append(messages, models.Message{
 						Role:    "user",
-						Content: "You are repeating the same action. Stop and reconsider your approach.",
+						Content: "[doom loop warning] You are repeating the same action. Stop and reconsider your approach.",
 					})
 					break
 				}
@@ -314,11 +314,11 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 			if budget <= 0 {
 				budget = contextWindowBudget
 			}
-			p1Threshold := int(float64(budget) * compactionThreshold)    // 70%
+			p1Threshold := int(float64(budget) * pruningThreshold)       // 70%
 			p2Threshold := int(float64(budget) * summarizationThreshold) // 85%
 			currentTokens := countAllTokens(messages)
 
-			// Phase 0 (70%): pruning-first — truncate old tool outputs before LLM summarization.
+			// Phase 1 (70%): pruning-first — truncate old tool outputs before LLM summarization.
 			// Preserves the last 25% of the budget worth of tool output content.
 			// This is cheaper than LLM summarization and should be tried first.
 			if currentTokens > p1Threshold {
@@ -351,7 +351,7 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 				}
 			}
 
-			// Phase 1 (70%): fall-through truncation if still over budget
+			// Phase 3 (70%): fall-through truncation if still over budget
 			// (e.g., last 3 turns alone are large, or summarization was skipped).
 			if tokensAfterP2 := countAllTokens(messages); tokensAfterP2 > p1Threshold {
 				before := len(messages)

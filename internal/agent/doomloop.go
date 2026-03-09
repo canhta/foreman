@@ -41,6 +41,11 @@ func (d *DoomLoopDetector) Check(toolName, input string) bool {
 	return true
 }
 
+// hash produces an 8-byte hex fingerprint of a tool+input pair.
+// The 64-bit truncation is intentional — collision probability at a window of 3
+// entries is negligible. Note: JSON key ordering from LLM responses is not
+// guaranteed stable, so semantically identical inputs with different key order
+// will produce different hashes and may miss detection (known limitation).
 func hash(tool, input string) string {
 	h := sha256.Sum256([]byte(fmt.Sprintf("%s:%s", tool, input)))
 	return fmt.Sprintf("%x", h[:8])
