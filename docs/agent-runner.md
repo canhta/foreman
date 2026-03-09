@@ -1,8 +1,13 @@
 # Agent Runner
 
-The `AgentRunner` interface allows skills to delegate open-ended, multi-turn tasks to an AI coding agent. Three implementations are provided: a built-in runner that uses Foreman's own LLM provider, and two delegating runners for Claude Code and GitHub Copilot.
+The `AgentRunner` interface serves two roles in Foreman:
 
-The agent runner is used exclusively by `agentsdk` skill steps — it is not used inside the core pipeline (which uses direct `LlmProvider.Complete` calls for cost and determinism reasons).
+1. **Core pipeline runner** — when `[agent_runner] provider` is set to `claudecode` or `copilot`, the agent runner drives **both planning and per-task implementation** instead of the builtin LLM loop.
+2. **Skill step delegate** — `agentsdk` skill steps always delegate to the configured agent runner, regardless of which provider is active.
+
+Three implementations are provided: a built-in runner that uses Foreman's own LLM provider, and two delegating runners for Claude Code and GitHub Copilot.
+
+When `provider = "builtin"` (the default), the pipeline uses direct `LlmProvider.Complete` calls for planning and implementation, and the builtin runner is only used by `agentsdk` skill steps. When `provider = "claudecode"` or `"copilot"`, the external runner takes over the full planning and implementation path.
 
 ---
 
@@ -62,7 +67,10 @@ type AgentUsage struct {
 
 ```toml
 [agent_runner]
-type = "builtin"   # builtin | claudecode | copilot
+provider = "builtin"   # builtin | claudecode | copilot
+                       # "builtin" (default): pipeline uses direct LlmProvider calls;
+                       #   builtin runner is used only for agentsdk skill steps.
+                       # "claudecode" / "copilot": external runner drives planning + implementation.
 
 [agent_runner.builtin]
 max_turns          = 20
@@ -212,6 +220,63 @@ If the result is ≤ 0, the call fails immediately with `"parent budget exhauste
 
 ---
 
+---
+
+## Pipeline Integration
+
+When `[agent_runner] provider` is set to `claudecode` or `copilot`, the agent runner integrates into the core pipeline at two points.
+
+### Planning: AgentPlanner
+
+`AgentPlanner` (`internal/pipeline/agent_planner.go`) implements the `TicketPlanner` interface by delegating to `AgentRunner`. The agent can explore the codebase freely (using its native tools — file reads, grep, tree summaries) before generating a structured JSON plan.
+
+The planning prompt instructs the agent to:
+1. Explore the codebase to understand architecture, conventions, and relevant files
+2. Decompose the ticket into ordered, independent implementation tasks
+3. Detect codebase patterns: language, framework, test runner, style notes
+4. Return a structured plan matching an embedded JSON Schema
+
+After the agent returns, `AgentPlanner` validates the plan (task count limit, topological sort for DAG cycles), then passes it through the same `PlanValidator` and `PlanConfidenceScorer` as the builtin path.
+
+> **Note:** `AgentPlanner` requires an `AgentRunner` that populates `AgentResult.Structured` (e.g. `claudecode`, which extracts JSON from the agent's structured output). With the builtin runner, `Structured` will be nil and planning will fail. Use `claudecode` or `copilot` when relying on `AgentPlanner`.
+
+### Per-Task Implementation: RunTask Branch
+
+When `config.AgentRunner != nil` in `PipelineTaskRunner`, `RunTask` routes to `runTaskWithAgent` instead of the builtin TDD loop. This branch:
+
+1. **Injects Claude Code skills** (if `AgentRunnerName == "claudecode"`): `SkillInjector` writes TDD workflow templates into `.claude/foreman/` and deep-merges Foreman's `settings.json` into any existing `.claude/settings.json`. Files are cleaned up after the task.
+2. **Builds a prompt** via `PromptBuilder`: structured markdown with task description, acceptance criteria, file hints, codebase patterns, test/lint commands, and (on retries) the previous failure output.
+3. **Delegates to the agent**: `AgentRunner.Run` with the full prompt and working directory. The agent handles TDD, file editing, and test execution natively.
+4. **Verifies a diff**: after the agent returns, `git diff` is checked — an empty diff triggers a retry.
+5. **Stages and commits**: if the agent has not already committed, Foreman stages all changes and commits with `feat: <task title>`.
+6. **Runs non-blocking reviews**: spec and quality reviews still run on the resulting diff, but failures are logged as warnings in the PR description rather than blocking the task.
+7. **Fires post_lint hooks** and writes context feedback as normal.
+
+### Repo-Level File Reservation
+
+External agent runners modify files freely and unpredictably, so they cannot use per-file reservations. Before a ticket using an external runner begins, Foreman reserves the `__REPO_LOCK__` sentinel (`db.RepoLockSentinel`). This sentinel has bidirectional exclusivity:
+
+- A ticket holding `__REPO_LOCK__` blocks all other tickets from reserving any files.
+- Any ticket with specific file reservations blocks a new ticket from acquiring `__REPO_LOCK__`.
+
+This serializes external-runner tickets against each other and against builtin-runner tickets that overlap any files, while builtin-runner tickets with no overlapping files continue in parallel.
+
+```mermaid
+flowchart LR
+    subgraph ext["External Runner Ticket"]
+        RL["Reserves __REPO_LOCK__"]
+    end
+    subgraph builtin["Builtin Runner Tickets"]
+        F1["Reserves file_a.go, file_b.go"]
+        F2["Reserves file_c.go"]
+    end
+    RL -- "blocks" --> F1
+    RL -- "blocks" --> F2
+    F1 -- "blocks if any overlap" --> RL
+```
+
+---
+
 ## Built-in Tools
 
 The builtin runner provides typed tools via a `tools.Registry`. All tool schemas are hand-written JSON Schema — no reflection dependency.
@@ -275,12 +340,12 @@ The Claude Code runner delegates tasks to the `claude` CLI binary. It requires t
 
 ```toml
 [agent_runner]
-type = "claudecode"
+provider = "claudecode"
 
 [agent_runner.claudecode]
-binary_path  = "claude"   # Path to the claude binary (must be on $PATH or absolute)
-max_turns    = 20
-timeout_secs = 300
+bin          = "claude"   # Path to the claude binary (must be on $PATH or absolute)
+max_turns_default    = 20
+timeout_secs_default = 300
 ```
 
 ### How It Works
@@ -310,10 +375,13 @@ The Copilot runner delegates tasks to the GitHub Copilot CLI via session-based J
 
 ```toml
 [agent_runner]
-type = "copilot"
+provider = "copilot"
 
 [agent_runner.copilot]
-timeout_secs = 300
+cli_path             = "copilot"
+github_token         = "${GITHUB_TOKEN}"
+model                = "gpt-4o"
+timeout_secs_default = 300
 ```
 
 ### How It Works
@@ -382,7 +450,7 @@ The `doctor` command runs `AgentRunner.HealthCheck()` for the configured runner:
 | Custom tool restrictions | Yes (per step) | Limited | Limited |
 | Cost attribution | Full (tracked in DB) | Approximate (from JSON) | Not exposed |
 
-**Recommendation:** Use `builtin` for most cases. Use `claudecode` if you specifically need Claude Code's native file editing capabilities. Use `copilot` in environments where GitHub Copilot is already the standard AI tool.
+**Recommendation:** Use `builtin` (default) for most cases — it requires no external tools and works with any LLM provider. Use `claudecode` when you want Claude Code's native codebase exploration to drive planning and implementation end-to-end (requires the `claude` CLI and an Anthropic API key). Use `copilot` in environments where GitHub Copilot is already the standard AI tool. Note: `claudecode` and `copilot` activate the full pipeline integration path (planning + implementation); `builtin` uses the builtin pipeline path and only invokes the runner for `agentsdk` skill steps.
 
 ---
 

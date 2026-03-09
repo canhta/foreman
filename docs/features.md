@@ -394,10 +394,13 @@ A `skills/community/` directory accepts community-contributed skill files. Commu
 ## Agent Runner
 
 ### Pluggable AgentRunner Interface
-Skills can delegate tasks to any agent runner implementation:
-- **builtin** — a multi-turn tool-use loop over `LlmProvider` with 14 built-in tools, parallel execution, and reactive context injection
-- **claudecode** — delegates to the `claude` CLI binary (Claude Code)
-- **copilot** — delegates to the GitHub Copilot CLI via JSON-RPC
+The `AgentRunner` interface serves two roles: it drives core pipeline planning and implementation when an external provider is configured, and it handles `agentsdk` skill steps in all configurations.
+
+- **builtin** (default) — a multi-turn tool-use loop over `LlmProvider` with 14 built-in tools, parallel execution, and reactive context injection; used for skill steps only (pipeline uses direct LLM calls)
+- **claudecode** — delegates to the `claude` CLI binary (Claude Code); when selected, drives both planning (`AgentPlanner`) and per-task implementation (`runTaskWithAgent`)
+- **copilot** — delegates to the GitHub Copilot CLI via JSON-RPC; same pipeline integration as claudecode
+
+When `provider = "claudecode"` or `"copilot"`, the external runner replaces the builtin TDD implementation loop end-to-end. The agent handles codebase exploration, test writing, and implementation using its native tools. Foreman verifies the resulting diff, commits if needed, and runs non-blocking spec/quality reviews.
 
 ### Builtin Runner — Built-in Tools
 The builtin runner provides a typed tool registry covering five categories:

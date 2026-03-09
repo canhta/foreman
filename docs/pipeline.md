@@ -146,9 +146,13 @@ The clarification feature can be disabled with `enable_clarification = false` in
 
 ### 2. Planning
 
-The planner receives the ticket title, description, acceptance criteria, comments, and a repo context summary. It produces a structured plan: an ordered list of tasks, each with a title, description, acceptance criteria, files to read, files to modify, test assertions, estimated complexity, and optional `depends_on` references.
+The planning step produces a structured plan: an ordered list of tasks, each with a title, description, acceptance criteria, files to read, files to modify, test assertions, estimated complexity, and optional `depends_on` references.
 
-When the plan is ambiguous but not completely unclear, the planner may signal `CLARIFICATION_NEEDED: <question>` in its output, which triggers the clarification flow.
+**Two planning paths, selected by `[agent_runner] provider`:**
+
+- **Builtin path** (default, `provider = "builtin"`): The planner receives the ticket title, description, acceptance criteria, comments, and a repo context summary assembled by the context assembler. A single LLM call via `LlmProvider.Complete` produces the plan. When the plan is ambiguous but not completely unclear, the planner may signal `CLARIFICATION_NEEDED: <question>`, which triggers the clarification flow.
+
+- **External agent path** (`provider = "claudecode"` or `"copilot"`): `AgentPlanner` delegates to the configured `AgentRunner`. The agent receives the ticket details and a prompt instructing it to explore the codebase freely (file reads, grep, tree summaries) before generating a structured JSON plan. The agent can discover conventions, existing patterns, and relevant files on its own. After the agent returns, `AgentPlanner` applies the same topological sort and task-count validation before the plan enters `PlanValidator`.
 
 ### 3. Plan Validation
 
@@ -175,6 +179,13 @@ If `confidence_score` < `plan_confidence_threshold` (default: 0.6), Foreman trig
 Tasks execute in parallel using a coordinator/worker-pool DAG executor (`internal/daemon/dag_executor.go`). Tasks with no unmet dependencies start immediately; a task begins only when all entries in its `depends_on` list have completed successfully. The worker pool is bounded by `max_parallel_tasks` (default 3). Each task runs with an individual timeout (`task_timeout_minutes`, default 15 minutes).
 
 If a task fails, its entire transitive closure of dependents is marked `skipped` via BFS — independent branches continue executing. For partial outcomes, Foreman creates a PR with a GitHub-flavoured checklist distinguishing completed, failed, and skipped tasks.
+
+**Two per-task implementation paths, selected by `[agent_runner] provider`:**
+
+- **Builtin path** (default): Each task moves through the fixed gate sequence below (TDD → lint → spec review → quality review → commit).
+- **External agent path** (`claudecode` / `copilot`): `runTaskWithAgent` is used instead. See [External Agent Path](#external-agent-path) below for details.
+
+#### Builtin Path — Gate Sequence
 
 Each task moves through a fixed series of gates with targeted retry feedback at each stage:
 
@@ -288,6 +299,20 @@ After all review gates pass, the task changes are committed to the working branc
 #### Dependency Change Detection
 
 After commit, Foreman diffs package manifest files (`go.mod`, `go.sum`, `package.json`, `package-lock.json`, `Cargo.toml`, `Cargo.lock`, `requirements.txt`, `Pipfile.lock`, etc.). If any changed, the appropriate install command is run before the next task to keep the working environment consistent.
+
+#### External Agent Path
+
+When `config.AgentRunner != nil`, `RunTask` routes to `runTaskWithAgent`:
+
+1. **Skill injection** (claudecode only): `SkillInjector` writes TDD workflow templates into `.claude/foreman/` and merges Foreman's `settings.json` into any existing `.claude/settings.json`. Templates are cleaned up after the task.
+2. **Prompt building**: `PromptBuilder` assembles a structured markdown prompt containing task title, description, acceptance criteria, file hints, codebase patterns, test/lint commands, and (on retries) the previous failure output.
+3. **Agent delegation**: `AgentRunner.Run` is called with the prompt and `WorkDir`. The agent handles codebase exploration, TDD, file editing, and test execution natively with its own tools.
+4. **Diff verification**: after the agent returns, `git diff` is checked — an empty diff is treated as a failure and triggers a retry (up to `MaxImplementationRetries + 1` attempts).
+5. **Stage + commit**: if the agent has not already committed, Foreman stages all changes and commits with `feat: <task title>`.
+6. **Non-blocking reviews**: spec and quality reviews still run on the resulting diff, but failures are logged as warnings and do not block the task or trigger a retry. Violations are noted in the PR description.
+7. **Hooks + feedback**: `post_lint` hooks fire and context feedback is written as in the builtin path.
+
+Repo-level file reservation (`__REPO_LOCK__` sentinel) serializes external-runner tickets against each other and against any builtin-runner tickets with overlapping files. See [Agent Runner — Repo-Level File Reservation](agent-runner.md#repo-level-file-reservation).
 
 ### 5. Rebase
 
@@ -406,6 +431,8 @@ LLM system prompts are Jinja2-compatible templates (`.md.j2`) rendered with `pon
 | `prompts/quality_reviewer.md.j2` | Code quality review |
 | `prompts/final_reviewer.md.j2` | Full-diff final review |
 | `prompts/clarifier.md.j2` | Clarification question generation |
+
+> **External agent path:** When `provider = "claudecode"` or `"copilot"`, the prompts above are not used for planning or implementation. `AgentPlanner` and `PromptBuilder` (`internal/pipeline/prompt_builder.go`) generate prompts inline. For Claude Code, TDD skill templates are injected via `SkillInjector` from embedded assets in `internal/pipeline/assets/claude/`.
 
 At startup, Foreman computes a SHA-256 hash of every template and records it as a `prompt_snapshot`. Each LLM call records the active `prompt_version` for change tracking.
 

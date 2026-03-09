@@ -474,7 +474,10 @@ Any non-command message from an allowed sender is classified (via LLM) and can c
 
 ## Agent Runner
 
-The agent runner is used both by the core pipeline (for implementation tasks) and by YAML skills (for `agentsdk` steps).
+Controls which runner drives the core pipeline and `agentsdk` skill steps.
+
+- `"builtin"` (default): pipeline planning and implementation use direct `LlmProvider.Complete` calls; the builtin runner is invoked only for `agentsdk` skill steps.
+- `"claudecode"` / `"copilot"`: the external runner takes over **both** planning (`AgentPlanner`) and per-task implementation (`runTaskWithAgent`). The agent handles codebase exploration, TDD, and file editing natively.
 
 ```toml
 [agent_runner]

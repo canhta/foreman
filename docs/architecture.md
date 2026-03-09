@@ -68,8 +68,11 @@ internal/
 │   └── whatsapp/   WhatsApp implementation via whatsmeow (Web multi-device protocol)
 ├── config/         TOML config loading, validation, env-var substitution, round-trip TOML editing
 ├── daemon/         Event loop, scheduler, DAG executor (coordinator/worker-pool), merge checker, file reservations, crash recovery, channel command handler
-├── db/             Database interface + SQLite and PostgreSQL implementations
-├── pipeline/       State machine orchestrator — all pipeline stages; error_classifier.go, plan_confidence.go
+├── db/             Database interface + SQLite and PostgreSQL implementations; RepoLockSentinel (__REPO_LOCK__) for repo-level file reservation
+├── pipeline/       State machine orchestrator — all pipeline stages; error_classifier.go, plan_confidence.go,
+│                   agent_planner.go (AgentPlanner — codebase-aware planning via AgentRunner),
+│                   prompt_builder.go (PromptBuilder — structured prompts for external runners),
+│                   skill_injector.go (SkillInjector — injects TDD templates into .claude/ for claudecode)
 ├── context/        Context assembly: file selection, token budgets, secrets scanning; AGENTS.md generator; token_counter.go (tiktoken-go); cache.go (pipeline-scoped ContextCache)
 ├── llm/            LLM provider interface + Anthropic, OpenAI, OpenRouter, local; circuit_breaker.go
 ├── tracker/        Issue tracker interface + Jira, GitHub, Linear, local file
@@ -268,6 +271,8 @@ When using SQLite, all writes go through a single writer goroutine via a buffere
 
 ### File Reservations
 File reservations are stored in the database, not in memory. Before a pipeline begins, it inserts reservation rows for all files it plans to modify. If any row already exists (another pipeline has reserved the file), the ticket is re-queued. Reservations are released in a single transaction when the pipeline finishes.
+
+**Repo-level lock for external runners:** When `AgentRunner` is an external runner (claudecode, copilot), it reserves the special `__REPO_LOCK__` sentinel instead of per-file rows. This sentinel is bidirectionally exclusive: a ticket holding the repo lock blocks all other file reservations, and any existing per-file reservation blocks a new repo lock request. This serializes external-runner tickets while allowing builtin-runner tickets with non-overlapping files to proceed in parallel.
 
 ---
 
