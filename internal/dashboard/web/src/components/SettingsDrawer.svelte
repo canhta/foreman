@@ -36,6 +36,20 @@
       ? Math.max(...appState.weekDays.map(d => d.cost_usd || 0), 0.0001)
       : 0.0001
   );
+
+  function formatDayLabel(date: string): string {
+    if (!date) return '';
+    const d = new Date(date);
+    return `${d.getMonth() + 1}/${d.getDate()}`;
+  }
+
+  let drawerPanel = $state<HTMLDivElement | null>(null);
+
+  $effect(() => {
+    if (appState.settingsOpen && drawerPanel) {
+      drawerPanel.focus();
+    }
+  });
 </script>
 
 <!-- Backdrop -->
@@ -49,8 +63,13 @@
 
 <!-- Drawer -->
 <div
+  bind:this={drawerPanel}
   class="fixed right-0 top-0 h-full w-[420px] z-[60] bg-surface border-l-2 border-border flex flex-col"
   style="transform: {appState.settingsOpen ? 'translateX(0)' : 'translateX(100%)'}; transition: transform 150ms ease-out;"
+  role="dialog"
+  aria-modal="true"
+  aria-label="Settings & Usage"
+  tabindex="-1"
 >
   <!-- Drawer header -->
   <div class="flex items-center justify-between px-4 py-2.5 border-b-2 border-border bg-surface-active">
@@ -298,10 +317,7 @@
               <div class="h-10 flex items-end gap-0.5 mt-1">
                 {#each appState.weekDays as day}
                   {@const pct = (day.cost_usd / maxDayCost) * 100}
-                  {@const label = day.date ? (() => {
-                    const d = new Date(day.date);
-                    return `${d.getMonth() + 1}/${d.getDate()}`;
-                  })() : ''}
+                  {@const label = formatDayLabel(day.date)}
                   <div class="flex-1 flex flex-col items-center gap-0.5">
                     <div class="flex-1 w-full flex items-end">
                       <div
@@ -382,7 +398,7 @@
                       {#if call.ticket_title}
                         <button
                           class="text-[10px] text-muted hover:text-accent transition-colors underline underline-offset-2 text-left"
-                          onclick={() => { selectTicket(call.ticket_id); closeSettings(); }}
+                          onclick={() => { if (call.ticket_id) { selectTicket(call.ticket_id); closeSettings(); } }}
                         >{call.ticket_title}</button>
                       {/if}
                     </div>
