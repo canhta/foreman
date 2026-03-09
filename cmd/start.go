@@ -22,6 +22,7 @@ import (
 	"github.com/canhta/foreman/internal/pipeline"
 	"github.com/canhta/foreman/internal/runner"
 	"github.com/canhta/foreman/internal/skills"
+	"github.com/canhta/foreman/internal/sshkey"
 	"github.com/canhta/foreman/internal/telemetry"
 	"github.com/canhta/foreman/internal/tracker"
 	"github.com/prometheus/client_golang/prometheus"
@@ -429,7 +430,16 @@ func buildGitProvider(cfg *models.Config) git.GitProvider {
 	if cfg.Git.Backend == "gogit" {
 		return git.NewGoGitProvider()
 	}
-	return git.NewNativeGitProviderWithClone(cfg.Git.CloneURL)
+	p := git.NewNativeGitProviderWithClone(cfg.Git.CloneURL)
+	// Auto-inject the Foreman SSH key if it exists, so git operations work on
+	// any machine without depending on the user's ssh-agent or ~/.ssh/config.
+	if dir, err := sshkey.DefaultDir(); err == nil {
+		kp, err := sshkey.Ensure(dir)
+		if err == nil {
+			return p.WithSSHKey(kp.PrivateKeyPath)
+		}
+	}
+	return p
 }
 
 func buildPRCreator(cfg *models.Config) git.PRCreator {

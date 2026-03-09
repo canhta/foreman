@@ -59,7 +59,8 @@ clarification_timeout_hours = 72
 [git]
 provider         = "github"
 backend          = "native"
-clone_url        = "https://github.com/your-org/your-repo.git"
+# Public repos: use HTTPS. Private repos: use SSH (run `foreman setup-ssh` once to provision the key).
+clone_url        = "git@github.com:your-org/your-repo.git"
 default_branch   = "main"
 auto_push        = true
 pr_draft         = true

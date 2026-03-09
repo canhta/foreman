@@ -12,7 +12,8 @@ import (
 
 // NativeGitProvider shells out to the native git CLI.
 type NativeGitProvider struct {
-	cloneURL string
+	cloneURL   string
+	sshKeyPath string // if set, injected as GIT_SSH_COMMAND
 }
 
 // NewNativeGitProvider creates a native git provider.
@@ -24,6 +25,12 @@ func NewNativeGitProvider() *NativeGitProvider {
 // into the work directory if it does not yet exist as a git repository.
 func NewNativeGitProviderWithClone(cloneURL string) *NativeGitProvider {
 	return &NativeGitProvider{cloneURL: cloneURL}
+}
+
+// WithSSHKey returns a copy of the provider configured to use the given private
+// key for all git operations via GIT_SSH_COMMAND. The key path must be absolute.
+func (g *NativeGitProvider) WithSSHKey(privKeyPath string) *NativeGitProvider {
+	return &NativeGitProvider{cloneURL: g.cloneURL, sshKeyPath: privKeyPath}
 }
 
 func (g *NativeGitProvider) EnsureRepo(ctx context.Context, workDir string) error {
@@ -183,6 +190,13 @@ func (g *NativeGitProvider) CleanWorkingTree(ctx context.Context, workDir string
 func (g *NativeGitProvider) run(ctx context.Context, workDir string, name string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = workDir
+	if g.sshKeyPath != "" {
+		sshCmd := fmt.Sprintf(
+			"ssh -i %s -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o IdentitiesOnly=yes",
+			g.sshKeyPath,
+		)
+		cmd.Env = append(os.Environ(), "GIT_SSH_COMMAND="+sshCmd)
+	}
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return string(out), fmt.Errorf("%s %s: %w\noutput: %s", name, strings.Join(args, " "), err, string(out))

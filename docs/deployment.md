@@ -48,12 +48,18 @@ This guide covers production deployment using Docker Compose or as a native syst
    docker compose up -d
    ```
 
-5. **Verify the installation:**
+5. **Set up SSH for private repositories (if applicable):**
+   ```bash
+   docker compose exec foreman foreman setup-ssh
+   # Copy the printed public key → GitHub repo → Settings → Deploy Keys
+   ```
+
+6. **Verify the installation:**
    ```bash
    docker compose exec foreman foreman doctor
    ```
 
-6. **Check logs:**
+7. **Check logs:**
    ```bash
    docker compose logs -f
    ```
@@ -87,17 +93,23 @@ This guide covers production deployment using Docker Compose or as a native syst
    # Add: FOREMAN_DASHBOARD_TOKEN=your-dashboard-secret
    ```
 
-5. **Verify the installation:**
+5. **Set up SSH for private repositories (if applicable):**
+   ```bash
+   foreman setup-ssh
+   # Copy the printed public key → GitHub repo → Settings → Deploy Keys
+   ```
+
+6. **Verify the installation:**
    ```bash
    foreman doctor
    ```
 
-6. **Start the service:**
+7. **Start the service:**
    ```bash
    sudo systemctl start foreman
    ```
 
-7. **Check logs:**
+8. **Check logs:**
    ```bash
    sudo journalctl -u foreman -f
    ```
@@ -151,6 +163,7 @@ sudo systemctl restart foreman
 | Problem | What to check |
 |---------|---------------|
 | `foreman doctor` fails | Verify API keys are set and valid. Check network connectivity to api.anthropic.com and github.com. |
+| SSH / git clone fails | Run `foreman setup-ssh`, add the printed public key as a GitHub Deploy Key, then re-run `foreman doctor`. |
 | Dashboard not accessible | Ensure port 8080 is open in your firewall. Confirm `FOREMAN_DASHBOARD_TOKEN` is set. |
 | Daemon not picking up tickets | Check tracker configuration in `foreman.toml`. Verify `pickup_label` matches your issue labels. Run `foreman ps` to see current state. |
 | High costs | Run `foreman cost today` to inspect spend. Adjust token and cost limits in `foreman.toml`. |

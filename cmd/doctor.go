@@ -4,12 +4,15 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/canhta/foreman/internal/config"
 	"github.com/canhta/foreman/internal/llm"
 	"github.com/canhta/foreman/internal/models"
+	"github.com/canhta/foreman/internal/sshkey"
 	"github.com/canhta/foreman/internal/tracker"
 	"github.com/spf13/cobra"
 )
@@ -84,9 +87,51 @@ func newDoctorCmd() *cobra.Command {
 				return err
 			})
 
-			check("Git", func() error {
+			check("Git config", func() error {
 				if cfg.Git.CloneURL == "" {
 					return fmt.Errorf("git.clone_url not configured")
+				}
+				return nil
+			})
+
+			check("SSH key", func() error {
+				dir, err := sshkey.DefaultDir()
+				if err != nil {
+					return err
+				}
+				kp, err := sshkey.Ensure(dir)
+				if err != nil {
+					return fmt.Errorf("key not ready: %w", err)
+				}
+				// Probe SSH connectivity to the git host derived from clone_url.
+				host := sshHostFromURL(cfg.Git.CloneURL)
+				if host == "" {
+					return fmt.Errorf("cannot determine SSH host from clone_url %q", cfg.Git.CloneURL)
+				}
+				sshArgs := []string{
+					"-i", kp.PrivateKeyPath,
+					"-o", "StrictHostKeyChecking=accept-new",
+					"-o", "BatchMode=yes",
+					"-o", "IdentitiesOnly=yes",
+					"-o", "ConnectTimeout=10",
+					"-T", host,
+				}
+				c := exec.CommandContext(ctx, "ssh", sshArgs...)
+				out, _ := c.CombinedOutput()
+				// GitHub/GitLab respond with a greeting on stderr even for auth
+				// failures at the shell level; exit code 1 + "successfully authenticated"
+				// means key is accepted but no interactive shell — that's success.
+				outStr := string(out)
+				if strings.Contains(outStr, "successfully authenticated") ||
+					strings.Contains(outStr, "Welcome to GitLab") {
+					return nil
+				}
+				if strings.Contains(outStr, "Permission denied") {
+					return fmt.Errorf("key not authorized — add the public key as a Deploy Key on the repo\n  run: foreman setup-ssh")
+				}
+				// Any other non-zero exit is a connectivity issue, not an auth issue.
+				if c.ProcessState != nil && c.ProcessState.ExitCode() != 0 && c.ProcessState.ExitCode() != 1 {
+					return fmt.Errorf("SSH connectivity failed: %s", strings.TrimSpace(outStr))
 				}
 				return nil
 			})

@@ -84,11 +84,13 @@ export ANTHROPIC_API_KEY=sk-ant-...
 export FOREMAN_DASHBOARD_TOKEN=$(./foreman token generate)
 ```
 
-If your repository is private and uses SSH deploy keys, set git to use a specific key:
+If your repository is private (GitHub org or personal), run the SSH setup command once:
 
 ```bash
-export GIT_SSH_COMMAND='ssh -i ~/.ssh/id_ed25519_foreman -o IdentitiesOnly=yes'
+./foreman setup-ssh
 ```
+
+This generates a dedicated keypair at `~/.foreman/ssh/id_ed25519`, prints the public key, and tells you exactly where to paste it in GitHub. Foreman automatically uses this key for all git operations — no manual `GIT_SSH_COMMAND` export needed.
 
 For a complete setup guide for SSH and Jira credentials, see [Integrations](integrations.md#jira-cloud-and-server).
 
@@ -102,7 +104,7 @@ Here is the end-to-end path from install to running ticket:
 flowchart TD
     A([Install foreman\nbinary or build from source]) --> B["Copy foreman.example.toml\n→ foreman.toml"]
     B --> C["Set environment variables\nGITHUB_TOKEN · ANTHROPIC_API_KEY\nFOREMAN_DASHBOARD_TOKEN"]
-    C --> D["./foreman doctor\nvalidate config + credentials"]
+    C --> D["./foreman setup-ssh\n(private repos only)\nthen ./foreman doctor"]
     D -- "errors" --> C
     D -- "all green" --> E{How do you\nwant to run?}
 

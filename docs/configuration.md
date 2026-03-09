@@ -147,14 +147,22 @@ token    = "${GITLAB_TOKEN}"
 base_url = "https://gitlab.com"   # Override for self-hosted GitLab
 ```
 
-If your repository is private and requires a specific SSH key, configure your shell before starting Foreman:
+For private repositories, use an SSH clone URL and run `foreman setup-ssh` once to provision a dedicated key:
 
 ```bash
-export GIT_SSH_COMMAND='ssh -i ~/.ssh/id_ed25519_foreman -o IdentitiesOnly=yes'
+./foreman setup-ssh
+# Prints the public key — paste it into GitHub → repo → Settings → Deploy Keys
+# Then verify:
+./foreman doctor
 ```
 
-Then use an SSH clone URL in config, for example:
-`clone_url = "git@github.com:SETA-International-Vietnam/SessionUp.git"`
+Foreman automatically detects `~/.foreman/ssh/id_ed25519` and injects it as `GIT_SSH_COMMAND` for every git operation. Nothing is written to `~/.ssh/config` — the key is used exclusively by Foreman.
+
+SSH clone URL format:
+```toml
+[git]
+clone_url = "git@github.com:your-org/your-repo.git"
+```
 
 ---
 

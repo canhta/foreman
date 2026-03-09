@@ -48,6 +48,30 @@ func openDB(cfg *models.Config) (db.Database, error) {
 	}
 }
 
+// sshHostFromURL returns the SSH hostname from a git clone URL.
+// e.g. "git@github.com:org/repo.git" → "git@github.com"
+//
+//	"https://github.com/org/repo.git" → "github.com"
+func sshHostFromURL(cloneURL string) string {
+	// SCP-style SSH: git@host:path
+	if strings.HasPrefix(cloneURL, "git@") {
+		if idx := strings.Index(cloneURL, ":"); idx > 0 {
+			return cloneURL[:idx] // e.g. git@github.com
+		}
+	}
+	// HTTPS: extract host only (ssh won't use HTTPS but probe the host)
+	for _, prefix := range []string{"https://", "http://"} {
+		if strings.HasPrefix(cloneURL, prefix) {
+			rest := cloneURL[len(prefix):]
+			if idx := strings.Index(rest, "/"); idx > 0 {
+				return rest[:idx]
+			}
+			return rest
+		}
+	}
+	return ""
+}
+
 // parseOwnerRepo extracts owner and repo from a GitHub clone URL.
 // Supports https://github.com/owner/repo.git and git@github.com:owner/repo.git
 func parseOwnerRepo(cloneURL string) (owner, repo string) {
