@@ -92,6 +92,8 @@ func (ap *AgentPlanner) buildPlanningPrompt(ticket *models.Ticket) string {
 5. Return your plan as structured output matching the schema.
 
 Keep tasks small and focused. Each task should be independently implementable and testable.
+
+Set status to exactly "OK" when you have produced a valid plan. Use "CLARIFICATION_NEEDED" only if the ticket is too ambiguous to plan, and "TICKET_TOO_LARGE" only if the scope is too broad to decompose into tasks.
 `
 	return prompt
 }
@@ -100,7 +102,10 @@ func (ap *AgentPlanner) plannerOutputSchema() json.RawMessage {
 	schema := map[string]interface{}{
 		"type": "object",
 		"properties": map[string]interface{}{
-			"status":  map[string]string{"type": "string"},
+			"status": map[string]interface{}{
+				"type": "string",
+				"enum": []string{"OK", "CLARIFICATION_NEEDED", "TICKET_TOO_LARGE"},
+			},
 			"message": map[string]string{"type": "string"},
 			"codebase_patterns": map[string]interface{}{
 				"type": "object",
