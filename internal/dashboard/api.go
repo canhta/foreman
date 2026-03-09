@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/canhta/foreman/internal/command"
 	"github.com/canhta/foreman/internal/db"
 	"github.com/canhta/foreman/internal/models"
 	"github.com/canhta/foreman/internal/util"
@@ -119,6 +120,7 @@ type API struct {
 	mcpHealth       MCPHealthProvider
 	promptSnapshots PromptSnapshotQuerier
 	configProvider  ConfigProvider
+	commandRegistry *command.Registry
 	channelHealth   map[string]interface{ IsConnected() bool }
 	version         string
 	costCfg         models.CostConfig
@@ -161,6 +163,11 @@ func (a *API) SetPromptSnapshotQuerier(q PromptSnapshotQuerier) {
 // SetConfigProvider wires a ConfigProvider for the config summary endpoint.
 func (a *API) SetConfigProvider(p ConfigProvider) {
 	a.configProvider = p
+}
+
+// SetCommandRegistry wires a command registry for the commands endpoints.
+func (a *API) SetCommandRegistry(r *command.Registry) {
+	a.commandRegistry = r
 }
 
 // NewAPI creates a new API instance.
@@ -887,6 +894,68 @@ func (a *API) handleActivityBreakdown(w http.ResponseWriter, r *http.Request) {
 func (a *API) handleClaudeCodeUsage(w http.ResponseWriter, _ *http.Request) {
 	usage := parseClaudeCodeUsageCached()
 	writeJSON(w, http.StatusOK, usage)
+}
+
+// commandListItem is the JSON representation of a command in the list response.
+type commandListItem struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Source      string `json:"source"`
+	Subtask     bool   `json:"subtask"`
+}
+
+func (a *API) handleListCommands(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if a.commandRegistry == nil {
+		writeJSON(w, http.StatusOK, []commandListItem{})
+		return
+	}
+	cmds := a.commandRegistry.List()
+	items := make([]commandListItem, len(cmds))
+	for i, cmd := range cmds {
+		items[i] = commandListItem{
+			Name:        cmd.Name,
+			Description: cmd.Description,
+			Source:      cmd.Source,
+			Subtask:     cmd.Subtask,
+		}
+	}
+	writeJSON(w, http.StatusOK, items)
+}
+
+func (a *API) handleRenderCommand(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if a.commandRegistry == nil {
+		http.Error(w, "command registry not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	name := strings.TrimPrefix(r.URL.Path, "/api/commands/")
+	if name == "" {
+		http.Error(w, "missing command name", http.StatusBadRequest)
+		return
+	}
+
+	var body struct {
+		Args []string `json:"args"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	rendered, err := a.commandRegistry.Render(name, body.Args...)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"rendered": rendered})
 }
 
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {

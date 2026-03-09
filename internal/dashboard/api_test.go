@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/canhta/foreman/internal/command"
 	"github.com/canhta/foreman/internal/db"
 	"github.com/canhta/foreman/internal/models"
 	"github.com/stretchr/testify/assert"
@@ -1502,4 +1503,100 @@ func TestHandleActivityBreakdown_ValidJSONStructure(t *testing.T) {
 	if _, ok := resp["recent_calls"]; !ok {
 		t.Error("expected recent_calls key in response")
 	}
+}
+
+func TestAPIListCommands_Empty(t *testing.T) {
+	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
+	// No registry wired — should return empty list.
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/commands", nil)
+	rec := httptest.NewRecorder()
+	api.handleListCommands(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var items []interface{}
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&items))
+	assert.Len(t, items, 0)
+}
+
+func TestAPIListCommands_WithRegistry(t *testing.T) {
+	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
+	api.SetCommandRegistry(newTestCommandRegistry())
+
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/commands", nil)
+	rec := httptest.NewRecorder()
+	api.handleListCommands(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var items []map[string]interface{}
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&items))
+	require.Len(t, items, 2)
+	// Commands are sorted by name — "explain" before "review".
+	assert.Equal(t, "explain", items[0]["name"])
+	assert.Equal(t, "review", items[1]["name"])
+}
+
+func TestAPIRenderCommand_Success(t *testing.T) {
+	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
+	api.SetCommandRegistry(newTestCommandRegistry())
+
+	body := strings.NewReader(`{"args":["some diff text"]}`)
+	req := httptest.NewRequestWithContext(t.Context(), "POST", "/api/commands/review", body)
+	rec := httptest.NewRecorder()
+	api.handleRenderCommand(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp map[string]string
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&resp))
+	rendered, ok := resp["rendered"]
+	require.True(t, ok, "expected 'rendered' key in response")
+	assert.Contains(t, rendered, "some diff text")
+}
+
+func TestAPIRenderCommand_NotFound(t *testing.T) {
+	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
+	api.SetCommandRegistry(newTestCommandRegistry())
+
+	body := strings.NewReader(`{"args":[]}`)
+	req := httptest.NewRequestWithContext(t.Context(), "POST", "/api/commands/nonexistent", body)
+	rec := httptest.NewRecorder()
+	api.handleRenderCommand(rec, req)
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestAPIRenderCommand_NoRegistry(t *testing.T) {
+	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
+	// No registry wired.
+	body := strings.NewReader(`{"args":[]}`)
+	req := httptest.NewRequestWithContext(t.Context(), "POST", "/api/commands/review", body)
+	rec := httptest.NewRecorder()
+	api.handleRenderCommand(rec, req)
+	assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
+}
+
+func TestAPIRenderCommand_MethodNotAllowed(t *testing.T) {
+	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
+	api.SetCommandRegistry(newTestCommandRegistry())
+
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/commands/review", nil)
+	rec := httptest.NewRecorder()
+	api.handleRenderCommand(rec, req)
+	assert.Equal(t, http.StatusMethodNotAllowed, rec.Code)
+}
+
+// newTestCommandRegistry returns a *command.Registry pre-loaded with two test commands.
+func newTestCommandRegistry() *command.Registry {
+	r := command.NewRegistry()
+	r.Register(command.Command{
+		Name:        "review",
+		Description: "Review changes",
+		Template:    "Review the following diff:\n$ARGUMENTS",
+		Source:      "builtin",
+	})
+	r.Register(command.Command{
+		Name:        "explain",
+		Description: "Explain code",
+		Template:    "Explain the following:\n$ARGUMENTS",
+		Source:      "builtin",
+	})
+	return r
 }

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/canhta/foreman/internal/command"
 	"github.com/canhta/foreman/internal/db"
 	"github.com/canhta/foreman/internal/models"
 	"github.com/prometheus/client_golang/prometheus"
@@ -88,6 +89,29 @@ func NewServer(db DashboardDB, emitter EventSubscriber, statusProvider DaemonSta
 	// Wire ticket retrier using DB — retry preserves done tasks and re-queues for daemon pickup.
 	api.SetTicketRetrier(&smartRetrier{db: db})
 
+	// Wire builtin command registry.
+	cmdRegistry := command.NewRegistry()
+	cmdRegistry.Register(command.Command{
+		Name:        "review",
+		Description: "Review changes in a diff or file",
+		Template:    "Review the following changes:\n$ARGUMENTS",
+		Source:      "builtin",
+	})
+	cmdRegistry.Register(command.Command{
+		Name:        "explain",
+		Description: "Explain code or a concept",
+		Template:    "Explain the following:\n$ARGUMENTS",
+		Source:      "builtin",
+	})
+	cmdRegistry.Register(command.Command{
+		Name:        "fix",
+		Description: "Fix a bug described in the arguments",
+		Template:    "Fix the following issue:\n$ARGUMENTS",
+		Source:      "builtin",
+		Subtask:     true,
+	})
+	api.SetCommandRegistry(cmdRegistry)
+
 	mux := http.NewServeMux()
 
 	// Auth-protected API routes
@@ -143,6 +167,8 @@ func NewServer(db DashboardDB, emitter EventSubscriber, statusProvider DaemonSta
 		http.NotFound(w, r)
 	})))
 	mux.Handle("/api/prompts/versions", auth(http.HandlerFunc(api.handlePromptVersions)))
+	mux.Handle("/api/commands", auth(http.HandlerFunc(api.handleListCommands)))
+	mux.Handle("/api/commands/", auth(http.HandlerFunc(api.handleRenderCommand)))
 
 	// Metrics endpoint
 	if reg != nil {
@@ -203,6 +229,11 @@ func (s *Server) SetTrackerSyncer(syncer TrackerSyncer) {
 // SetConfigProvider wires a ConfigProvider for the config summary endpoint.
 func (s *Server) SetConfigProvider(p ConfigProvider) {
 	s.api.SetConfigProvider(p)
+}
+
+// SetCommandRegistry wires a command registry for the commands endpoints.
+func (s *Server) SetCommandRegistry(r *command.Registry) {
+	s.api.SetCommandRegistry(r)
 }
 
 // Handler returns the HTTP handler, useful for testing with httptest.NewServer.
