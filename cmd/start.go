@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -431,11 +432,23 @@ func buildGitProvider(cfg *models.Config) git.GitProvider {
 		return git.NewGoGitProvider()
 	}
 	p := git.NewNativeGitProviderWithClone(cfg.Git.CloneURL)
-	// Auto-inject the Foreman SSH key if it exists, so git operations work on
-	// any machine without depending on the user's ssh-agent or ~/.ssh/config.
+
+	// HTTPS clone URL → inject GitHub PAT via credential helper (works even
+	// when org deploy keys are disabled).
+	if strings.HasPrefix(cfg.Git.CloneURL, "https://") {
+		token := cfg.Git.GitHub.Token
+		if token == "" {
+			token = os.Getenv("GITHUB_TOKEN")
+		}
+		if token != "" {
+			return p.WithHTTPToken(token)
+		}
+		return p
+	}
+
+	// SSH clone URL → inject the Foreman dedicated key if present.
 	if dir, err := sshkey.DefaultDir(); err == nil {
-		kp, err := sshkey.Ensure(dir)
-		if err == nil {
+		if kp, err := sshkey.Ensure(dir); err == nil {
 			return p.WithSSHKey(kp.PrivateKeyPath)
 		}
 	}

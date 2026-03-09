@@ -13,7 +13,8 @@ import (
 // NativeGitProvider shells out to the native git CLI.
 type NativeGitProvider struct {
 	cloneURL   string
-	sshKeyPath string // if set, injected as GIT_SSH_COMMAND
+	sshKeyPath string // injected as GIT_SSH_COMMAND for SSH clone URLs
+	httpToken  string // injected via inline credential helper for HTTPS clone URLs
 }
 
 // NewNativeGitProvider creates a native git provider.
@@ -30,7 +31,14 @@ func NewNativeGitProviderWithClone(cloneURL string) *NativeGitProvider {
 // WithSSHKey returns a copy of the provider configured to use the given private
 // key for all git operations via GIT_SSH_COMMAND. The key path must be absolute.
 func (g *NativeGitProvider) WithSSHKey(privKeyPath string) *NativeGitProvider {
-	return &NativeGitProvider{cloneURL: g.cloneURL, sshKeyPath: privKeyPath}
+	return &NativeGitProvider{cloneURL: g.cloneURL, sshKeyPath: privKeyPath, httpToken: g.httpToken}
+}
+
+// WithHTTPToken returns a copy of the provider configured to authenticate HTTPS
+// git operations using a Personal Access Token. The token is passed via an
+// inline credential helper so it never appears in process args or git config.
+func (g *NativeGitProvider) WithHTTPToken(token string) *NativeGitProvider {
+	return &NativeGitProvider{cloneURL: g.cloneURL, sshKeyPath: g.sshKeyPath, httpToken: token}
 }
 
 func (g *NativeGitProvider) EnsureRepo(ctx context.Context, workDir string) error {
@@ -190,13 +198,22 @@ func (g *NativeGitProvider) CleanWorkingTree(ctx context.Context, workDir string
 func (g *NativeGitProvider) run(ctx context.Context, workDir string, name string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = workDir
+	env := os.Environ()
 	if g.sshKeyPath != "" {
 		sshCmd := fmt.Sprintf(
 			"ssh -i %s -o StrictHostKeyChecking=accept-new -o BatchMode=yes -o IdentitiesOnly=yes",
 			g.sshKeyPath,
 		)
-		cmd.Env = append(os.Environ(), "GIT_SSH_COMMAND="+sshCmd)
+		env = append(env, "GIT_SSH_COMMAND="+sshCmd)
 	}
+	if g.httpToken != "" {
+		// Inject token via an inline credential helper — the token never
+		// appears in process args, git config, or the clone URL.
+		// This is the same pattern used by GitHub Actions and most CI systems.
+		helper := fmt.Sprintf("!f() { echo username=x-access-token; echo password=%s; }; f", g.httpToken)
+		cmd.Args = append([]string{cmd.Args[0], "-c", "credential.helper=" + helper}, cmd.Args[1:]...)
+	}
+	cmd.Env = env
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return string(out), fmt.Errorf("%s %s: %w\noutput: %s", name, strings.Join(args, " "), err, string(out))
