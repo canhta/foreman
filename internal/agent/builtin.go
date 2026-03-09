@@ -171,6 +171,7 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 	messages := []models.Message{{Role: "user", Content: req.Prompt}}
 	usage := AgentUsage{Model: r.model}
 	costTracker := NewCostTracker()
+	diffTracker := NewDiffTracker()
 
 	// Tool call deduplication: fingerprint → count of times called.
 	// Guidance-only — injects a warning but does NOT block execution.
@@ -193,7 +194,7 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 
 	for turn := 0; turn < maxTurns; turn++ {
 		if costTracker.BudgetExceeded() {
-			return AgentResult{CostSummary: costTracker.Summary()}, fmt.Errorf("builtin: cost budget exceeded at turn %d", turn+1)
+			return AgentResult{CostSummary: costTracker.Summary(), DiffSummary: diffTracker.Summary()}, fmt.Errorf("builtin: cost budget exceeded at turn %d", turn+1)
 		}
 		if req.OnProgress != nil {
 			req.OnProgress(AgentEvent{Type: AgentEventTurnStart, Turn: turn + 1})
@@ -266,14 +267,14 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 		}
 
 		if resp.StopReason == models.StopReasonEndTurn || resp.StopReason == models.StopReasonMaxTokens {
-			return enrichResult(AgentResult{Output: resp.Content, Usage: usage, CostSummary: costTracker.Summary()}), nil
+			return enrichResult(AgentResult{Output: resp.Content, Usage: usage, CostSummary: costTracker.Summary(), DiffSummary: diffTracker.Summary()}), nil
 		}
 
 		// Implicit stop from self-reflection: if the agent replied TASK_COMPLETE
 		// to a reflection prompt, treat it as a graceful end-of-turn (REQ-LOOP-001).
 		if strings.Contains(resp.Content, "TASK_COMPLETE") {
 			log.Info().Int("turn", turn+1).Msg("builtin: implicit stop via self-reflection TASK_COMPLETE")
-			return enrichResult(AgentResult{Output: resp.Content, Usage: usage, CostSummary: costTracker.Summary()}), nil
+			return enrichResult(AgentResult{Output: resp.Content, Usage: usage, CostSummary: costTracker.Summary(), DiffSummary: diffTracker.Summary()}), nil
 		}
 
 		if resp.StopReason == models.StopReasonToolUse && len(resp.ToolCalls) > 0 {
@@ -292,6 +293,7 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 							Structured:  json.RawMessage(tc.Input),
 							Usage:       usage,
 							CostSummary: costTracker.Summary(),
+							DiffSummary: diffTracker.Summary(),
 						}), nil
 					}
 				}
@@ -320,7 +322,7 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 			// Tool calls sharing a file path are serialized; disjoint ones run in parallel.
 			results := make([]models.ToolResult, len(resp.ToolCalls))
 			var touchedPaths []string
-			if execErr := r.executeToolsFileAware(ctx, req, turn, resp.ToolCalls, results, &touchedPaths); execErr != nil {
+			if execErr := r.executeToolsFileAware(ctx, req, turn, resp.ToolCalls, results, &touchedPaths, diffTracker); execErr != nil {
 				return AgentResult{}, execErr
 			}
 
@@ -418,10 +420,10 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 			continue
 		}
 
-		return enrichResult(AgentResult{Output: resp.Content, Usage: usage, CostSummary: costTracker.Summary()}), nil
+		return enrichResult(AgentResult{Output: resp.Content, Usage: usage, CostSummary: costTracker.Summary(), DiffSummary: diffTracker.Summary()}), nil
 	}
 
-	return AgentResult{CostSummary: costTracker.Summary()}, fmt.Errorf("builtin: exceeded max turns %d without completion", maxTurns)
+	return AgentResult{CostSummary: costTracker.Summary(), DiffSummary: diffTracker.Summary()}, fmt.Errorf("builtin: exceeded max turns %d without completion", maxTurns)
 }
 
 // executeToolsFileAware executes tool calls with file-path conflict awareness.
@@ -437,6 +439,7 @@ func (r *BuiltinRunner) executeToolsFileAware(
 	toolCalls []models.ToolCall,
 	results []models.ToolResult,
 	touchedPaths *[]string,
+	diffTracker *DiffTracker,
 ) error {
 	// Build per-call file-path sets.
 	type callMeta struct {
@@ -526,6 +529,18 @@ func (r *BuiltinRunner) executeToolsFileAware(
 					results[m.index] = models.ToolResult{ToolCallID: m.tc.ID, Content: err.Error(), IsError: true}
 				} else {
 					results[m.index] = models.ToolResult{ToolCallID: m.tc.ID, Content: out}
+					// Track file changes for Write/Edit/MultiEdit/ApplyPatch operations.
+					if diffTracker != nil {
+						if filePath := extractPath(m.tc.Input); filePath != "" {
+							switch m.tc.Name {
+							case "Write":
+								lines := strings.Count(out, "\n") + 1
+								diffTracker.RecordChange(filePath, ChangeCreated, lines, 0)
+							case "Edit", "MultiEdit", "ApplyPatch":
+								diffTracker.RecordChange(filePath, ChangeModified, 1, 0)
+							}
+						}
+					}
 				}
 				if req.OnProgress != nil {
 					req.OnProgress(AgentEvent{Type: AgentEventToolEnd, Turn: turn + 1, ToolName: m.tc.Name})
