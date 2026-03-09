@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/canhta/foreman/internal/agent"
 	"github.com/canhta/foreman/internal/config"
 	"github.com/canhta/foreman/internal/llm"
 	"github.com/canhta/foreman/internal/models"
@@ -152,6 +153,28 @@ func newDoctorCmd() *cobra.Command {
 					fmt.Fprintln(w, "  [WARN] Docker runner: network isolation is DISABLED. Containers have network access.")
 				}
 			}
+
+			// Agent runner
+			check("Agent runner", func() error {
+				provider := cfg.AgentRunner.Provider
+				if provider == "" || provider == "builtin" {
+					// Builtin runner: delegate to the LLM provider health check.
+					llmProv, err := llm.NewProviderFromConfig(cfg.LLM.DefaultProvider, cfg.LLM)
+					if err != nil {
+						return fmt.Errorf("builtin runner LLM provider: %w", err)
+					}
+					return llmProv.HealthCheck(ctx)
+				}
+				cmdRunner := buildCommandRunner(cfg)
+				ar, err := agent.NewAgentRunner(cfg.AgentRunner, cmdRunner, nil, "", nil, models.LLMConfig{}, nil, nil)
+				if err != nil {
+					return fmt.Errorf("init %s runner: %w", provider, err)
+				}
+				if closer, ok := ar.(interface{ Close() error }); ok {
+					defer closer.Close()
+				}
+				return ar.HealthCheck(ctx)
+			})
 
 			// Skills
 			fmt.Fprint(w, "  Skills... ")
