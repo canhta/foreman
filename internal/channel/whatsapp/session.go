@@ -55,7 +55,7 @@ func LoginWithPairingCode(ctx context.Context, sessionDB, phone string) error {
 		return ctx.Err()
 	}
 
-	code, err := client.PairPhone(ctx, phone, true, whatsmeow.PairClientChrome, "Chrome (Mac OS X)")
+	code, err := client.PairPhone(ctx, phone, true, whatsmeow.PairClientChrome, "Chrome (macOS)")
 	if err != nil {
 		client.Disconnect()
 		return fmt.Errorf("pair phone: %w", err)
@@ -65,19 +65,26 @@ func LoginWithPairingCode(ctx context.Context, sessionDB, phone string) error {
 	fmt.Println("Open WhatsApp -> Linked Devices -> Link a Device -> Enter code")
 	fmt.Println("Waiting for confirmation...")
 
-	paired := make(chan error, 1)
+	// Two-stage completion: PairSuccess means the code was accepted; Connected means
+	// the full post-pairing handshake finished (phone shows "Logged in" at that point).
+	done := make(chan error, 1)
+	var pairOK bool
 	client.AddEventHandler(func(evt interface{}) {
 		switch e := evt.(type) {
 		case *events.PairSuccess:
 			_ = e
-			paired <- nil
+			pairOK = true
 		case *events.PairError:
-			paired <- fmt.Errorf("pairing failed: %v", e.Error)
+			done <- fmt.Errorf("pairing failed: %v", e.Error)
+		case *events.Connected:
+			if pairOK {
+				done <- nil
+			}
 		}
 	})
 
 	select {
-	case err := <-paired:
+	case err := <-done:
 		client.Disconnect()
 		if err != nil {
 			return err
