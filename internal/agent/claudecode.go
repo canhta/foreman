@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/canhta/foreman/internal/prompts"
 	"github.com/canhta/foreman/internal/runner"
 )
 
@@ -23,9 +24,10 @@ type ClaudeCodeConfig struct {
 // ClaudeCodeRunner invokes the Claude Agent SDK via CLI subprocess.
 // Uses `claude -p --output-format json` and parses the SDKResultMessage.
 type ClaudeCodeRunner struct {
-	bin    string
-	runner runner.CommandRunner
-	config ClaudeCodeConfig
+	bin      string
+	runner   runner.CommandRunner
+	config   ClaudeCodeConfig
+	registry *prompts.Registry
 }
 
 // NewClaudeCodeRunner creates a runner that shells out to the claude CLI.
@@ -39,7 +41,23 @@ func NewClaudeCodeRunner(cmdRunner runner.CommandRunner, cfg ClaudeCodeConfig) *
 
 func (r *ClaudeCodeRunner) RunnerName() string { return "claudecode" }
 
+// WithRegistry attaches a prompt registry so the runner calls registry.ForClaude()
+// before execution to write .claude/ directory structure into the working directory.
+func (r *ClaudeCodeRunner) WithRegistry(reg *prompts.Registry) *ClaudeCodeRunner {
+	r.registry = reg
+	return r
+}
+
 func (r *ClaudeCodeRunner) Run(ctx context.Context, req AgentRequest) (AgentResult, error) {
+	if r.registry != nil {
+		vars := map[string]any{
+			"test_command": "go test ./...", // could come from req context
+		}
+		if err := r.registry.ForClaude(req.WorkDir, vars); err != nil {
+			return AgentResult{}, fmt.Errorf("claudecode: write .claude/: %w", err)
+		}
+	}
+
 	args := []string{
 		"-p", req.Prompt,
 		"--output-format", "json",
