@@ -404,7 +404,20 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 			}
 		}
 
-		// Create feature branch.
+		// Reset workdir to a clean, up-to-date state on the default branch
+		// before creating the ticket branch.
+		if err := o.git.CleanWorkingTree(ctx, o.config.WorkDir); err != nil {
+			log.Warn().Err(err).Msg("clean working tree failed, continuing")
+		}
+		if err := o.git.Checkout(ctx, o.config.WorkDir, o.config.DefaultBranch); err != nil {
+			returnErr = fmt.Errorf("checkout default branch %s: %w", o.config.DefaultBranch, err)
+			return returnErr
+		}
+		if err := o.git.Pull(ctx, o.config.WorkDir); err != nil {
+			log.Warn().Err(err).Msg("git pull failed, continuing with current HEAD")
+		}
+
+		// Create feature branch from fresh HEAD.
 		if err := o.git.CreateBranch(ctx, o.config.WorkDir, branchName); err != nil {
 			returnErr = fmt.Errorf("create branch %s: %w", branchName, err)
 			return returnErr
