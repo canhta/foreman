@@ -199,6 +199,9 @@ func NewServer(db DashboardDB, emitter EventSubscriber, statusProvider DaemonSta
 		// parts[0] = pid, parts[1] = sub-resource (optional), parts[2] = id or further (optional)
 
 		switch {
+		// POST /api/projects/test-connection
+		case parts[0] == "test-connection" && r.Method == http.MethodPost:
+			api.handleTestConnection(w, r)
 		// DELETE /api/projects/{pid}
 		case r.Method == http.MethodDelete && len(parts) == 1:
 			api.handleDeleteProject(w, r)

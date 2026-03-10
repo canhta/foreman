@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
+	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -1586,4 +1588,145 @@ func extractPathParam(path, prefix string) string {
 		return rest[:idx]
 	}
 	return rest
+}
+
+// handleTestConnection handles POST /api/projects/test-connection.
+// It tests git or tracker credentials without requiring an existing project.
+func (a *API) handleTestConnection(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Type       string `json:"type"`
+		// git fields
+		CloneURL string `json:"clone_url"`
+		Token    string `json:"token"`
+		// tracker fields
+		Provider   string `json:"provider"`
+		ProjectKey string `json:"project_key"`
+		URL        string `json:"url"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request: " + err.Error()})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+
+	switch req.Type {
+	case "git":
+		if req.CloneURL == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "clone_url is required"})
+			return
+		}
+		if err := testGitConnection(ctx, req.CloneURL, req.Token); err != nil {
+			writeJSON(w, http.StatusOK, map[string]interface{}{"ok": false, "error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
+
+	case "tracker":
+		if err := testTrackerConnection(ctx, req.Provider, req.Token, req.URL, req.ProjectKey); err != nil {
+			writeJSON(w, http.StatusOK, map[string]interface{}{"ok": false, "error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
+
+	default:
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "type must be 'git' or 'tracker'"})
+	}
+}
+
+// testGitConnection runs git ls-remote to verify the clone URL is reachable.
+func testGitConnection(ctx context.Context, cloneURL, token string) error {
+	// For HTTPS URLs with a token, embed the credentials directly in the URL.
+	// This is the most reliable approach — credential helpers can be fragile.
+	targetURL := cloneURL
+	if token != "" && strings.HasPrefix(cloneURL, "https://") {
+		u, err := url.Parse(cloneURL)
+		if err == nil {
+			u.User = url.UserPassword("x-access-token", token)
+			targetURL = u.String()
+		}
+	}
+	cmd := exec.CommandContext(ctx, "git", "ls-remote", "--heads", targetURL)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		msg := strings.TrimSpace(string(out))
+		if msg == "" {
+			msg = err.Error()
+		}
+		// Strip embedded credentials from any error message before returning.
+		if token != "" {
+			msg = strings.ReplaceAll(msg, token, "***")
+		}
+		return fmt.Errorf("%s", msg)
+	}
+	return nil
+}
+
+// testTrackerConnection performs a lightweight API call to verify tracker credentials.
+func testTrackerConnection(ctx context.Context, provider, token, baseURL, projectKey string) error {
+	client := &http.Client{Timeout: 15 * time.Second}
+	switch provider {
+	case "github":
+		// Verify token against the GitHub API.
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.github.com/user", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Accept", "application/vnd.github+json")
+		resp, err := client.Do(req)
+		if err != nil {
+			return fmt.Errorf("github: %w", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusUnauthorized {
+			return fmt.Errorf("github: invalid token")
+		}
+		if resp.StatusCode >= 300 {
+			return fmt.Errorf("github: unexpected status %d", resp.StatusCode)
+		}
+		return nil
+
+	case "linear":
+		// Verify token via Linear GraphQL viewer query.
+		body := strings.NewReader(`{"query":"{ viewer { id } }"}`)
+		req, _ := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.linear.app/graphql", body)
+		req.Header.Set("Authorization", token)
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := client.Do(req)
+		if err != nil {
+			return fmt.Errorf("linear: %w", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusUnauthorized {
+			return fmt.Errorf("linear: invalid token")
+		}
+		if resp.StatusCode >= 300 {
+			return fmt.Errorf("linear: unexpected status %d", resp.StatusCode)
+		}
+		return nil
+
+	case "jira":
+		if baseURL == "" {
+			return fmt.Errorf("jira: url is required")
+		}
+		// Hit the Jira myself endpoint. Token is expected as "email:apiToken".
+		url := strings.TrimRight(baseURL, "/") + "/rest/api/3/myself"
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("Accept", "application/json")
+		resp, err := client.Do(req)
+		if err != nil {
+			return fmt.Errorf("jira: %w", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusUnauthorized {
+			return fmt.Errorf("jira: invalid credentials")
+		}
+		if resp.StatusCode >= 300 {
+			return fmt.Errorf("jira: unexpected status %d", resp.StatusCode)
+		}
+		return nil
+
+	default:
+		return fmt.Errorf("unsupported tracker provider: %q", provider)
+	}
 }
