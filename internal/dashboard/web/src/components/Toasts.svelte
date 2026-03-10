@@ -1,11 +1,12 @@
 <script lang="ts">
-  import { appState, selectTicket } from '../state.svelte';
+  import { toasts } from '../state/toasts.svelte';
+  import { projectState } from '../state/project.svelte';
   import { severityIcon } from '../format';
 </script>
 
-{#if appState.toasts.length > 0}
+{#if toasts.toasts.length > 0}
   <div class="fixed bottom-16 right-4 z-50 space-y-1.5 md:bottom-4" role="alert" aria-live="polite">
-    {#each appState.toasts as toast (toast.id)}
+    {#each toasts.toasts as toast (toast.id)}
       <div class="flex items-stretch animate-slide-in max-w-xs border-2 border-border bg-surface shadow-2xl
         {toast.severity === 'error' ? 'border-l-4 border-l-danger' : 'border-l-4 border-l-success'}">
         <!-- Icon block -->
@@ -20,7 +21,7 @@
           {#if toast.ticketId}
             <button
               class="text-xs text-text hover:text-accent cursor-pointer truncate text-left transition-colors"
-              onclick={() => selectTicket(toast.ticketId!)}
+              onclick={() => projectState.loadTicketDetail(toast.ticketId!)}
             >{toast.message}</button>
           {:else}
             <span class="text-xs text-text truncate">{toast.message}</span>

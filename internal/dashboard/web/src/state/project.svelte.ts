@@ -24,6 +24,12 @@ class ProjectState {
   expandedTasks = $state<Record<string, boolean>>({});
   panelExpanded = $state(false); // side panel vs full page
 
+  // Live task progress from WebSocket events
+  activeTaskProgress = $state<Record<string, {
+    turn: number; maxTurns: number; tokensUsed: number;
+    runner?: string; model?: string; lastTool?: string; lastToolTime?: string;
+  }>>({});
+
   // Project dashboard metrics
   dailyCost = $state(0);
   monthlyCost = $state(0);

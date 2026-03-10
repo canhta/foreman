@@ -1,9 +1,12 @@
 <script lang="ts">
-  import { appState, selectTicket, setFeedCollapsed } from '../state.svelte';
+  import { projectState } from '../state/project.svelte';
   import { formatTime, severityIcon, runnerBadgeCls, shortModel, linkifyParts } from '../format';
 
+  let feedCollapsed = $state(localStorage.getItem('feed_collapsed') === 'true');
+
   function toggleCollapse() {
-    setFeedCollapsed(!appState.feedCollapsed);
+    feedCollapsed = !feedCollapsed;
+    localStorage.setItem('feed_collapsed', String(feedCollapsed));
   }
 
   function eventTypeCls(eventType: string): string {
@@ -16,26 +19,25 @@
 </script>
 
 <section
-  class="flex flex-col h-full bg-surface {appState.feedCollapsed ? 'w-8' : 'w-72'} transition-[width] duration-200"
+  class="flex flex-col h-full bg-surface {feedCollapsed ? 'w-8' : 'w-72'} transition-[width] duration-200"
   aria-label="Live event feed"
 >
   <!-- Header -->
   <div class="flex items-center px-2 border-b-2 border-border" style="min-height:40px">
-    {#if !appState.feedCollapsed}
+    {#if !feedCollapsed}
       <span class="text-[10px] font-bold tracking-[0.2em] text-text flex-1">LIVE FEED</span>
     {/if}
     <button
-      class="text-muted hover:text-accent transition-colors text-xs {appState.feedCollapsed ? 'mx-auto' : ''}"
+      class="text-muted hover:text-accent transition-colors text-xs {feedCollapsed ? 'mx-auto' : ''}"
       onclick={toggleCollapse}
-      aria-label={appState.feedCollapsed ? 'Expand feed' : 'Collapse feed'}
-    >{appState.feedCollapsed ? '▶' : '◀'}</button>
+      aria-label={feedCollapsed ? 'Expand feed' : 'Collapse feed'}
+    >{feedCollapsed ? '▶' : '◀'}</button>
   </div>
 
-  {#if !appState.feedCollapsed}
+  {#if !feedCollapsed}
     <div class="flex-1 overflow-y-auto">
-      {#each appState.events as evt (evt.ID)}
-        <div class="px-2 py-2 border-b border-border text-[10px] hover:bg-surface-hover transition-colors
-          {evt.isNew ? 'animate-fade-in bg-accent-bg' : ''}">
+      {#each projectState.events as evt (evt.ID)}
+        <div class="px-2 py-2 border-b border-border text-[10px] hover:bg-surface-hover transition-colors">
 
           <!-- Type + time -->
           <div class="flex items-center gap-1.5 leading-tight">
@@ -65,44 +67,32 @@
             </div>
           {/if}
 
-          <!-- Runner / model badges -->
-          {#if evt.runner || evt.model}
-            <div class="pl-3.5 mt-0.5 flex items-center gap-1.5">
-              {#if evt.runner}
-                <span class="text-[9px] border px-1 py-0.5 leading-none {runnerBadgeCls(evt.runner)}">{evt.runner}</span>
-              {/if}
-              {#if evt.model}
-                <span class="text-[9px] text-muted-bright">{shortModel(evt.model)}</span>
-              {/if}
-            </div>
-          {/if}
-
           <!-- Ticket link -->
-          {#if evt.ticket_title}
+          {#if evt.TicketID}
             <div class="pl-3.5 mt-0.5">
               <button
                 class="text-accent/60 hover:text-accent transition-colors truncate cursor-pointer block max-w-full"
-                onclick={() => selectTicket(evt.TicketID)}
-              >{evt.ticket_title}</button>
+                onclick={() => projectState.loadTicketDetail(evt.TicketID)}
+              >{evt.TicketID}</button>
             </div>
           {/if}
         </div>
       {/each}
 
-      {#if appState.events.length === 0}
+      {#if projectState.events.length === 0}
         <div class="px-2 py-4 text-center text-muted-bright text-[10px] tracking-wider">WAITING...</div>
       {/if}
     </div>
   {:else}
     <!-- Collapsed: severity column -->
     <div class="flex flex-col items-center gap-0.5 py-2 overflow-hidden flex-1">
-      {#each appState.events.slice(0, 60) as evt (evt.ID)}
+      {#each projectState.events.slice(0, 60) as evt (evt.ID)}
         <span class="w-1.5 h-1.5 shrink-0 {
           evt.Severity === 'success' ? 'bg-success' :
           evt.Severity === 'error' ? 'bg-danger' :
           evt.Severity === 'warning' ? 'bg-warning' :
           'bg-border-strong'
-        } {evt.isNew ? 'animate-pulse' : ''}"></span>
+        }"></span>
       {/each}
     </div>
   {/if}

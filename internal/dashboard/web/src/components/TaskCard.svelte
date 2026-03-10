@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Task, EventRecord, LlmCallRecord } from '../types';
-  import { appState, retryTask } from '../state.svelte';
+  import { projectState } from '../state/project.svelte';
   import { taskIcon, formatCost, formatRelative, runnerBadgeCls, shortModel } from '../format';
   import ConfirmDialog from './ConfirmDialog.svelte';
 
@@ -8,7 +8,7 @@
 
   let confirmOpen = $state(false);
 
-  let expanded = $derived(appState.expandedTasks[task.ID] ?? false);
+  let expanded = $derived(projectState.expandedTasks[task.ID] ?? false);
 
   let taskEvents = $derived(
     events.filter(e => e.TaskID === task.ID).slice(0, 10)
@@ -31,7 +31,7 @@
   );
 
   function toggle() {
-    appState.expandedTasks[task.ID] = !expanded;
+    projectState.expandedTasks[task.ID] = !expanded;
   }
 
   function leftBorderCls(): string {
@@ -51,7 +51,7 @@
 
   let badge = $derived(statusBadge());
 
-  let liveProgress = $derived(appState.activeTaskProgress[task.ID]);
+  let liveProgress = $derived(projectState.activeTaskProgress?.[task.ID]);
 
   function handleRetry(e: MouseEvent) {
     e.stopPropagation();
@@ -208,6 +208,6 @@
   message="Re-run this task through the pipeline again?"
   confirmLabel="↺ RETRY"
   confirmClass="bg-warning text-bg hover:bg-text"
-  onconfirm={() => { retryTask(task.ID); confirmOpen = false; }}
+  onconfirm={() => { projectState.retryTicket(task.ID); confirmOpen = false; }}
   oncancel={() => { confirmOpen = false; }}
 />
