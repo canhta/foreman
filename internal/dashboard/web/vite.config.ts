@@ -13,7 +13,9 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': `http://127.0.0.1:${backendPort}`,
-      '/ws': { target: `ws://127.0.0.1:${backendPort}`, ws: true },
+      '/ws/global': { target: `ws://127.0.0.1:${backendPort}`, ws: true },
+      '/ws/projects': { target: `ws://127.0.0.1:${backendPort}`, ws: true },
+      '/ws/events': { target: `ws://127.0.0.1:${backendPort}`, ws: true },
     },
   },
 });
