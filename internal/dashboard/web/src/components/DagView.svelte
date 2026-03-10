@@ -1,6 +1,16 @@
 <script lang="ts">
   import type { Task } from '../types';
-  import { taskIcon } from '../format';
+
+  function taskStatusChar(status: string): string {
+    switch (status) {
+      case 'done': return '✓';
+      case 'failed': return '✗';
+      case 'implementing': case 'tdd_verifying': case 'testing':
+      case 'spec_review': case 'quality_review': return '⚙';
+      case 'skipped': return '⊘';
+      default: return '○';
+    }
+  }
 
   let { tasks = [] }: { tasks: Task[] } = $props();
 
@@ -134,7 +144,7 @@
           </text>
           <!-- Status -->
           <text x="12" y="33" fill={textColor} font-size="10" font-family="monospace">
-            {taskIcon(node.task.Status)} {node.task.Status.toUpperCase().replace('_', ' ')}
+            {taskStatusChar(node.task.Status)} {node.task.Status.toUpperCase().replace('_', ' ')}
           </text>
         </g>
       {/each}
