@@ -146,3 +146,48 @@ func (e *EventEmitter) Unsubscribe(ch chan *models.EventRecord) {
 	e.mu.Unlock()
 	close(ch)
 }
+
+// GlobalEventEmitter fans in events from multiple per-project emitters
+// into a single broadcast channel for global WebSocket subscribers.
+type GlobalEventEmitter struct {
+	subscribers map[chan *models.EventRecord]struct{}
+	mu          sync.RWMutex
+}
+
+// NewGlobalEventEmitter creates a new GlobalEventEmitter.
+func NewGlobalEventEmitter() *GlobalEventEmitter {
+	return &GlobalEventEmitter{
+		subscribers: make(map[chan *models.EventRecord]struct{}),
+	}
+}
+
+// Forward broadcasts an event to all global subscribers.
+// Events that cannot be delivered immediately are dropped (backpressure is caller's responsibility).
+func (g *GlobalEventEmitter) Forward(event *models.EventRecord) {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	for ch := range g.subscribers {
+		select {
+		case ch <- event:
+		default:
+			// Drop if subscriber is slow.
+		}
+	}
+}
+
+// Subscribe registers a new global subscriber channel and returns it.
+func (g *GlobalEventEmitter) Subscribe() chan *models.EventRecord {
+	ch := make(chan *models.EventRecord, 64)
+	g.mu.Lock()
+	g.subscribers[ch] = struct{}{}
+	g.mu.Unlock()
+	return ch
+}
+
+// Unsubscribe removes a channel from the global subscriber set and closes it.
+func (g *GlobalEventEmitter) Unsubscribe(ch chan *models.EventRecord) {
+	g.mu.Lock()
+	delete(g.subscribers, ch)
+	g.mu.Unlock()
+	close(ch)
+}

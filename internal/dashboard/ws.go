@@ -140,3 +140,124 @@ func (a *API) enrichEvent(ctx context.Context, evt *models.EventRecord) *enriche
 
 	return enriched
 }
+
+// handleGlobalWebSocket serves /ws/global — broadcasts events from all projects.
+func (a *API) handleGlobalWebSocket(w http.ResponseWriter, r *http.Request) {
+	token := extractWebSocketToken(r)
+	if token == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	hash := hashToken(token)
+	valid, err := a.db.ValidateAuthToken(r.Context(), hash)
+	if err != nil || !valid {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var respHeader http.Header
+	if proto := r.Header.Get("Sec-WebSocket-Protocol"); strings.HasPrefix(strings.ToLower(proto), "bearer.") {
+		respHeader = http.Header{"Sec-WebSocket-Protocol": []string{proto}}
+	}
+	conn, err := upgrader.Upgrade(w, r, respHeader)
+	if err != nil {
+		log.Error().Err(err).Msg("WebSocket upgrade failed")
+		return
+	}
+	defer conn.Close()
+
+	// Prefer the dedicated global emitter; fall back to the default emitter.
+	emitter := a.globalEmitter
+	if emitter == nil {
+		emitter = a.emitter
+	}
+	if emitter == nil {
+		return
+	}
+
+	ch := emitter.Subscribe()
+	defer emitter.Unsubscribe(ch)
+
+	for evt := range ch {
+		enriched := a.enrichEvent(r.Context(), evt)
+		data, err := json.Marshal(enriched)
+		if err != nil {
+			continue
+		}
+		if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
+			break
+		}
+	}
+}
+
+// handleProjectWebSocket serves /ws/projects/{pid} — broadcasts events for a specific project.
+func (a *API) handleProjectWebSocket(w http.ResponseWriter, r *http.Request) {
+	token := extractWebSocketToken(r)
+	if token == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	hash := hashToken(token)
+	valid, err := a.db.ValidateAuthToken(r.Context(), hash)
+	if err != nil || !valid {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Extract project ID from URL path.
+	pid := strings.TrimPrefix(r.URL.Path, "/ws/projects/")
+
+	if a.projects == nil {
+		http.Error(w, "project registry not configured", http.StatusServiceUnavailable)
+		return
+	}
+	worker, ok := a.projects.GetWorker(pid)
+	if !ok {
+		http.Error(w, "project not found", http.StatusNotFound)
+		return
+	}
+
+	var respHeader http.Header
+	if proto := r.Header.Get("Sec-WebSocket-Protocol"); strings.HasPrefix(strings.ToLower(proto), "bearer.") {
+		respHeader = http.Header{"Sec-WebSocket-Protocol": []string{proto}}
+	}
+	conn, err := upgrader.Upgrade(w, r, respHeader)
+	if err != nil {
+		log.Error().Err(err).Msg("WebSocket upgrade failed")
+		return
+	}
+	defer conn.Close()
+
+	emitter, ok := worker.Database.(interface {
+		EventSubscriber() EventSubscriber
+	})
+	_ = emitter
+	_ = ok
+
+	// Fall back to global emitter filtered by project ID.
+	globalEmitter := a.globalEmitter
+	if globalEmitter == nil {
+		globalEmitter = a.emitter
+	}
+	if globalEmitter == nil {
+		return
+	}
+
+	ch := globalEmitter.Subscribe()
+	defer globalEmitter.Unsubscribe(ch)
+
+	for evt := range ch {
+		// Filter to only events for this project.
+		if evt.ProjectID != "" && evt.ProjectID != pid {
+			continue
+		}
+		enriched := a.enrichEvent(r.Context(), evt)
+		data, err := json.Marshal(enriched)
+		if err != nil {
+			continue
+		}
+		if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
+			break
+		}
+	}
+}

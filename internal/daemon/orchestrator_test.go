@@ -246,6 +246,12 @@ func (m *orchMockDB) GetLlmCallAggregates(_ context.Context, _ time.Time) ([]db.
 func (m *orchMockDB) GetRecentLlmCalls(_ context.Context, _ int) ([]db.RecentLlmCall, error) {
 	return nil, nil
 }
+func (m *orchMockDB) CreateChatMessage(_ context.Context, _ *models.ChatMessage) error {
+	return nil
+}
+func (m *orchMockDB) GetChatMessages(_ context.Context, _ string, _ int) ([]models.ChatMessage, error) {
+	return nil, nil
+}
 
 func (m *orchMockDB) lastStatus(id string) models.TicketStatus {
 	for i := len(m.statusUpdates) - 1; i >= 0; i-- {

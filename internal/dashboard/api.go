@@ -13,6 +13,7 @@ import (
 	"github.com/canhta/foreman/internal/command"
 	"github.com/canhta/foreman/internal/db"
 	"github.com/canhta/foreman/internal/models"
+	"github.com/canhta/foreman/internal/project"
 	"github.com/canhta/foreman/internal/util"
 )
 
@@ -53,6 +54,8 @@ type DashboardDB interface {
 	UpdateTaskContextStats(ctx context.Context, taskID string, stats TaskContextStats) error
 	GetLlmCallAggregates(ctx context.Context, since time.Time) (byRunner []db.RunnerAggregate, byModel []db.ModelAggregate, byRole []db.RoleAggregate, err error)
 	GetRecentLlmCalls(ctx context.Context, limit int) ([]db.RecentLlmCall, error)
+	CreateChatMessage(ctx context.Context, msg *models.ChatMessage) error
+	GetChatMessages(ctx context.Context, ticketID string, limit int) ([]models.ChatMessage, error)
 }
 
 // EventSubscriber is the subset of EventEmitter needed for WebSocket.
@@ -113,6 +116,7 @@ type API struct {
 	startedAt       time.Time
 	db              DashboardDB
 	emitter         EventSubscriber
+	globalEmitter   EventSubscriber // fans in events from all projects
 	statusProvider  DaemonStatusProvider
 	controller      DaemonController
 	retrier         TicketRetrier
@@ -124,6 +128,7 @@ type API struct {
 	channelHealth   map[string]interface{ IsConnected() bool }
 	version         string
 	costCfg         models.CostConfig
+	projects        ProjectRegistry
 }
 
 // SetChannelHealth registers a HealthChecker for a named channel.
@@ -168,6 +173,126 @@ func (a *API) SetConfigProvider(p ConfigProvider) {
 // SetCommandRegistry wires a command registry for the commands endpoints.
 func (a *API) SetCommandRegistry(r *command.Registry) {
 	a.commandRegistry = r
+}
+
+// SetProjectRegistry wires the project registry for multi-project API endpoints.
+func (a *API) SetProjectRegistry(r ProjectRegistry) {
+	a.projects = r
+}
+
+// SetGlobalEmitter wires a global event emitter that fans in events from all projects.
+func (a *API) SetGlobalEmitter(e EventSubscriber) {
+	a.globalEmitter = e
+}
+
+// projectDB resolves the database for a project from the URL path value "pid".
+// Returns an error if the project is not found or its database does not implement DashboardDB.
+func (a *API) projectDB(r *http.Request) (DashboardDB, error) {
+	if a.projects == nil {
+		return nil, fmt.Errorf("project registry not configured")
+	}
+	pid := r.PathValue("pid")
+	if pid == "" {
+		pid = strings.TrimPrefix(r.URL.Path, "/api/projects/")
+		if idx := strings.Index(pid, "/"); idx >= 0 {
+			pid = pid[:idx]
+		}
+	}
+	worker, ok := a.projects.GetWorker(pid)
+	if !ok {
+		return nil, fmt.Errorf("project %q not found or not running", pid)
+	}
+	projDB, ok := worker.Database.(DashboardDB)
+	if !ok {
+		return nil, fmt.Errorf("project %q database does not implement DashboardDB", pid)
+	}
+	return projDB, nil
+}
+
+// handleListProjects handles GET /api/projects.
+func (a *API) handleListProjects(w http.ResponseWriter, r *http.Request) {
+	if a.projects == nil {
+		writeJSON(w, http.StatusOK, []project.IndexEntry{})
+		return
+	}
+	entries, err := a.projects.ListProjects()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if entries == nil {
+		entries = []project.IndexEntry{}
+	}
+	writeJSON(w, http.StatusOK, entries)
+}
+
+// handleCreateProject handles POST /api/projects.
+func (a *API) handleCreateProject(w http.ResponseWriter, r *http.Request) {
+	if a.projects == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "project registry not configured"})
+		return
+	}
+	var cfg project.ProjectConfig
+	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	id, err := a.projects.CreateProject(&cfg)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]string{"id": id})
+}
+
+// handleDeleteProject handles DELETE /api/projects/{pid}.
+func (a *API) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
+	if a.projects == nil {
+		http.Error(w, "project registry not configured", http.StatusServiceUnavailable)
+		return
+	}
+	pid := r.PathValue("pid")
+	if pid == "" {
+		pid = strings.TrimPrefix(r.URL.Path, "/api/projects/")
+		pid = strings.TrimSuffix(pid, "/")
+	}
+	if err := a.projects.DeleteProject(pid); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleProjectTickets handles GET /api/projects/{pid}/tickets.
+func (a *API) handleProjectTickets(w http.ResponseWriter, r *http.Request) {
+	projDB, err := a.projectDB(r)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		return
+	}
+	filter := models.TicketFilter{}
+	tickets, err := projDB.ListTickets(r.Context(), filter)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if tickets == nil {
+		tickets = []models.Ticket{}
+	}
+	writeJSON(w, http.StatusOK, tickets)
+}
+
+// handleOverview handles GET /api/overview — aggregated metrics across all projects.
+func (a *API) handleOverview(w http.ResponseWriter, r *http.Request) {
+	projectCount := 0
+	if a.projects != nil {
+		if entries, err := a.projects.ListProjects(); err == nil {
+			projectCount = len(entries)
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"projects": projectCount,
+	})
 }
 
 // NewAPI creates a new API instance.
@@ -895,6 +1020,76 @@ func (a *API) handleActivityBreakdown(w http.ResponseWriter, r *http.Request) {
 func (a *API) handleClaudeCodeUsage(w http.ResponseWriter, _ *http.Request) {
 	usage := parseClaudeCodeUsageCached()
 	writeJSON(w, http.StatusOK, usage)
+}
+
+// handleGetChat handles GET /api/tickets/{id}/chat
+// Returns the chat messages for a ticket in ascending order (oldest first).
+func (a *API) handleGetChat(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	id := extractPathParam(r.URL.Path, "/api/tickets/")
+	if id == "" {
+		http.Error(w, "missing ticket id", http.StatusBadRequest)
+		return
+	}
+	limit := 50
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 200 {
+			limit = n
+		}
+	}
+	msgs, err := a.db.GetChatMessages(r.Context(), id, limit)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if msgs == nil {
+		msgs = []models.ChatMessage{}
+	}
+	writeJSON(w, http.StatusOK, msgs)
+}
+
+// handlePostChat handles POST /api/tickets/{id}/chat
+// Appends a user message to the chat for a ticket.
+func (a *API) handlePostChat(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	id := extractPathParam(r.URL.Path, "/api/tickets/")
+	if id == "" {
+		http.Error(w, "missing ticket id", http.StatusBadRequest)
+		return
+	}
+	var body struct {
+		Content     string `json:"content"`
+		MessageType string `json:"message_type"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	body.Content = strings.TrimSpace(body.Content)
+	if body.Content == "" {
+		http.Error(w, "content is required", http.StatusBadRequest)
+		return
+	}
+	if body.MessageType == "" {
+		body.MessageType = "reply"
+	}
+	msg := &models.ChatMessage{
+		TicketID:    id,
+		Sender:      "user",
+		MessageType: body.MessageType,
+		Content:     body.Content,
+	}
+	if err := a.db.CreateChatMessage(r.Context(), msg); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusCreated, msg)
 }
 
 // commandListItem is the JSON representation of a command in the list response.
