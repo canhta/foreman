@@ -7,6 +7,7 @@
   import type { ProjectConfig } from '../types';
   import ProjectTabs from '../components/ProjectTabs.svelte';
   import ConfirmDialog from '../components/ConfirmDialog.svelte';
+  import { IconLayoutDashboard } from '@tabler/icons-svelte';
 
   let { params }: { params: { pid: string } } = $props();
 
@@ -119,7 +120,7 @@
   <div class="border border-[var(--color-border)] mb-4 animate-fade-in">
     <button onclick={() => toggleSection('project')}
             class="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-[var(--color-surface-hover)] transition-colors">
-      <span class="text-xs tracking-widest text-[var(--color-muted)] uppercase">◈ PROJECT</span>
+      <span class="text-xs tracking-widest text-[var(--color-muted)] uppercase flex items-center gap-1.5"><IconLayoutDashboard size={14} stroke={1.5} /> PROJECT</span>
       <span class="text-[var(--color-muted)] text-xs">{expandedSections.project ? '−' : '+'}</span>
     </button>
     {#if expandedSections.project}
