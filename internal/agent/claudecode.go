@@ -9,6 +9,7 @@ import (
 
 	"github.com/canhta/foreman/internal/prompts"
 	"github.com/canhta/foreman/internal/runner"
+	"github.com/rs/zerolog/log"
 )
 
 // ClaudeCodeConfig holds configuration for the Claude Code CLI runner.
@@ -49,6 +50,13 @@ func (r *ClaudeCodeRunner) WithRegistry(reg *prompts.Registry) *ClaudeCodeRunner
 }
 
 func (r *ClaudeCodeRunner) Run(ctx context.Context, req AgentRequest) (AgentResult, error) {
+	log.Debug().
+		Str("work_dir", req.WorkDir).
+		Int("prompt_len", len(req.Prompt)).
+		Int("max_turns", resolveInt(req.MaxTurns, r.config.MaxTurnsDefault)).
+		Strs("allowed_tools", req.AllowedTools).
+		Msg("claudecode: starting run")
+
 	if r.registry != nil {
 		vars := map[string]any{
 			"test_command": "go test ./...", // could come from req context
@@ -56,6 +64,7 @@ func (r *ClaudeCodeRunner) Run(ctx context.Context, req AgentRequest) (AgentResu
 		if err := r.registry.ForClaude(req.WorkDir, vars); err != nil {
 			return AgentResult{}, fmt.Errorf("claudecode: write .claude/: %w", err)
 		}
+		log.Debug().Str("work_dir", req.WorkDir).Msg("claudecode: wrote .claude/ structure")
 	}
 
 	args := []string{
@@ -93,25 +102,55 @@ func (r *ClaudeCodeRunner) Run(ctx context.Context, req AgentRequest) (AgentResu
 		timeout = 120
 	}
 
+	log.Debug().
+		Str("work_dir", req.WorkDir).
+		Str("model", r.config.Model).
+		Strs("tools", tools).
+		Int("timeout_secs", timeout).
+		Msg("claudecode: invoking CLI subprocess")
+
 	out, err := r.runner.Run(ctx, req.WorkDir, r.bin, args, timeout)
 	if err != nil {
+		log.Debug().Str("work_dir", req.WorkDir).Err(err).Msg("claudecode: CLI subprocess error")
 		return AgentResult{}, fmt.Errorf("claudecode: command error: %w", err)
 	}
 	if out.TimedOut {
+		log.Debug().Str("work_dir", req.WorkDir).Int("timeout_secs", timeout).Msg("claudecode: CLI subprocess timed out")
 		return AgentResult{}, fmt.Errorf("claudecode: timed out after %ds", timeout)
 	}
 	if out.ExitCode != 0 {
+		log.Debug().
+			Str("work_dir", req.WorkDir).
+			Int("exit_code", out.ExitCode).
+			Str("stderr", truncate(out.Stderr, 500)).
+			Msg("claudecode: CLI subprocess non-zero exit")
 		return AgentResult{}, fmt.Errorf("claudecode: exit %d: %s", out.ExitCode, truncate(out.Stderr, 500))
 	}
 
+	log.Debug().
+		Str("work_dir", req.WorkDir).
+		Int("stdout_len", len(out.Stdout)).
+		Int("stderr_len", len(out.Stderr)).
+		Msg("claudecode: CLI subprocess completed")
+
 	result, err := parseSDKResultMessage(out.Stdout)
 	if err != nil {
+		log.Debug().Str("work_dir", req.WorkDir).Err(err).Str("stdout_tail", truncate(out.Stdout, 300)).Msg("claudecode: failed to parse SDK result")
 		return AgentResult{}, err
 	}
 	// Fall back to configured model when SDK doesn't report one.
 	if result.Usage.Model == "" && r.config.Model != "" {
 		result.Usage.Model = r.config.Model
 	}
+	log.Debug().
+		Str("work_dir", req.WorkDir).
+		Str("model", result.Usage.Model).
+		Int("input_tokens", result.Usage.InputTokens).
+		Int("output_tokens", result.Usage.OutputTokens).
+		Float64("cost_usd", result.Usage.CostUSD).
+		Int("num_turns", result.Usage.NumTurns).
+		Int("output_len", len(result.Output)).
+		Msg("claudecode: run complete")
 	return result, nil
 }
 

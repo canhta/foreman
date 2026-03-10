@@ -226,6 +226,17 @@ func (r *Registry) Render(kind EntryKind, name string, vars map[string]any) (str
 func (r *Registry) ForClaude(workDir string, vars map[string]any) error {
 	claudeDir := filepath.Join(workDir, ".claude")
 
+	// Write .gitignore first so git never tracks these ephemeral tooling files.
+	// This prevents `git add -A` from staging .claude/ as project code, which
+	// would cause merge conflicts when the planner also writes to the main workdir.
+	if err := os.MkdirAll(claudeDir, 0o755); err != nil {
+		return fmt.Errorf("mkdir .claude: %w", err)
+	}
+	gitignorePath := filepath.Join(claudeDir, ".gitignore")
+	if err := os.WriteFile(gitignorePath, []byte("*\n"), 0o644); err != nil {
+		return fmt.Errorf("write .claude/.gitignore: %w", err)
+	}
+
 	// Write agents
 	agentsDir := filepath.Join(claudeDir, "agents")
 	if err := os.MkdirAll(agentsDir, 0o755); err != nil {

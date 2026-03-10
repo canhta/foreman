@@ -211,6 +211,13 @@ func (r *PipelineTaskRunner) RunTask(ctx context.Context, task *models.Task) err
 	var currentRetryErrorType ErrorType
 
 	for attempt := 1; attempt <= r.config.MaxImplementationRetries+1; attempt++ {
+		log.Debug().
+			Str("task_id", task.ID).
+			Str("task_title", task.Title).
+			Int("attempt", attempt).
+			Int("max_attempts", r.config.MaxImplementationRetries+1).
+			Msg("builtin: starting attempt")
+
 		// Collapse prior feedback into a summary so the implementer retains
 		// context from previous attempts without raw entries growing unboundedly.
 		// On the very first attempt this is a no-op (accumulator is empty).
@@ -223,6 +230,11 @@ func (r *PipelineTaskRunner) RunTask(ctx context.Context, task *models.Task) err
 			feedbackText := feedback.Render()
 			errType := ClassifyRetryError(feedbackText)
 			currentRetryErrorType = errType
+			log.Debug().
+				Str("task_id", task.ID).
+				Int("attempt", attempt).
+				Str("error_type", string(errType)).
+				Msg("builtin: retry — classified error type")
 			if dbErr := r.db.SetTaskErrorType(ctx, task.ID, string(errType)); dbErr != nil {
 				log.Warn().Err(dbErr).Str("task_id", task.ID).Str("error_type", string(errType)).
 					Msg("failed to record task error type")
@@ -236,6 +248,7 @@ func (r *PipelineTaskRunner) RunTask(ctx context.Context, task *models.Task) err
 			if resetErr := r.resetWorkingTree(ctx, task.FilesToModify); resetErr != nil {
 				return fmt.Errorf("reset working tree before retry: %w", resetErr)
 			}
+			log.Debug().Str("task_id", task.ID).Strs("files", task.FilesToModify).Msg("builtin: working tree reset for retry")
 		}
 
 		// Check call cap before each LLM call.
@@ -257,6 +270,12 @@ func (r *PipelineTaskRunner) RunTask(ctx context.Context, task *models.Task) err
 		for p := range contextFiles {
 			contextFilePaths = append(contextFilePaths, p)
 		}
+		log.Debug().
+			Str("task_id", task.ID).
+			Int("attempt", attempt).
+			Int("context_files", len(contextFiles)).
+			Strs("context_paths", contextFilePaths).
+			Msg("builtin: calling implementer LLM")
 		result, err := r.implementer.Execute(ctx, ImplementerInput{
 			Task:           task,
 			ContextFiles:   contextFiles,
@@ -270,9 +289,15 @@ func (r *PipelineTaskRunner) RunTask(ctx context.Context, task *models.Task) err
 		if err != nil {
 			return fmt.Errorf("implementer (attempt %d): %w", attempt, err)
 		}
+		log.Debug().
+			Str("task_id", task.ID).
+			Int("attempt", attempt).
+			Int("response_len", len(result.Response.Content)).
+			Msg("builtin: implementer LLM returned")
 
 		// Check for mid-implementation escalation.
 		if question := detectEscalation(result.Response.Content); question != "" {
+			log.Info().Str("task_id", task.ID).Str("question", question).Msg("builtin: implementer escalated")
 			_ = r.db.UpdateTaskStatus(ctx, task.ID, models.TaskStatusEscalated)
 			return &EscalationError{Question: question}
 		}
@@ -283,15 +308,23 @@ func (r *PipelineTaskRunner) RunTask(ctx context.Context, task *models.Task) err
 			r.config.SearchReplaceSimilarity,
 		)
 		if err != nil {
+			log.Debug().Str("task_id", task.ID).Int("attempt", attempt).Err(err).Msg("builtin: failed to parse implementer output")
 			feedback.AddLintError(fmt.Sprintf("Failed to parse output: %s", err))
 			continue
 		}
+		log.Debug().
+			Str("task_id", task.ID).
+			Int("attempt", attempt).
+			Int("file_changes", len(parsed.Files)).
+			Msg("builtin: parsed implementer output")
 
 		// Apply file changes.
 		if applyErr := r.applyChanges(parsed); applyErr != nil {
+			log.Debug().Str("task_id", task.ID).Int("attempt", attempt).Err(applyErr).Msg("builtin: failed to apply changes")
 			feedback.AddLintError(fmt.Sprintf("Failed to apply changes: %s", applyErr))
 			continue
 		}
+		log.Debug().Str("task_id", task.ID).Int("attempt", attempt).Int("file_changes", len(parsed.Files)).Msg("builtin: applied file changes")
 
 		// TDD verification.
 		if r.config.EnableTDDVerification {
@@ -299,6 +332,7 @@ func (r *PipelineTaskRunner) RunTask(ctx context.Context, task *models.Task) err
 				return fmt.Errorf("update task status: %w", statusErr)
 			}
 			tddResult := r.runTDDVerification(ctx, parsed)
+			log.Debug().Str("task_id", task.ID).Int("attempt", attempt).Bool("valid", tddResult.Valid).Str("phase", tddResult.Phase).Str("reason", tddResult.Reason).Msg("builtin: TDD verification result")
 			if !tddResult.Valid {
 				feedback.AddTDDFeedback(fmt.Sprintf("Phase: %s, Reason: %s", tddResult.Phase, tddResult.Reason))
 				continue
@@ -309,7 +343,9 @@ func (r *PipelineTaskRunner) RunTask(ctx context.Context, task *models.Task) err
 		if statusErr := r.db.UpdateTaskStatus(ctx, task.ID, models.TaskStatusTesting); statusErr != nil {
 			return fmt.Errorf("update task status: %w", statusErr)
 		}
+		log.Debug().Str("task_id", task.ID).Int("attempt", attempt).Str("test_command", r.config.TestCommand).Msg("builtin: running tests")
 		testOutput, testPassed := r.runTests(ctx)
+		log.Debug().Str("task_id", task.ID).Int("attempt", attempt).Bool("passed", testPassed).Int("output_len", len(testOutput)).Msg("builtin: test run complete")
 		if !testPassed {
 			feedback.AddTestError(testOutput)
 			continue
@@ -320,6 +356,7 @@ func (r *PipelineTaskRunner) RunTask(ctx context.Context, task *models.Task) err
 		if err != nil {
 			return fmt.Errorf("git diff: %w", err)
 		}
+		log.Debug().Str("task_id", task.ID).Int("attempt", attempt).Int("diff_len", len(strings.TrimSpace(diff))).Msg("builtin: working tree diff")
 
 		// Spec review.
 		if len(task.AcceptanceCriteria) > 0 {
@@ -402,14 +439,27 @@ func (r *PipelineTaskRunner) runTaskWithAgent(ctx context.Context, task *models.
 	}
 
 	for attempt := 1; attempt <= r.config.MaxImplementationRetries+1; attempt++ {
+		log.Debug().
+			Str("task_id", task.ID).
+			Str("task_title", task.Title).
+			Str("runner", r.config.AgentRunnerName).
+			Int("attempt", attempt).
+			Int("max_attempts", r.config.MaxImplementationRetries+1).
+			Str("work_dir", r.config.WorkDir).
+			Msg("agent: starting attempt")
+
 		if attempt > 1 {
 			feedback.ResetKeepingSummary()
 		}
 
 		// Build prompt for this attempt via registry.
-		roleName := "implementer"
+		// Prefer agent-specific roles (no output-format blocks; agent edits files directly).
+		// Fall back to builtin roles if agent-specific ones are not found.
+		roleName := "implementer-agent"
+		fallbackRole := "implementer"
 		if attempt > 1 {
-			roleName = "implementer-retry"
+			roleName = "implementer-retry-agent"
+			fallbackRole = "implementer-retry"
 		}
 		promptVars := map[string]any{
 			"task_title":          task.Title,
@@ -427,8 +477,33 @@ func (r *PipelineTaskRunner) runTaskWithAgent(ctx context.Context, task *models.
 		}
 		prompt, err := r.registry.Render(prompts.KindRole, roleName, promptVars)
 		if err != nil {
+			log.Debug().Str("task_id", task.ID).Str("role", roleName).Err(err).Msg("agent: agent-specific role not found, falling back")
+			roleName = fallbackRole
+			prompt, err = r.registry.Render(prompts.KindRole, roleName, promptVars)
+		}
+		if err != nil {
 			return fmt.Errorf("render agent prompt (attempt %d): %w", attempt, err)
 		}
+		log.Debug().
+			Str("task_id", task.ID).
+			Int("attempt", attempt).
+			Str("role", roleName).
+			Int("prompt_len", len(prompt)).
+			Msg("agent: prompt rendered")
+
+		// Record HEAD before running agent to detect auto-commits (e.g. Claude Code).
+		var headBefore string
+		if logs, logErr := r.git.Log(ctx, r.config.WorkDir, 1); logErr != nil {
+			log.Warn().Err(logErr).Str("task_id", task.ID).Int("attempt", attempt).
+				Msg("agent_diff: failed to read HEAD before agent run; auto-commit detection disabled for this attempt")
+		} else if len(logs) > 0 {
+			headBefore = logs[0].SHA
+		}
+		log.Debug().
+			Str("task_id", task.ID).
+			Int("attempt", attempt).
+			Str("head_before", headBefore).
+			Msg("agent: invoking runner")
 
 		// Delegate to agent.
 		result, err := r.config.AgentRunner.Run(ctx, agent.AgentRequest{
@@ -483,36 +558,67 @@ func (r *PipelineTaskRunner) runTaskWithAgent(ctx context.Context, task *models.
 			log.Warn().Err(writeErr).Str("task_id", task.ID).Msg("failed to record agent llm call")
 		}
 
-		// Verify the agent produced a diff.
+		// Verify the agent produced a diff, accounting for agents that auto-commit
+		// (e.g. Claude Code commits after each task).
 		diff, diffErr := r.git.DiffWorking(ctx, r.config.WorkDir)
 		if diffErr != nil {
 			return fmt.Errorf("git diff after agent: %w", diffErr)
 		}
+		log.Debug().
+			Str("task_id", task.ID).
+			Int("attempt", attempt).
+			Str("head_before", headBefore).
+			Int("working_diff_len", len(strings.TrimSpace(diff))).
+			Msg("agent_diff: working tree diff after agent")
+
+		agentAutoCommitted := false
+		if strings.TrimSpace(diff) == "" && headBefore != "" {
+			// Working tree is clean — check if HEAD advanced (agent auto-committed).
+			if logs, logErr := r.git.Log(ctx, r.config.WorkDir, 1); logErr == nil && len(logs) > 0 {
+				headAfter := logs[0].SHA
+				log.Debug().
+					Str("task_id", task.ID).
+					Int("attempt", attempt).
+					Str("head_before", headBefore).
+					Str("head_after", headAfter).
+					Msg("agent_diff: checking for auto-commit")
+				if headAfter != headBefore {
+					agentAutoCommitted = true
+					commitDiff, diffErr2 := r.git.Diff(ctx, r.config.WorkDir, headBefore, headAfter)
+					if diffErr2 != nil {
+						return fmt.Errorf("git diff auto-committed range %s..%s: %w", headBefore, headAfter, diffErr2)
+					}
+					diff = commitDiff
+					log.Info().
+						Str("task_id", task.ID).
+						Int("attempt", attempt).
+						Str("head_before", headBefore).
+						Str("head_after", headAfter).
+						Int("commit_diff_len", len(strings.TrimSpace(diff))).
+						Msg("agent_diff: agent auto-committed changes; treating as successful diff")
+				}
+			}
+		}
+
 		if strings.TrimSpace(diff) == "" {
 			log.Warn().
 				Str("task_id", task.ID).
 				Int("attempt", attempt).
-				Msg("agent produced empty diff; will retry if attempts remain")
+				Str("head_before", headBefore).
+				Msg("agent_diff: agent produced empty diff; will retry if attempts remain")
 			feedback.AddLintError("agent produced no file changes (empty diff)")
 			continue
 		}
 
-		// Stage all changes and commit.
-		if stageErr := r.git.StageAll(ctx, r.config.WorkDir); stageErr != nil {
-			return fmt.Errorf("git stage after agent: %w", stageErr)
-		}
-		commitMsg := fmt.Sprintf("feat: %s", task.Title)
-		_, commitErr := r.git.Commit(ctx, r.config.WorkDir, commitMsg)
-		if commitErr != nil {
-			// If the agent already committed, the working tree may be clean.
-			// Verify by checking the diff again; if clean this is fine.
-			cleanDiff, _ := r.git.DiffWorking(ctx, r.config.WorkDir)
-			if strings.TrimSpace(cleanDiff) != "" {
+		// Stage and commit unless the agent already committed.
+		if !agentAutoCommitted {
+			if stageErr := r.git.StageAll(ctx, r.config.WorkDir); stageErr != nil {
+				return fmt.Errorf("git stage after agent: %w", stageErr)
+			}
+			commitMsg := fmt.Sprintf("feat: %s", task.Title)
+			if _, commitErr := r.git.Commit(ctx, r.config.WorkDir, commitMsg); commitErr != nil {
 				return fmt.Errorf("git commit after agent: %w", commitErr)
 			}
-			log.Info().
-				Str("task_id", task.ID).
-				Msg("commit skipped: agent already committed the changes")
 		}
 
 		// Invalidate context cache so the next task sees fresh HEAD.

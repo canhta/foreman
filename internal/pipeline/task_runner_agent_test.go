@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/canhta/foreman/internal/agent"
+	"github.com/canhta/foreman/internal/git"
 	"github.com/canhta/foreman/internal/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -118,6 +119,63 @@ func TestRunTask_AgentRunner_EmptyDiff_Retries(t *testing.T) {
 	err := tr.RunTask(context.Background(), task)
 	assert.Error(t, err) // should fail after retries exhausted
 	assert.Equal(t, models.TaskStatusFailed, mockDB.statuses["t-1"])
+}
+
+func TestRunTask_AgentRunner_AutoCommit_DetectedAsSuccess(t *testing.T) {
+	// Simulate Claude Code auto-committing: working tree is clean after run,
+	// but HEAD advanced. Foreman should detect the new commit as the diff
+	// and succeed rather than treating it as an empty-diff failure.
+	mockAgent := &mockAgentRunnerForTask{
+		result: agent.AgentResult{Output: "done", Usage: agent.AgentUsage{CostUSD: 0.05}},
+	}
+	mockDB := newMockTaskRunnerDB()
+
+	// Log: first call returns sha-before, second call returns sha-after (HEAD advanced).
+	mockGit := &realMockGitProvider{
+		diffOutput:    "", // DiffWorking always empty — agent committed
+		commitSHA:     "sha-before",
+		logEntries:    []git.CommitEntry{{SHA: "sha-before"}},
+		logEntriesSeq: [][]git.CommitEntry{{{SHA: "sha-after"}}},
+	}
+	// Override Diff to return a non-empty diff for the sha-before..sha-after range.
+	// realMockGitProvider.Diff returns diffOutput which is empty; we need a custom mock.
+	// Use a wrapper that returns a real diff for the range call.
+	mockGitWithDiff := &autoCommitMockGitProvider{realMockGitProvider: mockGit, rangeDiff: "diff --git a/app.ts b/app.ts\n+fix"}
+
+	cfg := TaskRunnerConfig{
+		WorkDir:                  t.TempDir(),
+		MaxImplementationRetries: 0,
+		AgentRunner:              mockAgent,
+		AgentRunnerName:          "claudecode",
+	}
+	tr := NewPipelineTaskRunner(nil, mockDB, mockGitWithDiff, nil, cfg, mustLoadTestRegistry(t))
+	task := &models.Task{ID: "t-ac", TicketID: "tk-ac", Title: "Fix scroll bug"}
+
+	err := tr.RunTask(context.Background(), task)
+	require.NoError(t, err, "auto-committed task should succeed")
+	assert.Equal(t, models.TaskStatusDone, mockDB.statuses["t-ac"])
+	// Commit should NOT have been called by Foreman (agent already committed)
+	assert.False(t, mockGitWithDiff.commitCalled, "Foreman should not re-commit when agent auto-committed")
+}
+
+// autoCommitMockGitProvider wraps realMockGitProvider, returning a real diff
+// for the range-based Diff call while keeping DiffWorking empty.
+type autoCommitMockGitProvider struct {
+	*realMockGitProvider
+	rangeDiff string
+	commitCalled bool
+}
+
+func (m *autoCommitMockGitProvider) Diff(_ context.Context, _, base, head string) (string, error) {
+	if base != "" && head != "" && base != head {
+		return m.rangeDiff, nil
+	}
+	return "", nil
+}
+
+func (m *autoCommitMockGitProvider) Commit(ctx context.Context, workDir, msg string) (string, error) {
+	m.commitCalled = true
+	return m.realMockGitProvider.Commit(ctx, workDir, msg)
 }
 
 func TestRunTask_NoAgentRunner_UsesBuiltinPath(t *testing.T) {

@@ -195,6 +195,12 @@ func TestRegistryForClaude(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(data), "Write failing tests")
 
+	// Check .claude/.gitignore exists and ignores all content
+	gitignoreFile := filepath.Join(workDir, ".claude", ".gitignore")
+	gitignoreData, err := os.ReadFile(gitignoreFile)
+	require.NoError(t, err)
+	assert.Equal(t, "*\n", string(gitignoreData))
+
 	// Check .claude/settings.json exists
 	settingsFile := filepath.Join(workDir, ".claude", "settings.json")
 	_, err = os.Stat(settingsFile)
