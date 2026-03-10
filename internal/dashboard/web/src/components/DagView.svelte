@@ -1,16 +1,8 @@
 <script lang="ts">
   import type { Task } from '../types';
-
-  function taskStatusChar(status: string): string {
-    switch (status) {
-      case 'done': return '✓';
-      case 'failed': return '✗';
-      case 'implementing': case 'tdd_verifying': case 'testing':
-      case 'spec_review': case 'quality_review': return '⚙';
-      case 'skipped': return '⊘';
-      default: return '○';
-    }
-  }
+  import {
+    IconCheck, IconX, IconSettings2, IconCircleOff, IconCircle
+  } from '@tabler/icons-svelte';
 
   let { tasks = [] }: { tasks: Task[] } = $props();
 
@@ -142,9 +134,24 @@
           <text x="12" y="17" fill="#F0F0F0" font-size="11" font-family="monospace" font-weight="600">
             {node.task.Sequence}. {node.task.Title.slice(0, 16)}{node.task.Title.length > 16 ? '…' : ''}
           </text>
-          <!-- Status -->
-          <text x="12" y="33" fill={textColor} font-size="10" font-family="monospace">
-            {taskStatusChar(node.task.Status)} {node.task.Status.toUpperCase().replace('_', ' ')}
+          <!-- Status: icon via foreignObject + label via text -->
+          <foreignObject x="10" y="22" width="16" height="16">
+            <div xmlns="http://www.w3.org/1999/xhtml" style="color:{textColor}; display:flex; align-items:center;">
+              {#if node.task.Status === 'done'}
+                <IconCheck size={12} stroke={1.5} />
+              {:else if node.task.Status === 'failed'}
+                <IconX size={12} stroke={1.5} />
+              {:else if ['implementing','tdd_verifying','testing','spec_review','quality_review'].includes(node.task.Status)}
+                <IconSettings2 size={12} stroke={1.5} />
+              {:else if node.task.Status === 'skipped'}
+                <IconCircleOff size={12} stroke={1.5} />
+              {:else}
+                <IconCircle size={12} stroke={1.5} />
+              {/if}
+            </div>
+          </foreignObject>
+          <text x="28" y="33" fill={textColor} font-size="10" font-family="monospace">
+            {node.task.Status.toUpperCase().replace('_', ' ')}
           </text>
         </g>
       {/each}
