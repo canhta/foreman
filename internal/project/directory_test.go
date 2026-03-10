@@ -62,7 +62,8 @@ func TestWriteAndLoadProjectConfig_RoundTrip(t *testing.T) {
 	want.Models.Planner = "anthropic:claude-sonnet-4-6"
 	want.Models.Implementer = "anthropic:claude-sonnet-4-6"
 
-	if err := WriteProjectConfig(projectDir, want); err != nil {
+	err = WriteProjectConfig(projectDir, want)
+	if err != nil {
 		t.Fatalf("WriteProjectConfig: %v", err)
 	}
 
@@ -156,7 +157,8 @@ func TestWriteAndLoadProjectConfig_GitHubTracker(t *testing.T) {
 	want.Tracker.GitHub.Repo = "myrepo"
 	want.Tracker.GitHub.BaseURL = "https://github.example.com"
 
-	if err := WriteProjectConfig(projectDir, want); err != nil {
+	err = WriteProjectConfig(projectDir, want)
+	if err != nil {
 		t.Fatalf("WriteProjectConfig: %v", err)
 	}
 	got, err := LoadProjectConfig(ProjectConfigPath(projectDir))
@@ -192,7 +194,8 @@ func TestWriteAndLoadProjectConfig_LinearTracker(t *testing.T) {
 	want.Tracker.Linear.TeamID = "TEAM1"
 	want.Tracker.Linear.BaseURL = "https://api.linear.app"
 
-	if err := WriteProjectConfig(projectDir, want); err != nil {
+	err = WriteProjectConfig(projectDir, want)
+	if err != nil {
 		t.Fatalf("WriteProjectConfig: %v", err)
 	}
 	got, err := LoadProjectConfig(ProjectConfigPath(projectDir))
