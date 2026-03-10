@@ -301,9 +301,8 @@ type LocalRunnerConfig struct {
 }
 
 type DatabaseConfig struct {
-	Driver   string         `mapstructure:"driver"`
-	Postgres PostgresConfig `mapstructure:"postgres"`
-	SQLite   SQLiteConfig   `mapstructure:"sqlite"`
+	Driver string       `mapstructure:"driver"`
+	SQLite SQLiteConfig `mapstructure:"sqlite"`
 }
 
 type SQLiteConfig struct {
@@ -311,11 +310,6 @@ type SQLiteConfig struct {
 	BusyTimeoutMs      int    `mapstructure:"busy_timeout_ms"`
 	WALMode            bool   `mapstructure:"wal_mode"`
 	EventFlushInterval int    `mapstructure:"event_flush_interval_ms"`
-}
-
-type PostgresConfig struct {
-	URL            string `mapstructure:"url"`
-	MaxConnections int    `mapstructure:"max_connections"`
 }
 
 type PipelineConfig struct {
