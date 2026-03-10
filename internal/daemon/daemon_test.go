@@ -169,6 +169,12 @@ func (m *daemonMockDB) GetLlmCallAggregates(_ context.Context, _ time.Time) ([]d
 func (m *daemonMockDB) GetRecentLlmCalls(_ context.Context, _ int) ([]db.RecentLlmCall, error) {
 	return nil, nil
 }
+func (m *daemonMockDB) CreateChatMessage(_ context.Context, _ *models.ChatMessage) error {
+	return nil
+}
+func (m *daemonMockDB) GetChatMessages(_ context.Context, _ string, _ int) ([]models.ChatMessage, error) {
+	return nil, nil
+}
 
 // daemonMockTracker is a mock tracker for daemon-level ingestion tests.
 type daemonMockTracker struct {

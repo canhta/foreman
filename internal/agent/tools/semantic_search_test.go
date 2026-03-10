@@ -182,6 +182,12 @@ func (m *mockDB) GetLlmCallAggregates(_ context.Context, _ time.Time) ([]db.Runn
 func (m *mockDB) GetRecentLlmCalls(_ context.Context, _ int) ([]db.RecentLlmCall, error) {
 	return nil, nil
 }
+func (m *mockDB) CreateChatMessage(_ context.Context, _ *models.ChatMessage) error {
+	return nil
+}
+func (m *mockDB) GetChatMessages(_ context.Context, _ string, _ int) ([]models.ChatMessage, error) {
+	return nil, nil
+}
 
 // --- Helpers ---
 
