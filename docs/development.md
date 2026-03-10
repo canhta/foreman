@@ -214,11 +214,18 @@ dlv connect 127.0.0.1:2345
 main.go              Entry point, cobra root command
 cmd/                 CLI commands (run, start, stop, status, ps, cost, dashboard, token, logs)
 internal/
-  agent/             AgentRunner interface + builtin, claudecode, copilot implementations
-  agent/tools/       Typed tool registry (14 tools)
+  agent/             AgentRunner interface + builtin, claudecode, copilot implementations;
+                     permission.go (Ruleset, Evaluate); modes.go (PlanMode, ExploreMode, BuildMode);
+                     cost_tracker.go; task_manager.go; diff_tracker.go
+  agent/tools/       Typed tool registry (Read, ReadRange, Write, Edit, MultiEdit, ApplyPatch, ListDir, Glob,
+                     Grep, GetSymbol, GetErrors, TreeSummary, GetDiff, GetCommitLog, Bash, RunTest,
+                     Subagent, Batch, LSP, TodoRead, TodoWrite, WebFetch, ListMCPTools, ReadMCPResource);
+                     truncation.go; edit_strategies.go
   agent/mcp/         MCP manager, stdio client, and health monitoring
+  bus/               Typed async pub/sub event bus (Subscribe, SubscribeAll, Publish, Drain)
   config/            TOML/Viper config loading + validation
-  context/           Context assembler, file selector, token budget, secrets scanner
+  context/           Context assembler, file selector, token budget, secrets scanner;
+                     walk_context_files.go (hierarchical context file discovery)
   daemon/            Scheduler, clarification gate, file reservations, crash recovery
   dashboard/         HTTP server, REST API handlers, WebSocket, auth
   db/                Database interface, SQLite + PostgreSQL backends
@@ -226,11 +233,14 @@ internal/
   llm/               LlmProvider interface + Anthropic, OpenAI, OpenRouter, local implementations
   models/            Domain models: Ticket, Task, LlmCall, events, pipeline states
   pipeline/          State machine orchestrator + all stage implementations
+  prompts/           Unified prompt registry: roles, agents, skills, commands, fragments;
+                     registry.Render(kind, name, vars); registry.ForClaude(workDir, vars)
   runner/            CommandRunner interface + local and Docker implementations
-  skills/            YAML skill engine, step executor, hook dispatcher
+  skills/            YAML skill engine, step executor, hook dispatcher; discovery.go (multi-dir skill scan)
+  snapshot/          Repository snapshot (Patch, Diff, Restore); ensureInit is idempotent
   telemetry/         Cost controller, Prometheus metrics, structured events
   tracker/           IssueTracker interface + GitHub, Jira, Linear, local_file implementations
-prompts/             Jinja2 (.j2) prompt templates
+prompts/             Pongo2 (.j2) prompt templates, agent definitions, skill templates, commands
 skills/              Built-in and community YAML skill files
 ```
 
@@ -343,6 +353,25 @@ Tests that require a database use the SQLite in-memory driver. No external servi
 1. Implement `tools.Tool` in `internal/agent/tools/<name>.go`.
 2. Register in the tools registry in `internal/agent/tools/registry.go`.
 3. Update `docs/agent-runner.md` with the new tool entry.
+4. Tool output is automatically truncated by `truncation.go` — no manual truncation needed.
+
+### New Agent Mode
+
+1. Add a `Ruleset` constant in `internal/agent/modes.go` following the pattern of `PlanMode`, `ExploreMode`, `BuildMode`.
+2. The mode name can then be passed in `AgentRequest.Mode`.
+
+### New Prompt / Agent Definition
+
+1. Add a pongo2 template (`.md.j2`) under `prompts/<kind>/<name>.md.j2`.
+2. Supported kinds: `role`, `agent`, `skill`, `command`, `fragment`.
+3. Use `{% include %}` for actual template inclusion; `includes:` frontmatter is informational only.
+4. The registry picks up new files automatically on the next daemon start.
+
+### New Event Bus Topic
+
+1. Define a typed topic constant (string) and payload struct in the appropriate `internal/` package.
+2. Publish with `bus.Publish(topic, data)` and subscribe with `bus.Subscribe(topic, handler)` or `bus.SubscribeAll(handler)`.
+3. Always store the returned cancel function and call it during teardown to avoid goroutine leaks.
 
 ### New Skill Step Type
 

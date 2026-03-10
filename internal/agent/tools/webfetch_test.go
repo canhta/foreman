@@ -45,3 +45,52 @@ func TestWebFetch_SizeLimit(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "too large")
 }
+
+func TestHTMLToMarkdown_Tags(t *testing.T) {
+	tests := []struct {
+		input    string
+		contains string
+	}{
+		{"<h1>Header One</h1>", "# Header One"},
+		{"<h2>Header Two</h2>", "## Header Two"},
+		{"<h6>Header Six</h6>", "###### Header Six"},
+		{"<p>Paragraph</p>", "Paragraph"},
+		{"<li>Item</li>", "- Item"},
+		{"<code>snippet</code>", "`snippet`"},
+	}
+	for _, tc := range tests {
+		result := htmlToMarkdown(tc.input)
+		assert.Contains(t, result, tc.contains, "htmlToMarkdown(%q)", tc.input)
+	}
+}
+
+func TestStripHTMLTags(t *testing.T) {
+	input := "<div><p>Hello <b>world</b></p></div>"
+	result := stripHTMLTags(input)
+	assert.Equal(t, "Hello world", result)
+}
+
+func TestWebFetch_CancelledContext(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Handler that would block — but context is already cancelled
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel immediately
+
+	_, err := WebFetch(ctx, server.URL, "text", 10)
+	assert.Error(t, err)
+}
+
+func TestWebFetch_HTTPError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	_, err := WebFetch(context.Background(), server.URL, "text", 10)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "404")
+}

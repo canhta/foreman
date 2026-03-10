@@ -28,3 +28,10 @@ func TestValidatePatch_NewFile(t *testing.T) {
 	errs := ValidatePatchHunks("", patch)
 	assert.Empty(t, errs)
 }
+
+func TestValidatePatch_EmptyOriginal(t *testing.T) {
+	// When original is empty but patch has a valid header, no context to validate
+	patch := "--- a/test.go\n+++ b/test.go\n@@ -1,1 +1,1 @@\n-old\n+new\n"
+	errs := ValidatePatchHunks("", patch)
+	assert.Empty(t, errs)
+}

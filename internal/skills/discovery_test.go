@@ -46,6 +46,28 @@ func TestDiscoverSkills_AdditionalPaths(t *testing.T) {
 	assert.True(t, found)
 }
 
+func TestDiscoverSkills_EmptyDir(t *testing.T) {
+	root := t.TempDir()
+	paths := DiscoverSkillPaths(root, "")
+	assert.Empty(t, paths)
+}
+
+func TestDiscoverSkills_Deduplication(t *testing.T) {
+	root := t.TempDir()
+	createSkillFile(t, filepath.Join(root, "skills", "lint.yml"), "lint")
+
+	// Pass the same extra path twice — should not deduplicate, but the file should only appear once
+	extra := filepath.Join(root, "skills")
+	paths := DiscoverSkillPaths(root, "", extra)
+	count := 0
+	for _, p := range paths {
+		if filepath.Base(p) == "lint.yml" {
+			count++
+		}
+	}
+	assert.Equal(t, 1, count, "lint.yml should appear exactly once")
+}
+
 func createSkillFile(t *testing.T, path, id string) {
 	t.Helper()
 	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))

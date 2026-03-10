@@ -37,3 +37,37 @@ func TestTaskManager_Resume(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "partial result", task.Result)
 }
+
+func TestTaskManager_SequentialIDs(t *testing.T) {
+	tm := NewTaskManager()
+	id1 := tm.Create("task one", "")
+	id2 := tm.Create("task two", "")
+	assert.Equal(t, "task-1", id1)
+	assert.Equal(t, "task-2", id2)
+}
+
+func TestTaskManager_Fail(t *testing.T) {
+	tm := NewTaskManager()
+	taskID := tm.Create("failing task", "details")
+	tm.SetRunning(taskID)
+	tm.Fail(taskID, "something went wrong")
+	task, err := tm.Get(taskID)
+	require.NoError(t, err)
+	assert.Equal(t, TaskStatusFailed, task.Status)
+	assert.Equal(t, "something went wrong", task.Error)
+}
+
+func TestTaskManager_GetUnknown(t *testing.T) {
+	tm := NewTaskManager()
+	_, err := tm.Get("task-999")
+	assert.Error(t, err)
+}
+
+func TestTaskManager_List(t *testing.T) {
+	tm := NewTaskManager()
+	tm.Create("task A", "")
+	tm.Create("task B", "")
+	tm.Create("task C", "")
+	list := tm.List()
+	assert.Len(t, list, 3)
+}

@@ -73,16 +73,28 @@ internal/
 │                   agent_planner.go (AgentPlanner — codebase-aware planning via AgentRunner),
 │                   prompt_builder.go (PromptBuilder — structured prompts for external runners),
 │                   skill_injector.go (SkillInjector — injects TDD templates into .claude/ for claudecode)
-├── context/        Context assembly: file selection, token budgets, secrets scanning; AGENTS.md generator; token_counter.go (tiktoken-go); cache.go (pipeline-scoped ContextCache)
+├── context/        Context assembly: file selection, token budgets, secrets scanning; AGENTS.md generator; token_counter.go (tiktoken-go); cache.go (pipeline-scoped ContextCache);
+│                   walk_context_files.go (hierarchical AGENTS.md / .foreman-rules.md / .foreman/context.md discovery)
 ├── llm/            LLM provider interface + Anthropic, OpenAI, OpenRouter, local; circuit_breaker.go
 ├── tracker/        Issue tracker interface + Jira, GitHub, Linear, local file
 ├── git/            Git operations interface + native CLI and go-git fallback
 ├── runner/         Command runner interface + local and Docker implementations
 ├── envloader/      .env file parser: loads vars into process environment, copies files into worktrees
-├── agent/          AgentRunner interface + builtin, claudecode, copilot runners; compaction.go (context window compaction)
-│   ├── tools/      Typed tool registry with parallel execution: Read, ReadRange, Write, Edit, MultiEdit, ApplyPatch, ListDir, Glob, Grep, GetDiff, GetCommitLog, TreeSummary, GetSymbol, GetErrors, get_type_definition, semantic_search, Bash, RunTest, Subagent, ListMCPTools, ReadMCPResource
+├── agent/          AgentRunner interface + builtin, claudecode, copilot runners; compaction.go (context window compaction);
+│                   permission.go (rule-based permission system, Ruleset, Evaluate); modes.go (PlanMode, ExploreMode, BuildMode);
+│                   cost_tracker.go (per-session token + USD tracking, budget enforcement);
+│                   task_manager.go (sub-task lifecycle: pending → running → completed/failed);
+│                   diff_tracker.go (per-file change counts, DiffSummary)
+│   ├── tools/      Typed tool registry with parallel execution: Read, ReadRange, Write, Edit, MultiEdit, ApplyPatch, ListDir, Glob, Grep,
+│   │               GetDiff, GetCommitLog, TreeSummary, GetSymbol, GetErrors, Bash, RunTest, Subagent, Batch, LSP, TodoRead, TodoWrite, WebFetch,
+│   │               ListMCPTools, ReadMCPResource; truncation.go (auto-truncate all outputs); edit_strategies.go (6-strategy fallback chain)
 │   └── mcp/        MCP Manager, stdio client (JSON-RPC 2.0), tool name normalization, health monitoring
-├── skills/         YAML skill engine, loader, hook executor
+├── bus/            Typed async pub/sub event bus: Subscribe, SubscribeAll (return cancel func), Publish, Drain
+├── prompts/        Unified prompt registry: loads roles, agents, skills, commands, fragments from prompts/ directory;
+│                   registry.Render(kind, name, vars); registry.ForClaude(workDir, vars) writes .claude/ for Claude Code runner;
+│                   pongo2 template rendering with cached template set
+├── skills/         YAML skill engine, loader, hook executor; discovery.go (multi-directory skill scan with deduplication)
+├── snapshot/       Repository snapshot: Patch, Diff, Restore; ensureInit is idempotent (auto-called by all operations)
 ├── dashboard/      HTTP server, REST API, WebSocket, bearer token auth
 ├── telemetry/      Cost controller, Prometheus metrics (incl. DAG metrics), structured events
 └── models/         Shared domain types: Ticket, Task, LlmCall, pipeline states
@@ -313,6 +325,7 @@ File reservations are stored in the database, not in memory. Before a pipeline b
 | HTTP | stdlib `net/http` |
 | Rate limiting | `golang.org/x/time/rate` |
 | Parallel tool execution | `golang.org/x/sync/errgroup` |
+| Async event bus | `internal/bus` (typed pub/sub, goroutine-per-handler) |
 | Fuzzy matching (SEARCH/REPLACE) | `adrg/strutil` |
 | HTTP client | `go-resty/resty` |
 | Terminal color | `fatih/color` |

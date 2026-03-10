@@ -44,3 +44,19 @@ func TestSaveTruncatedOutput(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, path, "read_abc123")
 }
+
+func TestTruncateHint_NonEmpty(t *testing.T) {
+	hint := TruncateHint("/tmp/tool-output/tool_abc.txt")
+	assert.NotEmpty(t, hint)
+	assert.Contains(t, hint, "/tmp/tool-output/tool_abc.txt")
+}
+
+func TestTruncateOutput_LongLines(t *testing.T) {
+	longLine := strings.Repeat("a", MaxLineLength+100)
+	output := longLine + "\nnormal line"
+
+	result, truncated := TruncateOutput(output, 2000, 500000)
+	assert.True(t, truncated)
+	lines := strings.Split(result, "\n")
+	assert.LessOrEqual(t, len(lines[0]), MaxLineLength+10) // truncated + "..."
+}

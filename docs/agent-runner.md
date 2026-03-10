@@ -34,6 +34,8 @@ type AgentRequest struct {
     TimeoutSecs     int              // 0 = runner default
     RemainingBudget int              // Remaining turn budget from parent (0 = unlimited)
     AgentDepth      int              // Current nesting depth; enforced against MaxAgentDepth
+    Permissions     Ruleset          // Rule-based permission overrides (optional)
+    Mode            string           // Named mode preset: "plan" | "explore" | "build" (optional)
 }
 
 // AgentEvent is emitted by the builtin runner for real-time progress visibility.
@@ -47,9 +49,11 @@ type AgentEvent struct {
 }
 
 type AgentResult struct {
-    Output     string      // Final text or JSON string output
-    Structured interface{} // Populated if OutputSchema was provided
-    Usage      AgentUsage
+    Output      string      // Final text or JSON string output
+    Structured  interface{} // Populated if OutputSchema was provided
+    Usage       AgentUsage
+    CostSummary CostSummary // Per-session token and USD breakdown (builtin runner)
+    DiffSummary DiffSummary // File change counts: additions, deletions, files changed
 }
 
 type AgentUsage struct {
@@ -197,6 +201,76 @@ The runner maintains an in-memory fingerprint map keyed by `(tool_name, canonica
 
 This does not hard-block execution; it is a guidance injection only.
 
+### Permission System and Agent Modes
+
+`internal/agent/permission.go` implements a rule-based permission system:
+
+```go
+type Rule struct {
+    Permission string // e.g. "edit", "bash", "subagent"
+    Pattern    string // glob or exact match on tool name / path
+    Action     Action // Allow | Deny
+}
+type Ruleset []Rule
+```
+
+`Evaluate(permission, pattern string, rules Ruleset) Action` resolves permissions using last-rule-wins semantics and defaults to `Deny` when no rule matches. The tool names `Write`, `Edit`, `MultiEdit`, and `ApplyPatch` all map to the `"edit"` permission category.
+
+Three built-in modes are defined in `internal/agent/modes.go` and can be selected via `AgentRequest.Mode`:
+
+| Mode | Allowed | Denied | Max turns |
+|---|---|---|---|
+| `plan` | read, glob, grep, todo | edit, bash, subagent | 20 |
+| `explore` | read, glob, grep, getsymbol | edit, bash, subagent | 10 |
+| `build` | all tools | none | 15 |
+
+Custom rulesets can be passed via `AgentRequest.Permissions` to override or extend a mode's defaults.
+
+### Cost Tracker
+
+`internal/agent/cost_tracker.go` provides per-session cost tracking:
+
+- Accumulates input tokens, output tokens, cached tokens, and USD cost per LLM call.
+- `CostTracker.SetBudget(usd float64)` enforces a per-session USD budget.
+- `CostTracker.BudgetExceeded()` halts the agent loop when the budget is breached.
+- The full breakdown is returned in `AgentResult.CostSummary`.
+
+### Task Manager (Subagent Resumption)
+
+`internal/agent/task_manager.go` tracks named sub-tasks within a session:
+
+- `TaskManager.Create(description, prompt, mode)` assigns IDs (`task-1`, `task-2`, …) and tracks status through the lifecycle: `pending → running → completed/failed`.
+- The `Subagent` tool accepts an optional `task_id` field; when set, the subagent's output is prefixed with the task ID for correlation in logs.
+
+### Tool Output Truncation
+
+All tool outputs are automatically truncated before being returned to the LLM (`internal/agent/tools/truncation.go`):
+
+| Limit | Value |
+|---|---|
+| Max lines | 2000 |
+| Max total size | 50 KB |
+| Max chars per line | 2000 |
+
+When output is cut, a hint is appended informing the agent that the full output was truncated and how to retrieve more.
+
+### Edit Strategy Fallback Chain
+
+`Edit` and `MultiEdit` (`internal/agent/tools/edit_strategies.go`) try up to six strategies before failing:
+
+1. **SimpleReplace** — exact string match
+2. **LineTrimmedReplace** — trim whitespace on each line before matching
+3. **BlockAnchorReplace** — match by first and last lines of the search block
+4. **WhitespaceNormalizedReplace** — collapse all whitespace runs before comparing
+5. **IndentFlexibleReplace** — adjust indentation level to match the target file
+6. **Levenshtein fuzzy match** — >80% similarity required; only applied to files ≤ 500 lines
+
+When a fallback strategy is used, the tool returns `"OK (strategy: <name>)"` so the agent knows a non-exact match was applied.
+
+### ApplyPatch Hunk Validation
+
+Before applying a unified diff patch, all context lines in every hunk are validated against the actual file content. Patches with mismatched context lines fail immediately with a clear error message rather than leaving the file in a partial state.
+
 ### Agent Progress Events
 
 When `AgentRequest.OnProgress` is set, the builtin runner emits events at these checkpoints:
@@ -322,8 +396,28 @@ The builtin runner provides typed tools via a `tools.Registry`. All tool schemas
 | Tool | Description |
 |---|---|
 | `Subagent` | Spawn a sub-agent with a fresh prompt. Budget is capped to parent's remaining turns. |
+| `Batch` | Execute up to 25 tool calls in parallel within a single request. |
 | `ListMCPTools` | Return all registered MCP tools from the in-memory registry (read-only). |
 | `ReadMCPResource` | Read a resource from a named MCP server (`server`, `uri`). Subject to secrets scanning. |
+
+### Language Server
+
+| Tool | Description |
+|---|---|
+| `LSP` | Language server operations via gopls: go-to-definition, find-references, hover, workspace symbols. |
+
+### Task Management
+
+| Tool | Description |
+|---|---|
+| `TodoWrite` | Write/replace the session task list (in-memory, per agent run). |
+| `TodoRead` | Read the current session task list. |
+
+### Web
+
+| Tool | Description |
+|---|---|
+| `WebFetch` | Fetch a URL and return content as text, markdown, or raw HTML. 5 MB limit; context-cancellable. |
 
 ### Path Guards
 
@@ -447,8 +541,16 @@ The `doctor` command runs `AgentRunner.HealthCheck()` for the configured runner:
 | Per-task model override | Yes (`model` config) | Fixed to claude | Fixed to Copilot |
 | Structured output (schema) | Full support | Partial (flag) | Prompt-based |
 | Extended thinking | Via `LlmRequest` | Via `claude` flags | No |
-| Custom tool restrictions | Yes (per step) | Limited | Limited |
-| Cost attribution | Full (tracked in DB) | Approximate (from JSON) | Not exposed |
+| Custom tool restrictions | Yes (ruleset + modes) | Limited | Limited |
+| Cost attribution | Full (`CostSummary`) | Approximate (from JSON) | Not exposed |
+| File change summary | Yes (`DiffSummary`) | No | No |
+| Per-session budget enforcement | Yes (`CostTracker`) | No | No |
+| Tool output truncation | Yes (automatic) | No | No |
+| Edit strategy fallback chain | Yes (6 strategies) | Handled by claude | Handled by Copilot |
+| ApplyPatch hunk validation | Yes (context lines checked) | Handled by claude | Handled by Copilot |
+| LSP / language server tools | Yes (gopls) | No | No |
+| Todo list management | Yes (`TodoRead`/`TodoWrite`) | No | No |
+| Web fetch | Yes (`WebFetch`) | No | No |
 
 **Recommendation:** Use `builtin` (default) for most cases — it requires no external tools and works with any LLM provider. Use `claudecode` when you want Claude Code's native codebase exploration to drive planning and implementation end-to-end (requires the `claude` CLI and an Anthropic API key). Use `copilot` in environments where GitHub Copilot is already the standard AI tool. Note: `claudecode` and `copilot` activate the full pipeline integration path (planning + implementation); `builtin` uses the builtin pipeline path and only invokes the runner for `agentsdk` skill steps.
 

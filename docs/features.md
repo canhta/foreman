@@ -28,12 +28,26 @@ Foreman is an autonomous software development daemon that turns labelled issue t
 | **Partial PRs** | Creates a PR with completed work even when some tasks fail |
 | **Crash recovery** | Resumes from last committed task after a daemon restart (DAG-aware) |
 | **Cost control** | Per-ticket, per-day, and per-month LLM spend limits |
+| **Per-session cost tracking** | `CostTracker` enforces per-session USD budgets; full breakdown in `AgentResult.CostSummary` |
+| **File change tracking** | `DiffSummary` in `AgentResult` carries additions, deletions, and files changed per session |
 | **Secrets scanner** | Redacts secret patterns from every LLM context assembly |
 | **YAML skills engine** | Extend the pipeline at four hook points without modifying Go code |
 | **Multi-provider LLM** | Anthropic, OpenAI, OpenRouter, local models; per-role routing |
 | **Anthropic prompt caching** | `cache_control: ephemeral` on system + context blocks; cache tokens tracked |
 | **Multiple issue trackers** | Jira, GitHub Issues, Linear, local file |
 | **Built-in dashboard** | HTTP/WebSocket UI with REST API, Prometheus metrics, and real-time events |
+| **Permission system + agent modes** | Rule-based tool permissions; built-in PlanMode, ExploreMode, BuildMode presets |
+| **Tool output truncation** | All tool outputs auto-truncated (2000 lines / 50 KB / 2000 chars per line) |
+| **Edit strategy fallback chain** | Six progressive strategies for SEARCH/REPLACE before failing |
+| **ApplyPatch hunk validation** | Context lines validated against file before applying unified diff |
+| **Async event bus** | Typed pub/sub (`internal/bus`) for daemon-wide real-time event dispatch |
+| **Unified prompt registry** | All prompts, agents, skills, and commands loaded from `prompts/` via pongo2 templates |
+| **Hierarchical context loading** | Context files walked up from working dir to repo root; deeper files take priority |
+| **Multi-directory skill discovery** | Skills scanned from `skills/` and `.foreman/skills/` at each level up to repo root |
+| **Batch tool execution** | `Batch` tool runs up to 25 tool calls in parallel in a single agent turn |
+| **LSP integration** | `LSP` tool exposes gopls: go-to-definition, find-references, hover, symbols |
+| **Todo list management** | `TodoRead`/`TodoWrite` give agents an in-session scratchpad task list |
+| **Web fetch** | `WebFetch` tool fetches URLs as text, markdown, or HTML (5 MB limit) |
 
 ---
 
@@ -389,6 +403,10 @@ Foreman ships three built-in skill files:
 ### Community Skills
 A `skills/community/` directory accepts community-contributed skill files. Community skills are submitted via PR.
 
+### Multi-Directory Skill Discovery
+
+`DiscoverSkillPaths` (`internal/skills/discovery.go`) walks upward from the current working directory to the repo root, checking both `skills/` and `.foreman/skills/` at each level. Accepts `.yml`, `.yaml`, and `.md` files. Duplicate paths are deduplicated. This means per-project, per-workspace, and global skills are all discovered automatically.
+
 ---
 
 ## Agent Runner
@@ -403,14 +421,16 @@ The `AgentRunner` interface serves two roles: it drives core pipeline planning a
 When `provider = "claudecode"` or `"copilot"`, the external runner replaces the builtin TDD implementation loop end-to-end. The agent handles codebase exploration, test writing, and implementation using its native tools. Foreman verifies the resulting diff, commits if needed, and runs non-blocking spec/quality reviews.
 
 ### Builtin Runner — Built-in Tools
-The builtin runner provides a typed tool registry covering five categories:
+The builtin runner provides a typed tool registry covering seven categories:
 - **Filesystem**: `Read`, `ReadRange`, `Write`, `Edit`, `MultiEdit`, `ListDir`, `Glob`, `ApplyPatch`
 - **Code intelligence**: `Grep`, `GetSymbol`, `GetErrors`, `TreeSummary`
+- **Language server**: `LSP` (go-to-definition, find-references, hover, symbols via gopls)
 - **Git**: `GetDiff`, `GetCommitLog`
 - **Execution**: `Bash`, `RunTest`
-- **Agent composition**: `Subagent`, `ListMCPTools`, `ReadMCPResource`
+- **Web**: `WebFetch` (fetch URL as text, markdown, or raw HTML; 5 MB limit)
+- **Agent composition**: `Subagent`, `Batch`, `TodoRead`, `TodoWrite`, `ListMCPTools`, `ReadMCPResource`
 
-`ReadRange(file, start_line, end_line)` reads a slice of a file without consuming the full token budget for large files. `ApplyPatch(file, patch)` applies a unified diff format patch as an alternative to `Edit` for multi-hunk edits.
+`ReadRange(file, start_line, end_line)` reads a slice of a file without consuming the full token budget for large files. `ApplyPatch(file, patch)` applies a unified diff format patch as an alternative to `Edit` for multi-hunk edits. `Batch` executes up to 25 tool calls in parallel within a single agent turn. All tool outputs are automatically truncated (2000 lines / 50 KB / 2000 chars per line) before being returned to the model.
 
 ### File-Aware Parallel Tool Execution
 Before executing tool calls in parallel, the runner groups them by the file paths appearing in their arguments. Tool calls operating on disjoint file sets execute in parallel; calls sharing any file path execute sequentially in the order returned by the LLM. Non-filesystem tools are always parallel. This prevents edit-edit conflicts on the same file while preserving parallel speed for independent operations.
@@ -440,6 +460,48 @@ After each file-touching tool call (Read, ReadRange, Edit, Write, GetDiff), the 
 1. **Pre-assembly** (all three runners): the skills engine always reads `AGENTS.md` or `.foreman/context.md`, adds path-scoped rules and ticket metadata, and prepends it to `AgentRequest.SystemPrompt`.
 2. **Reactive injection** (builtin only): progress patterns and directory-specific rules are injected mid-turn based on which files the model has touched.
 
+### Permission System and Agent Modes
+
+The builtin runner enforces tool permissions via a rule-based system (`internal/agent/permission.go`). Each `Rule` maps a permission category (e.g., `"edit"`, `"bash"`, `"subagent"`) and an optional pattern to an `Allow` or `Deny` action. Rules are evaluated last-wins, defaulting to `Deny`.
+
+Three built-in mode presets are available via `AgentRequest.Mode`:
+
+| Mode | Allowed | Denied | Max turns |
+|---|---|---|---|
+| `plan` | read, glob, grep, todo | edit, bash, subagent | 20 |
+| `explore` | read, glob, grep, getsymbol | edit, bash, subagent | 10 |
+| `build` | all tools | none | 15 |
+
+Custom rulesets can be passed via `AgentRequest.Permissions`.
+
+### Per-Session Cost Tracking and Budget Enforcement
+
+`CostTracker` (`internal/agent/cost_tracker.go`) accumulates token usage and USD cost per LLM call within a session. `SetBudget(usd float64)` caps per-session spend; `BudgetExceeded()` stops the agent loop when the limit is breached. The full breakdown is returned as `AgentResult.CostSummary`.
+
+### File Change Diff Tracker
+
+`DiffTracker` (`internal/agent/diff_tracker.go`) records per-file change counts (created, modified, deleted) as tools run. At session end, `AgentResult.DiffSummary` carries total additions, deletions, and file count — surfaced in logs and the dashboard.
+
+### Sub-Task Tracking (Subagent Resumption)
+
+`TaskManager` (`internal/agent/task_manager.go`) maintains named sub-tasks within a session, tracking them through `pending → running → completed/failed`. The `Subagent` tool accepts an optional `task_id` to prefix output for correlation. Tasks are assigned sequential IDs (`task-1`, `task-2`, …).
+
+### Edit Strategy Fallback Chain
+
+`Edit` and `MultiEdit` apply up to six progressively looser strategies before failing (`internal/agent/tools/edit_strategies.go`):
+1. SimpleReplace (exact match)
+2. LineTrimmedReplace (per-line whitespace trim)
+3. BlockAnchorReplace (first + last line anchor)
+4. WhitespaceNormalizedReplace (collapse whitespace runs)
+5. IndentFlexibleReplace (adjust indentation level)
+6. Levenshtein fuzzy match (>80% similarity; files ≤500 lines only)
+
+When a fallback is used, the tool returns `"OK (strategy: <name>)"`.
+
+### ApplyPatch Hunk Validation
+
+Before applying a unified diff patch, all context lines in each hunk are validated against the actual file. Invalid patches fail with a clear error rather than leaving partial state.
+
 ### Path Guards and Security
 All tool operations that access files enforce:
 - Path traversal prevention (no `../../` escapes)
@@ -466,6 +528,19 @@ A read-only `ListMCPTools` tool is available to the agent inside a session. It r
 
 ## Miscellaneous Features
 
+### Async Event Bus
+
+`internal/bus/` provides a typed pub/sub event bus used across the daemon for real-time coordination:
+
+- `Bus.Subscribe(topic, handler) func()` — subscribe to a topic; returns a cancel function for clean teardown.
+- `Bus.SubscribeAll(handler) func()` — global handler for all topics; also returns a cancel function.
+- `Bus.Publish(topic, data)` — dispatches to handler goroutines asynchronously.
+- `Bus.Drain()` — waits for all in-flight handlers to complete (used during daemon shutdown).
+
+### Hierarchical Context Loading
+
+`WalkContextFiles(startDir, workDir string) []string` (`internal/context/walk_context_files.go`) walks upward from the agent's working directory to the repo root, collecting `AGENTS.md`, `.foreman-rules.md`, and `.foreman/context.md` files at each level. Files from deeper (more specific) directories are returned first, so project-level rules override workspace-level rules.
+
 ### `foreman context generate`
 Generates an `AGENTS.md` file by scanning the repository and making a single LLM call. The LLM receives a tiered file selection (go.mod/package.json, CI configs, entry points, key package files) assembled within a configurable token budget (`context_generate_max_tokens`, default 32 000 tokens).
 
@@ -486,6 +561,12 @@ Interactively generates a `foreman.toml` for a new project. With `--analyze`, it
 
 ### `foreman doctor`
 Pre-flight check that validates config syntax, tests all API credentials, verifies database write access, and checks git connectivity.
+
+### Unified Prompt Registry
+
+All prompts, agent definitions, skills, and commands are loaded from the `prompts/` directory at startup (`internal/prompts/`). Supported kinds: `role`, `agent`, `skill`, `command`, `fragment`. Templates are pongo2 (Jinja2-compatible) and rendered with `registry.Render(kind, name, vars)`. The pongo2 template set is cached on the registry so it is not re-created per call.
+
+For the Claude Code runner, `registry.ForClaude(workDir, vars)` writes the `.claude/` directory structure; tool permissions declared in AGENT.md frontmatter (`tools:`) are aggregated automatically.
 
 ### Pongo2 Prompt Templates
 All LLM system prompts are Jinja2-compatible templates (`*.md.j2`) rendered with `pongo2`. Variables include ticket details, task context, code diffs, accumulated feedback, and previous attempt results.

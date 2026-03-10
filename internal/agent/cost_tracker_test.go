@@ -30,3 +30,20 @@ func TestCostTracker_BudgetExceeded(t *testing.T) {
 	ct.Record(CostEntry{CostUSD: 0.005})
 	assert.True(t, ct.BudgetExceeded())
 }
+
+func TestCostTracker_PerModelBreakdown(t *testing.T) {
+	ct := NewCostTracker()
+	ct.Record(CostEntry{Model: "model-a", CostUSD: 0.01})
+	ct.Record(CostEntry{Model: "model-b", CostUSD: 0.02})
+	ct.Record(CostEntry{Model: "model-a", CostUSD: 0.03})
+	summary := ct.Summary()
+	assert.InDelta(t, 0.04, summary.ByModel["model-a"], 0.001)
+	assert.InDelta(t, 0.02, summary.ByModel["model-b"], 0.001)
+}
+
+func TestCostTracker_NoBudget(t *testing.T) {
+	ct := NewCostTracker()
+	ct.Record(CostEntry{CostUSD: 1000.0})
+	// No budget set — should never report exceeded
+	assert.False(t, ct.BudgetExceeded())
+}
