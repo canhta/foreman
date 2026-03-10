@@ -1600,6 +1600,7 @@ func (a *API) handleTestConnection(w http.ResponseWriter, r *http.Request) {
 		Token    string `json:"token"`
 		// tracker fields
 		Provider   string `json:"provider"`
+		Email      string `json:"email"`
 		ProjectKey string `json:"project_key"`
 		URL        string `json:"url"`
 	}
@@ -1624,7 +1625,7 @@ func (a *API) handleTestConnection(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
 
 	case "tracker":
-		if err := testTrackerConnection(ctx, req.Provider, req.Token, req.URL, req.ProjectKey); err != nil {
+		if err := testTrackerConnection(ctx, req.Provider, req.Email, req.Token, req.URL, req.ProjectKey); err != nil {
 			writeJSON(w, http.StatusOK, map[string]interface{}{"ok": false, "error": err.Error()})
 			return
 		}
@@ -1664,7 +1665,7 @@ func testGitConnection(ctx context.Context, cloneURL, token string) error {
 }
 
 // testTrackerConnection performs a lightweight API call to verify tracker credentials.
-func testTrackerConnection(ctx context.Context, provider, token, baseURL, projectKey string) error {
+func testTrackerConnection(ctx context.Context, provider, email, token, baseURL, projectKey string) error {
 	client := &http.Client{Timeout: 15 * time.Second}
 	switch provider {
 	case "github":
@@ -1708,21 +1709,37 @@ func testTrackerConnection(ctx context.Context, provider, token, baseURL, projec
 		if baseURL == "" {
 			return fmt.Errorf("jira: url is required")
 		}
-		// Hit the Jira myself endpoint. Token is expected as "email:apiToken".
-		url := strings.TrimRight(baseURL, "/") + "/rest/api/3/myself"
-		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-		req.Header.Set("Authorization", "Bearer "+token)
+		jiraBase := strings.TrimRight(baseURL, "/")
+		if email != "" {
+			// Jira Cloud: Basic auth with email:apiToken.
+			jiraURL := jiraBase + "/rest/api/3/myself"
+			req, _ := http.NewRequestWithContext(ctx, http.MethodGet, jiraURL, nil)
+			req.SetBasicAuth(email, token)
+			req.Header.Set("Accept", "application/json")
+			resp, err := client.Do(req)
+			if err != nil {
+				return fmt.Errorf("jira: %w", err)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+				return fmt.Errorf("jira: invalid email or API token")
+			}
+			if resp.StatusCode >= 300 {
+				return fmt.Errorf("jira: unexpected status %d", resp.StatusCode)
+			}
+			return nil
+		}
+		// No email provided — verify the URL is a reachable Jira instance via the public serverInfo endpoint.
+		infoURL := jiraBase + "/rest/api/3/serverInfo"
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, infoURL, nil)
 		req.Header.Set("Accept", "application/json")
 		resp, err := client.Do(req)
 		if err != nil {
 			return fmt.Errorf("jira: %w", err)
 		}
 		defer resp.Body.Close()
-		if resp.StatusCode == http.StatusUnauthorized {
-			return fmt.Errorf("jira: invalid credentials")
-		}
-		if resp.StatusCode >= 300 {
-			return fmt.Errorf("jira: unexpected status %d", resp.StatusCode)
+		if resp.StatusCode >= 400 {
+			return fmt.Errorf("jira: URL does not appear to be a valid Jira instance (status %d)", resp.StatusCode)
 		}
 		return nil
 

@@ -20,6 +20,7 @@
   let gitTestResult = $state<{ ok: boolean; message: string } | null>(null);
 
   let trackerProvider = $state<'github' | 'jira' | 'linear' | 'local'>('github');
+  let trackerEmail = $state('');
   let trackerToken = $state('');
   let trackerProjectKey = $state('');
   let trackerLabels = $state('');
@@ -70,7 +71,7 @@
       const res = await fetch('/api/projects/test-connection', {
         method: 'POST',
         headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'tracker', provider: trackerProvider, token: trackerToken, project_key: trackerProjectKey, url: trackerUrl }),
+        body: JSON.stringify({ type: 'tracker', provider: trackerProvider, email: trackerEmail, token: trackerToken, project_key: trackerProjectKey, url: trackerUrl }),
       });
       const data = await res.json();
       trackerTestResult = { ok: data.ok, message: data.ok ? 'Connection successful' : (data.error ?? 'Failed') };
@@ -248,6 +249,14 @@
               <input
                 bind:value={trackerUrl}
                 placeholder="https://yourorg.atlassian.net"
+                class="mt-1 w-full bg-[var(--color-surface)] border border-[var(--color-border)] px-3 py-2 text-xs text-[var(--color-text)] focus:border-[var(--color-accent)] focus:outline-none"
+              />
+            </label>
+            <label class="block">
+              <span class="text-[10px] tracking-widest text-[var(--color-muted)] uppercase">Atlassian Email</span>
+              <input
+                bind:value={trackerEmail}
+                placeholder="you@example.com"
                 class="mt-1 w-full bg-[var(--color-surface)] border border-[var(--color-border)] px-3 py-2 text-xs text-[var(--color-text)] focus:border-[var(--color-accent)] focus:outline-none"
               />
             </label>
