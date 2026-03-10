@@ -15,11 +15,11 @@ setup-dev:
 	@echo "Dev tools installed to $(GOBIN)"
 
 # Copy foreman.system.toml → ~/.foreman/config.toml for local development.
-# Only copies if foreman.system.toml exists and is newer than the destination.
+# Always syncs foreman.system.toml → ~/.foreman/config.toml when it exists.
 setup-config:
 	@if [ -f foreman.system.toml ]; then \
 		mkdir -p ~/.foreman; \
-		cp -u foreman.system.toml ~/.foreman/config.toml; \
+		cp foreman.system.toml ~/.foreman/config.toml; \
 		echo "Synced foreman.system.toml → ~/.foreman/config.toml"; \
 	else \
 		echo "foreman.system.toml not found — skipping config sync"; \
