@@ -5,7 +5,7 @@ Foreman uses two TOML config files:
 - **`~/.foreman/config.toml`** — global config shared across all projects (daemon, dashboard, LLM API keys, cost limits, channel)
 - **`~/.foreman/projects/<id>/config.toml`** — per-project config (tracker, git, models, limits, agent runner)
 
-Use `system.example.toml` as the global config template and `project.example.toml` as the project config template.
+Use `foreman.system.example.toml` as the global config template and `foreman.project.example.toml` as the project config template.
 
 Run `foreman init` to bootstrap the global config interactively, then `foreman project create` (or the dashboard wizard) to add projects.
 

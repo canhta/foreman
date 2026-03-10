@@ -10,10 +10,19 @@ Foreman polls your issue tracker, breaks tickets into granular tasks, writes cod
 
 **Requirements (build from source):** Go 1.25+, Node.js 20+ (for dashboard assets), and a C toolchain (CGO is required for SQLite).
 
+**Local development (hot-reload):**
 ```bash
 make build
-cp system.example.toml ~/.foreman/config.toml
-# Edit foreman.toml — set your tracker, LLM provider, and git tokens
+cp foreman.system.example.toml foreman.system.toml
+# Edit foreman.system.toml — set your LLM provider, dashboard token
+make dev           # syncs foreman.system.toml → ~/.foreman/config.toml, then starts with hot-reload
+```
+
+**Running from a built binary:**
+```bash
+make build
+cp foreman.system.example.toml ~/.foreman/config.toml
+# Edit ~/.foreman/config.toml — set your LLM provider, dashboard token
 ./foreman doctor   # verify config
 ./foreman start    # start the daemon
 ```

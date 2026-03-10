@@ -16,7 +16,8 @@ This guide covers setting up a development environment, the project's convention
 | `make dashboard-dev` | Start Vite dev server for dashboard frontend |
 | `make test` | Run all tests with the race detector |
 | `make lint` | Run `go vet` + `golangci-lint` |
-| `make dev` | Hot-reload daemon on file changes (requires `make setup-dev`) |
+| `make dev` | Sync local config, then hot-reload daemon on file changes (requires `make setup-dev`) |
+| `make start` | Build, sync local config, and start the daemon (no hot-reload) |
 | `make debug` | Start Delve debugger on `:2345` (requires `make setup-dev`) |
 | `./foreman doctor` | Validate config and API credentials |
 | `./foreman run LOCAL-1` | Process a single ticket from the local tracker |
@@ -64,7 +65,7 @@ make build
 make test
 
 # Create a local config
-cp system.example.toml ~/.foreman/config.toml
+cp foreman.system.example.toml ~/.foreman/config.toml
 ```
 
 ## Build Targets
@@ -79,6 +80,7 @@ cp system.example.toml ~/.foreman/config.toml
 | `make clean` | Remove `./foreman` binary |
 | `make setup-hooks` | Install git hooks from `.githooks/` (run once after cloning) |
 | `make setup-dev` | Install dev tools: `air` (hot reload) + `dlv` (debugger) |
+| `make setup-config` | Copy `foreman.system.toml` → `~/.foreman/config.toml` (run automatically by `make dev` and `make start`) |
 | `make dev` | Hot-reload: rebuild & restart on file changes (requires `make setup-dev`) |
 | `make debug` | Debug build + launch under Delve on `:2345` (requires `make setup-dev`) |
 | `make release` | Cross-compile for linux/darwin/windows amd64+arm64 |
@@ -305,7 +307,7 @@ Tests that require a database use the SQLite in-memory driver. No external servi
 
 1. Implement `llm.LlmProvider` in `internal/llm/<provider>.go`.
 2. Register the provider in `internal/llm/factory.go`.
-3. Add a config section to `system.example.toml`.
+3. Add a config section to `foreman.system.example.toml`.
 4. Add doc entry to `docs/integrations.md`.
 
 ### New Issue Tracker
@@ -400,7 +402,7 @@ Before opening a PR, verify:
 - [ ] `make lint` passes with no new warnings
 - [ ] New or changed behaviour has a corresponding test
 - [ ] Bug fixes include a regression test
-- [ ] `system.example.toml` / `project.example.toml` updated if new config keys were added
+- [ ] `foreman.system.example.toml` / `foreman.project.example.toml` updated if new config keys were added
 - [ ] Relevant docs in `docs/` updated for any user-facing change
 - [ ] No secrets, credentials, or API keys in code or tests
 - [ ] PR description explains what changed, why, and links the relevant issue

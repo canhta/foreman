@@ -24,14 +24,20 @@ func pidFilePath() string {
 	return filepath.Join(home, ".foreman", "foreman.pid")
 }
 
-// loadConfigAndDB loads the configuration and opens the database.
+// loadConfigAndDB loads the global configuration and opens the daemon database.
 // Used by CLI commands that need read access to foreman state.
 func loadConfigAndDB() (*models.Config, db.Database, error) {
-	cfg, err := config.LoadFromFile("foreman.toml")
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, nil, fmt.Errorf("home dir: %w", err)
+	}
+	globalCfgPath := filepath.Join(home, ".foreman", "config.toml")
+
+	cfg, err := config.LoadFromFile(globalCfgPath)
 	if err != nil {
 		cfg, err = config.LoadDefaults()
 		if err != nil {
-			return nil, nil, fmt.Errorf("config: %w — run 'foreman doctor' to validate setup", err)
+			return nil, nil, fmt.Errorf("config: %w — run 'foreman init' to create ~/.foreman/config.toml", err)
 		}
 	}
 

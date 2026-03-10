@@ -1,4 +1,4 @@
-.PHONY: build test lint clean reset setup-hooks setup-dev coverage dev debug dashboard-build dashboard-dev dashboard-lint dashboard-test ci release docker
+.PHONY: build test lint clean reset setup-hooks setup-dev setup-config coverage dev start debug dashboard-build dashboard-dev dashboard-lint dashboard-test ci release docker
 
 BINARY := foreman
 GOBIN  := $(shell go env GOPATH)/bin
@@ -14,13 +14,28 @@ setup-dev:
 	go install github.com/go-delve/delve/cmd/dlv@latest
 	@echo "Dev tools installed to $(GOBIN)"
 
+# Copy foreman.system.toml → ~/.foreman/config.toml for local development.
+# Only copies if foreman.system.toml exists and is newer than the destination.
+setup-config:
+	@if [ -f foreman.system.toml ]; then \
+		mkdir -p ~/.foreman; \
+		cp -u foreman.system.toml ~/.foreman/config.toml; \
+		echo "Synced foreman.system.toml → ~/.foreman/config.toml"; \
+	else \
+		echo "foreman.system.toml not found — skipping config sync"; \
+	fi
+
 # Hot-reload: rebuilds and restarts on file changes (requires air).
 # Run 'make setup-dev' once to install. Pass CMD to change sub-command:
 #   make dev CMD="run LOCAL-1"
 PORT ?= 8080
 CMD ?= start --dashboard-port $(PORT)
-dev:
+dev: setup-config
 	FOREMAN_DASHBOARD_PORT=$(PORT) $(GOBIN)/air -- $(CMD)
+
+# Build and start the daemon (non-hot-reload).
+start: build setup-config
+	FOREMAN_DASHBOARD_PORT=$(PORT) ./$(BINARY) $(CMD)
 
 # Debug build + launch under Delve (requires dlv).
 # Run 'make setup-dev' once to install.

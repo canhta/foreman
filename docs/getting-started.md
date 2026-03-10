@@ -49,14 +49,13 @@ docker pull ghcr.io/canhta/foreman:latest
 Copy the example config and edit it:
 
 ```bash
-cp system.example.toml ~/.foreman/config.toml
+cp foreman.system.example.toml ~/.foreman/config.toml
 ```
 
 Minimal working config using GitHub Issues + Anthropic:
 
 ```toml
 [daemon]
-work_dir = "~/.foreman/work"
 
 [tracker]
 provider     = "github"
@@ -104,7 +103,7 @@ Here is the end-to-end path from install to running ticket:
 
 ```mermaid
 flowchart TD
-    A([Install foreman<br/>binary or build from source]) --> B["foreman init<br/>(or copy system.example.toml<br/>→ ~/.foreman/config.toml)"]
+    A([Install foreman<br/>binary or build from source]) --> B["foreman init<br/>(or copy foreman.system.example.toml<br/>→ ~/.foreman/config.toml)"]
     B --> C["Set environment variables<br/>GITHUB_TOKEN · ANTHROPIC_API_KEY<br/>FOREMAN_DASHBOARD_TOKEN"]
     C --> D["./foreman setup-ssh<br/>(private repos only)<br/>then ./foreman doctor"]
     D -- "errors" --> C

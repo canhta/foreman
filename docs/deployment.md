@@ -32,7 +32,7 @@ This guide covers production deployment using Docker Compose or as a native syst
 
 2. **Copy and edit the config:**
    ```bash
-   cp system.example.toml ~/.foreman/config.toml
+   cp foreman.system.example.toml ~/.foreman/config.toml
    # Edit ~/.foreman/config.toml with your LLM, dashboard, and channel settings
    ```
 

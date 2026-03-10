@@ -43,12 +43,8 @@ func LoadFromFile(path string) (*models.Config, error) {
 func setDefaults(v *viper.Viper) {
 	v.SetDefault("daemon.poll_interval_secs", 60)
 	v.SetDefault("daemon.idle_poll_interval_secs", 300)
-	v.SetDefault("daemon.max_parallel_tickets", 3)
-	v.SetDefault("daemon.max_parallel_tasks", 3)
-	v.SetDefault("daemon.task_timeout_minutes", 15)
-	v.SetDefault("daemon.merge_check_interval_secs", 300)
 	v.SetDefault("daemon.lock_ttl_seconds", 3600)
-	v.SetDefault("daemon.work_dir", "~/.foreman/work")
+	v.SetDefault("daemon.work_dir", "") // set per-project by merge.go; never create a global work dir
 	v.SetDefault("daemon.log_level", "info")
 	v.SetDefault("daemon.log_format", "json")
 
@@ -163,7 +159,7 @@ func setDefaults(v *viper.Viper) {
 
 	v.SetDefault("database.driver", "sqlite")
 	v.SetDefault("prompts_dir", "prompts")
-	v.SetDefault("database.sqlite.path", "~/.foreman/foreman.db")
+	v.SetDefault("database.sqlite.path", "~/.foreman/global.db") // global daemon DB (auth tokens etc.); project DBs live at projects/<id>/foreman.db
 	v.SetDefault("database.sqlite.busy_timeout_ms", 5000)
 	v.SetDefault("database.sqlite.wal_mode", true)
 	v.SetDefault("database.sqlite.event_flush_interval_ms", 100)
@@ -219,17 +215,6 @@ func expandEnv(s string) string {
 
 func Validate(cfg *models.Config) []error {
 	var errs []error
-
-	if cfg.Daemon.MaxParallelTasks < 1 {
-		errs = append(errs, fmt.Errorf("max_parallel_tasks must be at least 1 (got %d)", cfg.Daemon.MaxParallelTasks))
-	}
-	if cfg.Daemon.TaskTimeoutMinutes < 1 {
-		errs = append(errs, fmt.Errorf("task_timeout_minutes must be at least 1 (got %d)", cfg.Daemon.TaskTimeoutMinutes))
-	}
-
-	if cfg.Daemon.MaxParallelTickets > 3 {
-		errs = append(errs, fmt.Errorf("max_parallel_tickets cannot exceed 3 (got %d)", cfg.Daemon.MaxParallelTickets))
-	}
 
 	// Validate LLM provider has API key
 	switch cfg.LLM.DefaultProvider {

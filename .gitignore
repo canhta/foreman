@@ -10,11 +10,11 @@ internal/dashboard/dist/
 *.db-shm
 *.db-wal
 
-# Config (contains secrets)
-foreman.toml
+# Config (contains secrets — foreman.system.toml is local dev config, never committed)
+foreman.system.toml
 *.toml
-!system.example.toml
-!project.example.toml
+!foreman.system.example.toml
+!foreman.project.example.toml
 !.air.toml
 !internal/telemetry/pricing.toml
 

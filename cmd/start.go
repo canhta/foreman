@@ -254,8 +254,9 @@ func newStartCmd() *cobra.Command {
 			}
 
 			// 4. Initialize git provider and ensure the work repo is ready.
+			// WorkDir is empty in multi-project mode; per-project workers use their own dir.
 			gitProv := buildGitProvider(cfg)
-			repoReady := gitProv.EnsureRepo(context.Background(), cfg.Daemon.WorkDir) == nil
+			repoReady := cfg.Daemon.WorkDir != "" && gitProv.EnsureRepo(context.Background(), cfg.Daemon.WorkDir) == nil
 
 			// 4b. Load user env files into process environment.
 			if len(cfg.Daemon.EnvFiles) > 0 {
