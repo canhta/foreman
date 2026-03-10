@@ -50,11 +50,11 @@ func TestParsePlannerOutput_MarkdownFenced(t *testing.T) {
 }
 
 func TestParsePlannerOutput_ClarificationNeeded(t *testing.T) {
-	raw := "I need more information.\n\nCLARIFICATION_NEEDED: What database should the user model use? PostgreSQL or SQLite?"
+	raw := "I need more information.\n\nCLARIFICATION_NEEDED: What caching strategy should the user model use? Redis or in-memory?"
 	result, err := ParsePlannerOutput(raw)
 	require.NoError(t, err)
 	assert.Equal(t, "CLARIFICATION_NEEDED", result.Status)
-	assert.Contains(t, result.Message, "What database")
+	assert.Contains(t, result.Message, "What caching")
 }
 
 func TestParsePlannerOutput_TicketTooLarge(t *testing.T) {

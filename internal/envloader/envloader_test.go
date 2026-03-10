@@ -61,7 +61,7 @@ func TestCopyInto_CopiesFilesToWorktree(t *testing.T) {
 
 func TestCopyInto_CreatesSubdirs(t *testing.T) {
 	src := filepath.Join(t.TempDir(), "api.env")
-	require.NoError(t, os.WriteFile(src, []byte("DB=postgres\n"), 0o600))
+	require.NoError(t, os.WriteFile(src, []byte("KEY=value\n"), 0o600))
 
 	worktreeDir := t.TempDir()
 	require.NoError(t, envloader.CopyInto(map[string]string{"packages/api/.env": src}, worktreeDir))
