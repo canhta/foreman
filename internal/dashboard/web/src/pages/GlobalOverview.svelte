@@ -1,6 +1,7 @@
 <script lang="ts">
   import { globalState } from '../state/global.svelte';
   import { link, push } from 'svelte-spa-router';
+  import { IconCircleFilled, IconPlayerPause, IconAlertTriangle, IconCircle } from '@tabler/icons-svelte';
 
   function statusColor(status: string): string {
     switch (status) {
@@ -8,15 +9,6 @@
       case 'error':   return 'text-[var(--color-danger)]';
       case 'paused':  return 'text-[var(--color-warning)]';
       default:        return 'text-[var(--color-muted)]';
-    }
-  }
-
-  function statusDot(status: string): string {
-    switch (status) {
-      case 'running': return '●';
-      case 'paused':  return '◼';
-      case 'error':   return '▲';
-      default:        return '○';
     }
   }
 
@@ -36,7 +28,7 @@
     <div class="flex items-center gap-1.5 text-[10px]"
          class:text-[var(--color-success)]={globalState.wsConnected}
          class:text-[var(--color-muted)]={!globalState.wsConnected}>
-      <span class="text-[8px]" class:animate-pulse={globalState.wsConnected}>●</span>
+      <span class="flex items-center" class:animate-pulse={globalState.wsConnected}><IconCircleFilled size={10} stroke={1.5} /></span>
       <span class="tracking-[0.15em] uppercase">{globalState.wsConnected ? 'Live' : 'Polling'}</span>
     </div>
   </div>
@@ -155,8 +147,11 @@
                 </td>
                 <td class="text-right px-5 py-3.5">
                   <span class="inline-flex items-center justify-end gap-1.5 text-xs {statusColor(project.status ?? 'stopped')}">
-                    <span class="text-[10px]" class:animate-pulse={project.status === 'running'}>
-                      {statusDot(project.status ?? 'stopped')}
+                    <span class="flex items-center" class:animate-pulse={project.status === 'running'}>
+                      {#if (project.status ?? 'stopped') === 'running'}<IconCircleFilled size={12} stroke={1.5} />
+                      {:else if (project.status ?? 'stopped') === 'paused'}<IconPlayerPause size={12} stroke={1.5} />
+                      {:else if (project.status ?? 'stopped') === 'error'}<IconAlertTriangle size={12} stroke={1.5} />
+                      {:else}<IconCircle size={12} stroke={1.5} />{/if}
                     </span>
                     <span class="tracking-wider">{statusLabel(project.status ?? 'stopped')}</span>
                   </span>
