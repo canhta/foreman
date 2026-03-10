@@ -206,7 +206,7 @@ type Database interface {
 }
 ```
 
-Implementations: `sqlite.go` (default, serialized writer for concurrency safety), `postgres.go`.
+Implementation: `sqlite.go` (serialized writer for concurrency safety).
 
 ### AgentRunner (`internal/agent`)
 
@@ -314,8 +314,6 @@ File reservations are stored in the database, not in memory. Before a pipeline b
 | Language | Go 1.25+ |
 | CLI framework | cobra + viper |
 | Database (default) | SQLite via `go-sqlite3` (CGO required) |
-| Database (optional) | PostgreSQL via `pgx/v5` |
-| SQL extensions | `sqlx` |
 | Git fallback | `go-git/v5` |
 | LLM prompt templates | `pongo2` (Jinja2-compatible) |
 | Token counting | `tiktoken-go` model-accurate tokenization |

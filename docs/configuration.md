@@ -412,7 +412,7 @@ auto_reinstall_deps = true           # Reinstall deps when package manifests cha
 
 ```toml
 [database]
-driver = "sqlite"   # sqlite | postgres
+driver = "sqlite"
 ```
 
 ### SQLite (Default)
@@ -425,15 +425,7 @@ wal_mode                = true    # PRAGMA journal_mode=WAL (required for concur
 event_flush_interval_ms = 100     # Batch flush interval for non-critical writes
 ```
 
-> SQLite caps `max_parallel_tickets` at 3. For more concurrent pipelines, use PostgreSQL.
-
-### PostgreSQL (Optional)
-
-```toml
-[database.postgres]
-url             = "${DATABASE_URL}"   # postgres://user:pass@host:5432/foreman
-max_connections = 10
-```
+> `max_parallel_tickets` is capped at 3.
 
 ---
 
@@ -633,7 +625,6 @@ See [Context Generate](getting-started.md#generating-agentsmd) for usage.
 | `LINEAR_API_KEY` | `[tracker.linear] api_key` |
 | `GITLAB_TOKEN` | `[git.gitlab] token` |
 | `FOREMAN_DASHBOARD_TOKEN` | `[dashboard] auth_token` |
-| `DATABASE_URL` | `[database.postgres] url` |
 
 ---
 
