@@ -185,6 +185,15 @@ func newStartCmd() *cobra.Command {
 			// 1a. Initialize ProjectManager for multi-project support.
 			homeDir, _ := os.UserHomeDir()
 			foremanDir := filepath.Join(homeDir, ".foreman")
+
+			// Auto-migrate single-project setup if needed.
+			if project.NeedsMigration(foremanDir) {
+				cfgPath := filepath.Join(foremanDir, "foreman.toml")
+				if _, migErr := project.MigrateFromSingleProject(foremanDir, cfgPath); migErr != nil {
+					log.Warn().Err(migErr).Msg("single-project migration failed; continuing with legacy mode")
+				}
+			}
+
 			projManager := project.NewManager(foremanDir, cfg)
 
 			// 1b. Seed dashboard auth token from config (idempotent).
