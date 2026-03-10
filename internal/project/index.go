@@ -53,6 +53,25 @@ func (idx *Index) Add(entry IndexEntry) error {
 	return idx.save(entries)
 }
 
+// UpdateName updates the name of an existing project entry.
+func (idx *Index) UpdateName(id, name string) error {
+	idx.mu.Lock()
+	defer idx.mu.Unlock()
+
+	entries, err := idx.load()
+	if err != nil {
+		return err
+	}
+
+	for i, e := range entries {
+		if e.ID == id {
+			entries[i].Name = name
+			return idx.save(entries)
+		}
+	}
+	return fmt.Errorf("project %s not found in index", id)
+}
+
 // Remove removes a project entry by ID.
 func (idx *Index) Remove(id string) error {
 	idx.mu.Lock()

@@ -222,6 +222,14 @@ func (a *API) handleListProjects(w http.ResponseWriter, r *http.Request) {
 	if entries == nil {
 		entries = []project.IndexEntry{}
 	}
+	// Enrich entries with empty names from their config files.
+	for i, e := range entries {
+		if e.Name == "" {
+			if cfg, _, err := a.projects.GetProject(e.ID); err == nil && cfg.Project.Name != "" {
+				entries[i].Name = cfg.Project.Name
+			}
+		}
+	}
 	writeJSON(w, http.StatusOK, entries)
 }
 
@@ -231,12 +239,13 @@ func (a *API) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "project registry not configured"})
 		return
 	}
-	var cfg project.ProjectConfig
-	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+	var dto projectConfigDTO
+	if err := json.NewDecoder(r.Body).Decode(&dto); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	id, err := a.projects.CreateProject(&cfg)
+	cfg := expandProjectConfigDTO(dto)
+	id, err := a.projects.CreateProject(cfg)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
@@ -1153,6 +1162,99 @@ func (a *API) handleRenderCommand(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"rendered": rendered})
 }
 
+// projectConfigDTO is the flat JSON representation of a project config used by the dashboard UI.
+type projectConfigDTO struct {
+	Name               string  `json:"name"`
+	Description        string  `json:"description"`
+	GitCloneURL        string  `json:"git_clone_url"`
+	GitDefaultBranch   string  `json:"git_default_branch"`
+	GitToken           string  `json:"git_token"`
+	GitProvider        string  `json:"git_provider"`
+	TrackerProvider    string  `json:"tracker_provider"`
+	TrackerToken       string  `json:"tracker_token"`
+	TrackerProjectKey  string  `json:"tracker_project_key"`
+	TrackerLabels      string  `json:"tracker_labels"`
+	TrackerURL         string  `json:"tracker_url"`
+	AgentRunner        string  `json:"agent_runner"`
+	ModelPlanner       string  `json:"model_planner"`
+	ModelImplementer   string  `json:"model_implementer"`
+	MaxParallelTickets int     `json:"max_parallel_tickets"`
+	MaxTasksPerTicket  int     `json:"max_tasks_per_ticket"`
+	MaxCostPerTicket   float64 `json:"max_cost_per_ticket"`
+}
+
+// flattenProjectConfig converts the nested ProjectConfig to a flat DTO for the frontend.
+func flattenProjectConfig(cfg *project.ProjectConfig) projectConfigDTO {
+	dto := projectConfigDTO{
+		Name:               cfg.Project.Name,
+		Description:        cfg.Project.Description,
+		GitCloneURL:        cfg.Git.CloneURL,
+		GitDefaultBranch:   cfg.Git.DefaultBranch,
+		GitProvider:        cfg.Git.Provider,
+		GitToken:           cfg.Git.GitHub.Token,
+		TrackerProvider:    cfg.Tracker.Provider,
+		TrackerLabels:      cfg.Tracker.PickupLabel,
+		AgentRunner:        cfg.AgentRunner.Provider,
+		ModelPlanner:       cfg.Models.Planner,
+		ModelImplementer:   cfg.Models.Implementer,
+		MaxParallelTickets: cfg.Limits.MaxParallelTickets,
+		MaxTasksPerTicket:  cfg.Limits.MaxTasksPerTicket,
+		MaxCostPerTicket:   cfg.Cost.MaxCostPerTicketUSD,
+	}
+	switch cfg.Tracker.Provider {
+	case "github":
+		dto.TrackerToken = cfg.Tracker.GitHub.Token
+		dto.TrackerProjectKey = cfg.Tracker.GitHub.Owner + "/" + cfg.Tracker.GitHub.Repo
+		dto.TrackerURL = cfg.Tracker.GitHub.BaseURL
+	case "jira":
+		dto.TrackerToken = cfg.Tracker.Jira.APIToken
+		dto.TrackerProjectKey = cfg.Tracker.Jira.ProjectKey
+		dto.TrackerURL = cfg.Tracker.Jira.BaseURL
+	case "linear":
+		dto.TrackerToken = cfg.Tracker.Linear.APIKey
+		dto.TrackerProjectKey = cfg.Tracker.Linear.TeamID
+		dto.TrackerURL = cfg.Tracker.Linear.BaseURL
+	}
+	return dto
+}
+
+// expandProjectConfigDTO converts the flat DTO back to a nested ProjectConfig.
+func expandProjectConfigDTO(dto projectConfigDTO) *project.ProjectConfig {
+	cfg := &project.ProjectConfig{}
+	cfg.Project.Name = dto.Name
+	cfg.Project.Description = dto.Description
+	cfg.Git.CloneURL = dto.GitCloneURL
+	cfg.Git.DefaultBranch = dto.GitDefaultBranch
+	cfg.Git.Provider = dto.GitProvider
+	cfg.Git.GitHub.Token = dto.GitToken
+	cfg.Tracker.Provider = dto.TrackerProvider
+	cfg.Tracker.PickupLabel = dto.TrackerLabels
+	cfg.AgentRunner.Provider = dto.AgentRunner
+	cfg.Models.Planner = dto.ModelPlanner
+	cfg.Models.Implementer = dto.ModelImplementer
+	cfg.Limits.MaxParallelTickets = dto.MaxParallelTickets
+	cfg.Limits.MaxTasksPerTicket = dto.MaxTasksPerTicket
+	cfg.Cost.MaxCostPerTicketUSD = dto.MaxCostPerTicket
+	switch dto.TrackerProvider {
+	case "github":
+		cfg.Tracker.GitHub.Token = dto.TrackerToken
+		cfg.Tracker.GitHub.BaseURL = dto.TrackerURL
+		if i := strings.Index(dto.TrackerProjectKey, "/"); i > 0 {
+			cfg.Tracker.GitHub.Owner = dto.TrackerProjectKey[:i]
+			cfg.Tracker.GitHub.Repo = dto.TrackerProjectKey[i+1:]
+		}
+	case "jira":
+		cfg.Tracker.Jira.APIToken = dto.TrackerToken
+		cfg.Tracker.Jira.ProjectKey = dto.TrackerProjectKey
+		cfg.Tracker.Jira.BaseURL = dto.TrackerURL
+	case "linear":
+		cfg.Tracker.Linear.APIKey = dto.TrackerToken
+		cfg.Tracker.Linear.TeamID = dto.TrackerProjectKey
+		cfg.Tracker.Linear.BaseURL = dto.TrackerURL
+	}
+	return cfg
+}
+
 // handleGetProject handles GET /api/projects/{pid} — returns project details.
 func (a *API) handleGetProject(w http.ResponseWriter, r *http.Request) {
 	if a.projects == nil {
@@ -1160,35 +1262,32 @@ func (a *API) handleGetProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	pid := extractProjectID(r.URL.Path)
-	cfg, dir, err := a.projects.GetProject(pid)
+	cfg, _, err := a.projects.GetProject(pid)
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"id":     pid,
-		"dir":    dir,
-		"config": cfg,
-	})
+	writeJSON(w, http.StatusOK, flattenProjectConfig(cfg))
 }
 
-// handleUpdateProject handles PUT /api/projects/{pid} — updates project config (not yet persisted).
+// handleUpdateProject handles PUT /api/projects/{pid} — updates project config.
 func (a *API) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
 	if a.projects == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "project registry not configured"})
 		return
 	}
-	// Decode the body to validate it; full persistence is a future enhancement.
-	var cfg project.ProjectConfig
-	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+	var dto projectConfigDTO
+	if err := json.NewDecoder(r.Body).Decode(&dto); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 	pid := extractProjectID(r.URL.Path)
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"id":     pid,
-		"status": "config update accepted; restart project worker to apply changes",
-	})
+	cfg := expandProjectConfigDTO(dto)
+	if err := a.projects.UpdateProject(pid, cfg); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 // handleProjectTicketDetail handles GET /api/projects/{pid}/tickets/{id}.

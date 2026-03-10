@@ -18,8 +18,8 @@
   }
 </script>
 
-<div class="border-b border-[var(--color-border)] px-6 flex items-center gap-6">
-  <span class="text-xs font-bold tracking-widest text-[var(--color-text)] py-3">{projectName.toUpperCase()}</span>
+<div class="border-b border-[var(--color-border)] px-6 flex items-center gap-0">
+  <span class="text-xs font-bold tracking-[0.2em] text-[var(--color-text)] py-3 pr-6 border-r border-[var(--color-border)] mr-4">{projectName.toUpperCase()}</span>
   <div class="flex gap-1">
     {#each tabs as tab}
       <a

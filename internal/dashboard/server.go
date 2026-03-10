@@ -370,6 +370,7 @@ type ProjectRegistry interface {
 	GetWorker(id string) (*project.Worker, bool)
 	GetProject(id string) (*project.ProjectConfig, string, error)
 	CreateProject(cfg *project.ProjectConfig) (string, error)
+	UpdateProject(id string, cfg *project.ProjectConfig) error
 	DeleteProject(id string) error
 }
 

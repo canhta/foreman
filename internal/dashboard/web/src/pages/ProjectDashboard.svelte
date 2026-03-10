@@ -36,7 +36,7 @@
   <ProjectTabs projectId={params.pid} projectName={project.name} />
 {/if}
 
-<div class="p-6 max-w-5xl">
+<div class="p-6 w-full">
   <!-- Summary cards -->
   <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
     <div class="border border-[var(--color-border)] p-4 relative animate-fade-in">

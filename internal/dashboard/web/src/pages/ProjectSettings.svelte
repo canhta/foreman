@@ -87,7 +87,7 @@
   <ProjectTabs projectId={params.pid} projectName={project.name} />
 {/if}
 
-<div class="p-6 max-w-3xl">
+<div class="p-6 w-full max-w-4xl">
   <!-- Section: Project -->
   <div class="border border-[var(--color-border)] mb-4 animate-fade-in">
     <button onclick={() => toggleSection('project')}
