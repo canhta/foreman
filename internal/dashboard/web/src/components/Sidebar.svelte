@@ -2,21 +2,16 @@
   import { link } from 'svelte-spa-router';
   import { location } from 'svelte-spa-router';
   import { globalState } from '../state/global.svelte';
+  import {
+    IconCircleFilled, IconPlayerPause, IconAlertTriangle, IconCircle,
+    IconLayoutDashboard, IconChevronLeft, IconChevronRight, IconX
+  } from '@tabler/icons-svelte';
 
   let collapsed = $state((() => { try { return localStorage.getItem('sidebar_collapsed') === 'true'; } catch { return false; } })());
 
   function toggle() {
     collapsed = !collapsed;
     try { localStorage.setItem('sidebar_collapsed', String(collapsed)); } catch {}
-  }
-
-  function statusIndicator(status: string): string {
-    switch (status) {
-      case 'running': return '●';
-      case 'paused':  return '◼';
-      case 'error':   return '▲';
-      default:        return '○';
-    }
   }
 
   function statusColor(status: string): string {
@@ -73,10 +68,10 @@
         <div class="absolute left-0 top-0 bottom-0 w-0.5 bg-[var(--color-accent)]"></div>
       {/if}
       {#if !collapsed}
-        <span class="text-[10px] shrink-0 {overviewActive ? 'text-[var(--color-accent)]' : 'text-[var(--color-muted)]'}">◈</span>
+        <span class="shrink-0 flex items-center {overviewActive ? 'text-[var(--color-accent)]' : 'text-[var(--color-muted)]'}"><IconLayoutDashboard size={14} stroke={1.5} /></span>
         <span>Overview</span>
       {:else}
-        <span class="text-[11px] mx-auto {overviewActive ? 'text-[var(--color-accent)]' : 'text-[var(--color-muted-bright)]'}">◈</span>
+        <span class="mx-auto flex items-center {overviewActive ? 'text-[var(--color-accent)]' : 'text-[var(--color-muted-bright)]'}"><IconLayoutDashboard size={14} stroke={1.5} /></span>
       {/if}
     </a>
 
@@ -109,9 +104,12 @@
           <div class="absolute left-0 top-0 bottom-0 w-0.5 bg-[var(--color-accent)]"></div>
         {/if}
         <!-- Status dot -->
-        <span class="text-[10px] shrink-0 leading-none {statusColor(project.status ?? 'stopped')}"
+        <span class="shrink-0 flex items-center {statusColor(project.status ?? 'stopped')}"
               class:animate-pulse={project.status === 'running'}>
-          {statusIndicator(project.status ?? 'stopped')}
+          {#if project.status === 'running'}<IconCircleFilled size={10} stroke={1.5} />
+          {:else if project.status === 'paused'}<IconPlayerPause size={10} stroke={1.5} />
+          {:else if project.status === 'error'}<IconAlertTriangle size={10} stroke={1.5} />
+          {:else}<IconCircle size={10} stroke={1.5} />{/if}
         </span>
         {#if !collapsed}
           <span class="truncate flex-1 leading-snug">{project.name}</span>
@@ -146,10 +144,10 @@
       title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
     >
       {#if !collapsed}
-        <span class="text-[10px]">◁</span>
+        <span class="flex items-center"><IconChevronLeft size={14} stroke={1.5} /></span>
         <span class="tracking-wider text-[10px] uppercase">Collapse</span>
       {:else}
-        <span class="text-[10px] mx-auto">▷</span>
+        <span class="mx-auto flex items-center"><IconChevronRight size={14} stroke={1.5} /></span>
       {/if}
     </button>
     <button
@@ -157,10 +155,10 @@
       class="flex items-center gap-2.5 px-4 py-2 text-[10px] text-[var(--color-muted)] hover:text-[var(--color-danger)] w-full text-left transition-colors uppercase tracking-[0.15em]"
     >
       {#if !collapsed}
-        <span class="text-[10px]">✕</span>
+        <span class="flex items-center"><IconX size={14} stroke={1.5} /></span>
         <span>Logout</span>
       {:else}
-        <span class="text-[10px] mx-auto">✕</span>
+        <span class="mx-auto flex items-center"><IconX size={14} stroke={1.5} /></span>
       {/if}
     </button>
   </div>
