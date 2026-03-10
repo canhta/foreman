@@ -171,3 +171,38 @@ export interface ActivityBreakdown {
     status: string; duration_ms: number; timestamp: string;
   }[];
 }
+
+export interface ProjectEntry {
+  id: string;
+  name: string;
+  created_at: string;
+  active: boolean;
+  status?: string;       // from worker: running, paused, error, stopped
+  needsInput?: number;   // tickets needing clarification
+}
+
+export interface ProjectOverview {
+  active_tickets: number;
+  open_prs: number;
+  need_input: number;
+  cost_today: number;
+  projects: number;
+}
+
+export interface ProjectSummary {
+  project: ProjectEntry;
+  active_tickets: number;
+  open_prs: number;
+  cost_today: number;
+  status: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  ticket_id: string;
+  sender: 'agent' | 'user' | 'system';
+  message_type: 'clarification' | 'action_request' | 'info' | 'error' | 'reply';
+  content: string;
+  metadata?: string;
+  created_at: string;
+}
