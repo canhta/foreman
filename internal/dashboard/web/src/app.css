@@ -3,69 +3,100 @@
 @theme {
   /* Backgrounds */
   --color-bg: #0a0a0a;
-  --color-surface: #121212;
-  --color-surface-hover: #1c1c1c;
-  --color-surface-active: #242424;
+  --color-surface: #111111;
+  --color-surface-hover: #181818;
+  --color-surface-active: #202020;
+  --color-surface-raised: #161616;
 
   /* Borders */
-  --color-border: #2a2a2a;
-  --color-border-strong: #3c3c3c;
-  --color-border-bright: #585858;
+  --color-border: #222222;
+  --color-border-strong: #333333;
+  --color-border-bright: #4a4a4a;
 
-  /* Accent — electric yellow */
+  /* Accent — electric yellow (brand / action only) */
   --color-accent: #FFE600;
-  --color-accent-dim: #9A8200;
-  --color-accent-bg: rgba(255, 230, 0, 0.07);
-  --color-accent-bg-strong: rgba(255, 230, 0, 0.14);
+  --color-accent-dim: #998900;
+  --color-accent-bg: rgba(255, 230, 0, 0.06);
+  --color-accent-bg-strong: rgba(255, 230, 0, 0.12);
 
   /* Text */
-  --color-text: #F0F0F0;
-  --color-muted: #6e6e6e;
-  --color-muted-bright: #9a9a9a;
+  --color-text: #EDEDED;
+  --color-muted: #5a5a5a;
+  --color-muted-bright: #8a8a8a;
+  --color-muted-mid: #6e6e6e;
 
-  /* Status */
-  --color-danger: #FF3B3B;
-  --color-danger-dim: #7A0000;
-  --color-danger-bg: rgba(255, 59, 59, 0.10);
+  /* Status — amplified */
+  --color-danger: #FF4040;
+  --color-danger-dim: #8B0000;
+  --color-danger-bg: rgba(255, 64, 64, 0.08);
+  --color-danger-bg-strong: rgba(255, 64, 64, 0.16);
+
   --color-success: #00E868;
-  --color-success-dim: #006B2E;
-  --color-success-bg: rgba(0, 232, 104, 0.10);
+  --color-success-dim: #005E28;
+  --color-success-bg: rgba(0, 232, 104, 0.08);
+  --color-success-bg-strong: rgba(0, 232, 104, 0.16);
+
   --color-warning: #FFAA20;
-  --color-warning-dim: #7A4200;
-  --color-warning-bg: rgba(255, 170, 32, 0.10);
+  --color-warning-dim: #7A4400;
+  --color-warning-bg: rgba(255, 170, 32, 0.08);
+  --color-warning-bg-strong: rgba(255, 170, 32, 0.16);
+
+  /* Info */
+  --color-info: #40B4FF;
+  --color-info-bg: rgba(64, 180, 255, 0.08);
 
   /* Typography */
   --font-family-mono: "JetBrains Mono", "SF Mono", "Fira Code", "Cascadia Code", ui-monospace, monospace;
 
   /* Animations */
-  --animate-fade-in: fade-in 0.15s ease-out;
-  --animate-slide-in: slide-in 0.15s ease-out;
-  --animate-pulse-slow: pulse-slow 2s ease-in-out infinite;
+  --animate-fade-in: fade-in 0.18s ease-out;
+  --animate-slide-in: slide-in 0.18s ease-out;
+  --animate-slide-in-right: slide-in-right 0.2s ease-out;
+  --animate-zoom-in: zoom-in 0.15s ease-out;
+  --animate-pulse-slow: pulse-slow 2.5s ease-in-out infinite;
+  --animate-blink: blink 1.2s step-end infinite;
 }
 
+/* ── Keyframes ───────────────────────────── */
+
 @keyframes fade-in {
-  from { opacity: 0; transform: translateY(-3px); }
+  from { opacity: 0; transform: translateY(-4px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
 @keyframes slide-in {
-  from { opacity: 0; transform: translateX(-6px); }
+  from { opacity: 0; transform: translateX(-8px); }
   to   { opacity: 1; transform: translateX(0); }
 }
 
-@keyframes pulse-slow {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0.4; }
-}
-
 @keyframes slide-in-right {
-  from { opacity: 0; transform: translateX(12px); }
+  from { opacity: 0; transform: translateX(14px); }
   to   { opacity: 1; transform: translateX(0); }
 }
 
 @keyframes zoom-in {
-  from { opacity: 0; transform: scale(0.98); }
+  from { opacity: 0; transform: scale(0.97); }
   to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes pulse-slow {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.35; }
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes grow-x {
+  from { transform: scaleX(0); transform-origin: left; }
+  to   { transform: scaleX(1); transform-origin: left; }
 }
 
 /* ── Base ────────────────────────────────── */
@@ -73,24 +104,111 @@
 body {
   @apply bg-bg text-text font-mono m-0 p-0;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+  font-feature-settings: "kern" 1, "liga" 0;
 }
+
+/* Kill ligatures in code-heavy UIs — keeps IDs and operators readable */
+* { font-feature-settings: "liga" 0, "calt" 0; }
 
 ::selection {
   background: var(--color-accent);
   color: #000;
 }
 
-/* Scrollbars */
+/* ── Scrollbars ──────────────────────────── */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
-::-webkit-scrollbar-track { background: var(--color-bg); }
-::-webkit-scrollbar-thumb { background: var(--color-border-strong); }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--color-border-strong); border-radius: 0; }
 ::-webkit-scrollbar-thumb:hover { background: var(--color-border-bright); }
 
-/* Board columns — thinner scrollbar */
 .board-column::-webkit-scrollbar { width: 2px; }
 
-/* Reduced motion */
+/* ── Typography scale ────────────────────── */
+/* Label xs  = 10px / tracking-[0.15em] uppercase — column headers, metadata */
+/* Body sm   = 12px / tracking-normal          — primary content text       */
+/* Body md   = 13px / tracking-normal          — panel titles, descriptions  */
+/* Display   = 28–36px / font-bold             — stat numbers                */
+
+/* ── Status chips (reusable) ─────────────── */
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.125rem 0.4rem;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  line-height: 1.4;
+}
+
+.status-chip-done    { color: var(--color-success); background: var(--color-success-bg); border: 1px solid color-mix(in srgb, var(--color-success) 30%, transparent); }
+.status-chip-failed  { color: var(--color-danger);  background: var(--color-danger-bg);  border: 1px solid color-mix(in srgb, var(--color-danger)  30%, transparent); }
+.status-chip-active  { color: var(--color-accent);  background: var(--color-accent-bg);  border: 1px solid color-mix(in srgb, var(--color-accent)  30%, transparent); }
+.status-chip-warn    { color: var(--color-warning); background: var(--color-warning-bg); border: 1px solid color-mix(in srgb, var(--color-warning) 30%, transparent); }
+.status-chip-neutral { color: var(--color-muted-bright); background: transparent; border: 1px solid var(--color-border-strong); }
+
+/* ── Card primitives ─────────────────────── */
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  position: relative;
+}
+
+.card-accent-top::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: var(--color-accent);
+}
+
+.card-success-top::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: var(--color-success);
+}
+
+.card-danger-top::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: var(--color-danger);
+}
+
+.card-warn-top::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+  background: var(--color-warning);
+}
+
+/* ── Progress bar ────────────────────────── */
+.progress-track {
+  height: 3px;
+  background: var(--color-border-strong);
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--color-accent);
+  transition: width 0.4s ease;
+}
+
+.progress-fill-success {
+  height: 100%;
+  background: var(--color-success);
+  transition: width 0.4s ease;
+}
+
+/* ── Reduced motion ──────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

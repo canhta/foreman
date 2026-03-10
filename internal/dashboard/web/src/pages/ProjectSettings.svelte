@@ -58,10 +58,19 @@
     if (type === 'git') testingGit = true;
     else testingTracker = true;
     try {
-      const res = await fetch(`/api/projects/${params.pid}/config/test`, {
+      const body = type === 'git'
+        ? { type: 'git', clone_url: config.git_clone_url, token: config.git_token }
+        : {
+            type: 'tracker',
+            provider: config.tracker_provider,
+            token: config.tracker_token,
+            project_key: config.tracker_project_key,
+            url: config.tracker_url,
+          };
+      const res = await fetch('/api/projects/test-connection', {
         method: 'POST',
         headers: { Authorization: `Bearer ${getToken()}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       toasts.add(data.ok ? `${type} connection OK` : `${type}: ${data.error}`, data.ok ? 'success' : 'error');

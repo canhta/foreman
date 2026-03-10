@@ -219,8 +219,12 @@ func NewServer(db DashboardDB, emitter EventSubscriber, statusProvider DaemonSta
 			ticketRest := parts[2] // "{id}" or "{id}/tasks" etc.
 			ticketParts := strings.SplitN(ticketRest, "/", 2)
 			if len(ticketParts) == 1 {
-				// GET /api/projects/{pid}/tickets/{id}
-				api.handleProjectTicketDetail(w, r)
+				// GET or DELETE /api/projects/{pid}/tickets/{id}
+				if r.Method == http.MethodDelete {
+					api.handleProjectDeleteTicket(w, r)
+				} else {
+					api.handleProjectTicketDetail(w, r)
+				}
 			} else {
 				switch ticketParts[1] {
 				case "tasks":
@@ -243,7 +247,30 @@ func NewServer(db DashboardDB, emitter EventSubscriber, statusProvider DaemonSta
 					http.NotFound(w, r)
 				}
 			}
-		// GET /api/projects/{pid}/cost/daily/{date}
+		// GET /api/projects/{pid}/ticket-summaries
+		case len(parts) == 2 && parts[1] == "ticket-summaries":
+			api.handleProjectTicketSummaries(w, r)
+		// GET /api/projects/{pid}/events
+		case len(parts) == 2 && parts[1] == "events":
+			api.handleProjectGlobalEvents(w, r)
+		// GET /api/projects/{pid}/costs/today|month|week (plural)
+		case len(parts) >= 2 && parts[1] == "costs":
+			sub := ""
+			if len(parts) == 3 {
+				sub = parts[2]
+			}
+			switch sub {
+			case "today":
+				api.handleProjectCostsToday(w, r)
+			case "month":
+				api.handleProjectCostsMonth(w, r)
+			case "week":
+				api.handleProjectCostsWeek(w, r)
+			default:
+				http.NotFound(w, r)
+			}
+		// GET /api/projects/{pid}/cost/daily/{date} (singular, legacy)
+		case len(parts) >= 2 && parts[1] == "cost":
 		case len(parts) >= 2 && parts[1] == "cost":
 			costRest := ""
 			if len(parts) == 3 {

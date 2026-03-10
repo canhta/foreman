@@ -293,13 +293,57 @@ func (a *API) handleProjectTickets(w http.ResponseWriter, r *http.Request) {
 // handleOverview handles GET /api/overview — aggregated metrics across all projects.
 func (a *API) handleOverview(w http.ResponseWriter, r *http.Request) {
 	projectCount := 0
+	activeTickets := 0
+	openPRs := 0
+	needInput := 0
+	costToday := 0.0
+
 	if a.projects != nil {
-		if entries, err := a.projects.ListProjects(); err == nil {
+		entries, err := a.projects.ListProjects()
+		if err == nil {
 			projectCount = len(entries)
+			date := time.Now().Format("2006-01-02")
+			activeStatuses := []models.TicketStatus{
+				models.TicketStatusPlanning, models.TicketStatusImplementing,
+				models.TicketStatusReviewing, models.TicketStatusPlanValidating,
+				models.TicketStatusQueued,
+			}
+			prStatuses := []models.TicketStatus{
+				models.TicketStatusPRCreated, models.TicketStatusPRUpdated,
+				models.TicketStatusAwaitingMerge,
+			}
+
+			for _, entry := range entries {
+				worker, ok := a.projects.GetWorker(entry.ID)
+				if !ok {
+					continue
+				}
+				projDB, ok := worker.Database.(DashboardDB)
+				if !ok {
+					continue
+				}
+				if tickets, err := projDB.ListTickets(r.Context(), models.TicketFilter{StatusIn: activeStatuses}); err == nil {
+					activeTickets += len(tickets)
+				}
+				if tickets, err := projDB.ListTickets(r.Context(), models.TicketFilter{StatusIn: prStatuses}); err == nil {
+					openPRs += len(tickets)
+				}
+				if tickets, err := projDB.ListTickets(r.Context(), models.TicketFilter{StatusIn: []models.TicketStatus{models.TicketStatusClarificationNeeded}}); err == nil {
+					needInput += len(tickets)
+				}
+				if c, err := projDB.GetDailyCost(r.Context(), date); err == nil {
+					costToday += c
+				}
+			}
 		}
 	}
+
 	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"projects": projectCount,
+		"active_tickets": activeTickets,
+		"open_prs":       openPRs,
+		"need_input":     needInput,
+		"cost_today":     costToday,
+		"projects":       projectCount,
 	})
 }
 
@@ -1517,6 +1561,129 @@ func (a *API) handleProjectHealth(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleProjectTicketSummaries handles GET /api/projects/{pid}/ticket-summaries.
+func (a *API) handleProjectTicketSummaries(w http.ResponseWriter, r *http.Request) {
+	projDB, err := a.projectDB(r)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		return
+	}
+	summaries, err := projDB.GetTicketSummaries(r.Context(), models.TicketFilter{})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if summaries == nil {
+		summaries = []models.TicketSummary{}
+	}
+	writeJSON(w, http.StatusOK, summaries)
+}
+
+// handleProjectCostsToday handles GET /api/projects/{pid}/costs/today.
+func (a *API) handleProjectCostsToday(w http.ResponseWriter, r *http.Request) {
+	projDB, err := a.projectDB(r)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		return
+	}
+	date := time.Now().Format("2006-01-02")
+	cost, err := projDB.GetDailyCost(r.Context(), date)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"date": date, "cost_usd": cost})
+}
+
+// handleProjectCostsMonth handles GET /api/projects/{pid}/costs/month.
+func (a *API) handleProjectCostsMonth(w http.ResponseWriter, r *http.Request) {
+	projDB, err := a.projectDB(r)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		return
+	}
+	yearMonth := time.Now().Format("2006-01")
+	cost, err := projDB.GetMonthlyCost(r.Context(), yearMonth)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"month": yearMonth, "cost_usd": cost})
+}
+
+// handleProjectCostsWeek handles GET /api/projects/{pid}/costs/week.
+func (a *API) handleProjectCostsWeek(w http.ResponseWriter, r *http.Request) {
+	projDB, err := a.projectDB(r)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		return
+	}
+	var costs []map[string]interface{}
+	for i := 6; i >= 0; i-- {
+		date := time.Now().AddDate(0, 0, -i).Format("2006-01-02")
+		cost, err := projDB.GetDailyCost(r.Context(), date)
+		entry := map[string]interface{}{"date": date, "cost_usd": cost}
+		if err != nil {
+			entry["error"] = "unavailable"
+		}
+		costs = append(costs, entry)
+	}
+	writeJSON(w, http.StatusOK, costs)
+}
+
+// handleProjectGlobalEvents handles GET /api/projects/{pid}/events.
+func (a *API) handleProjectGlobalEvents(w http.ResponseWriter, r *http.Request) {
+	projDB, err := a.projectDB(r)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		return
+	}
+	limit := 50
+	offset := 0
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 100 {
+			limit = n
+		}
+	}
+	if v := r.URL.Query().Get("offset"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			offset = n
+		}
+	}
+	events, err := projDB.GetGlobalEvents(r.Context(), limit, offset)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if events == nil {
+		events = []models.EventRecord{}
+	}
+	writeJSON(w, http.StatusOK, events)
+}
+
+// handleProjectDeleteTicket handles DELETE /api/projects/{pid}/tickets/{id}.
+func (a *API) handleProjectDeleteTicket(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	projDB, err := a.projectDB(r)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		return
+	}
+	id := extractTicketID(r.URL.Path)
+	if id == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing ticket ID"})
+		return
+	}
+	if err := projDB.DeleteTicket(r.Context(), id); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted", "ticket_id": id})
+}
+
 // handleProjectDashboard handles GET /api/projects/{pid}/dashboard.
 func (a *API) handleProjectDashboard(w http.ResponseWriter, r *http.Request) {
 	projDB, err := a.projectDB(r)
@@ -1693,7 +1860,7 @@ func extractPathParam(path, prefix string) string {
 // It tests git or tracker credentials without requiring an existing project.
 func (a *API) handleTestConnection(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Type       string `json:"type"`
+		Type string `json:"type"`
 		// git fields
 		CloneURL string `json:"clone_url"`
 		Token    string `json:"token"`
