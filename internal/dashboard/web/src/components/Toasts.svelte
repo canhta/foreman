@@ -8,10 +8,10 @@
   <div class="fixed bottom-16 right-4 z-50 space-y-1.5 md:bottom-4" role="alert" aria-live="polite">
     {#each toasts.toasts as toast (toast.id)}
       <div class="flex items-stretch animate-slide-in max-w-sm border border-[var(--color-border-strong)] bg-[var(--color-surface)] shadow-2xl transition-colors hover:border-[var(--color-border-bright)]
-        {toast.severity === 'error' ? 'border-l-4 border-l-[var(--color-danger)]' : 'border-l-4 border-l-[var(--color-success)]'}">
+        {toast.severity === 'error' ? 'border-l-4 border-l-[var(--color-danger)]' : toast.severity === 'warning' ? 'border-l-4 border-l-[var(--color-warning)]' : toast.severity === 'info' ? 'border-l-4 border-l-[var(--color-accent)]' : 'border-l-4 border-l-[var(--color-success)]'}">
         <!-- Icon block -->
-        <div class="w-10 flex items-center justify-center shrink-0 {toast.severity === 'error' ? 'bg-[var(--color-danger-bg)]' : 'bg-[var(--color-success-bg)]'}">
-          <span class="text-sm {toast.severity === 'error' ? 'text-[var(--color-danger)]' : 'text-[var(--color-success)]'}">
+        <div class="w-10 flex items-center justify-center shrink-0 {toast.severity === 'error' ? 'bg-[var(--color-danger-bg)]' : toast.severity === 'warning' ? 'bg-[var(--color-warning-bg)]' : toast.severity === 'info' ? 'bg-[var(--color-surface-hover)]' : 'bg-[var(--color-success-bg)]'}">
+          <span class="text-sm {toast.severity === 'error' ? 'text-[var(--color-danger)]' : toast.severity === 'warning' ? 'text-[var(--color-warning)]' : toast.severity === 'info' ? 'text-[var(--color-accent)]' : 'text-[var(--color-success)]'}">
             {severityIcon(toast.severity)}
           </span>
         </div>

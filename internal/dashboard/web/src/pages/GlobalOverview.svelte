@@ -2,12 +2,6 @@
   import { globalState } from '../state/global.svelte';
   import { link, push } from 'svelte-spa-router';
 
-  const loading = $derived(
-    globalState.projects.length === 0 &&
-    globalState.overview.active_tickets === 0 &&
-    globalState.overview.cost_today === 0
-  );
-
   function statusColor(status: string): string {
     switch (status) {
       case 'running': return 'text-[var(--color-success)]';
@@ -47,7 +41,7 @@
     </div>
   </div>
 
-  {#if loading}
+  {#if globalState.loading}
     <!-- Skeleton -->
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-8">
       {#each [0, 1, 2, 3] as i}

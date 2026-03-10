@@ -41,6 +41,7 @@ class ProjectState {
   // WebSocket
   private ws: WebSocket | null = null;
   private pollIntervals: number[] = [];
+  private wsStopped = false;
 
   private base(): string {
     return `/api/projects/${this.projectId}`;
@@ -85,6 +86,8 @@ class ProjectState {
       this.chatMessages = chat;
     } catch (e) {
       console.error('loadTicketDetail', e);
+      this.ticketDetail = null;
+      toasts.add(`Failed to load ticket details: ${e instanceof Error ? e.message : 'Unknown error'}`, 'error');
     }
   }
 
@@ -103,25 +106,59 @@ class ProjectState {
   }
 
   async retryTicket(ticketId: string) {
-    await postJSON(`${this.base()}/tickets/${ticketId}/retry`);
-    toasts.add('Ticket retried', 'success');
-    await this.loadTickets();
+    try {
+      await postJSON(`${this.base()}/tickets/${ticketId}/retry`);
+      toasts.add('Ticket retried', 'success');
+      await this.loadTickets();
+    } catch (e) {
+      toasts.add(`Failed to retry ticket: ${e instanceof Error ? e.message : 'Unknown error'}`, 'error');
+    }
   }
 
   async deleteTicket(ticketId: string) {
-    await deleteJSON(`${this.base()}/tickets/${ticketId}`);
-    this.deselectTicket();
-    await this.loadTickets();
+    try {
+      await deleteJSON(`${this.base()}/tickets/${ticketId}`);
+      this.deselectTicket();
+      await this.loadTickets();
+    } catch (e) {
+      toasts.add(`Failed to delete ticket: ${e instanceof Error ? e.message : 'Unknown error'}`, 'error');
+    }
   }
 
   async sendChatMessage(ticketId: string, content: string) {
-    await postJSONBody(`${this.base()}/tickets/${ticketId}/chat`, { content });
-    await this.loadTicketDetail(ticketId);
+    try {
+      await postJSONBody(`${this.base()}/tickets/${ticketId}/chat`, { content });
+      await this.loadTicketDetail(ticketId);
+    } catch (e) {
+      toasts.add(`Failed to send message: ${e instanceof Error ? e.message : 'Unknown error'}`, 'error');
+    }
   }
 
   async syncTracker() {
-    await postJSON(`${this.base()}/sync`);
-    toasts.add('Sync triggered', 'info');
+    try {
+      await postJSON(`${this.base()}/sync`);
+      toasts.add('Sync triggered', 'info');
+    } catch (e) {
+      toasts.add(`Failed to sync tracker: ${e instanceof Error ? e.message : 'Unknown error'}`, 'error');
+    }
+  }
+
+  async pauseProject() {
+    try {
+      await postJSON(`${this.base()}/pause`);
+      toasts.add('Project paused', 'info');
+    } catch (e) {
+      toasts.add(`Failed to pause project: ${e instanceof Error ? e.message : 'Unknown error'}`, 'error');
+    }
+  }
+
+  async resumeProject() {
+    try {
+      await postJSON(`${this.base()}/resume`);
+      toasts.add('Project resumed', 'success');
+    } catch (e) {
+      toasts.add(`Failed to resume project: ${e instanceof Error ? e.message : 'Unknown error'}`, 'error');
+    }
   }
 
   async loadCosts() {
@@ -149,6 +186,7 @@ class ProjectState {
 
   connectWebSocket() {
     if (!this.projectId) return;
+    this.wsStopped = false;
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const url = `${protocol}//${location.host}/ws/projects/${this.projectId}`;
     this.ws = new WebSocket(url, [`bearer.${getToken()}`]);
@@ -164,6 +202,7 @@ class ProjectState {
       } catch {}
     };
     this.ws.onclose = () => {
+      if (this.wsStopped) return;
       setTimeout(() => this.connectWebSocket(), 5000);
     };
   }
@@ -180,6 +219,7 @@ class ProjectState {
   }
 
   stopPolling() {
+    this.wsStopped = true;
     this.pollIntervals.forEach(clearInterval);
     this.pollIntervals = [];
     this.ws?.close();

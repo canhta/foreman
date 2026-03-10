@@ -1,4 +1,4 @@
-import { fetchJSON, postJSONBody, clearToken, getToken, setOnUnauthorized } from '../api';
+import { fetchJSON, postJSON, postJSONBody, clearToken, getToken, setOnUnauthorized } from '../api';
 import type { ProjectEntry, ProjectOverview } from '../types';
 import { toasts } from './toasts.svelte';
 
@@ -8,6 +8,9 @@ class GlobalState {
 
   // Projects
   projects = $state<ProjectEntry[]>([]);
+
+  // Loading flag — true until first loadProjects() completes
+  loading = $state(true);
 
   // Overview metrics
   overview = $state<ProjectOverview>({ active_tickets: 0, open_prs: 0, need_input: 0, cost_today: 0, projects: 0 });
@@ -19,6 +22,7 @@ class GlobalState {
   // Global WebSocket
   private ws: WebSocket | null = null;
   private pollIntervals: number[] = [];
+  private wsStopped = false;
 
   async loadProjects() {
     try {
@@ -26,6 +30,8 @@ class GlobalState {
       this.projects = entries;
     } catch (e) {
       console.error('loadProjects', e);
+    } finally {
+      this.loading = false;
     }
   }
 
@@ -45,25 +51,63 @@ class GlobalState {
     });
     if (!res.ok) throw new Error(await res.text());
     const data = await res.json();
+    if (!data.id) {
+      toasts.add('Project created but no ID returned', 'error');
+      throw new Error('No project ID in response');
+    }
     await this.loadProjects();
     return data.id;
   }
 
   async deleteProject(id: string) {
-    await fetch(`/api/projects/${id}`, {
+    const res = await fetch(`/api/projects/${id}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${getToken()}` },
     });
+    if (!res.ok) {
+      const msg = await res.text().catch(() => `HTTP ${res.status}`);
+      toasts.add(`Failed to delete project: ${msg}`, 'error');
+      throw new Error(msg);
+    }
     await this.loadProjects();
   }
 
+  async daemonPause() {
+    try {
+      await postJSON('/api/daemon/pause');
+      toasts.add('Daemon paused', 'info');
+    } catch (e) {
+      toasts.add(`Failed to pause daemon: ${e instanceof Error ? e.message : 'Unknown error'}`, 'error');
+    }
+  }
+
+  async daemonResume() {
+    try {
+      await postJSON('/api/daemon/resume');
+      toasts.add('Daemon resumed', 'success');
+    } catch (e) {
+      toasts.add(`Failed to resume daemon: ${e instanceof Error ? e.message : 'Unknown error'}`, 'error');
+    }
+  }
+
+  async daemonSync() {
+    try {
+      await postJSON('/api/daemon/sync');
+      toasts.add('Sync triggered', 'info');
+    } catch (e) {
+      toasts.add(`Failed to trigger sync: ${e instanceof Error ? e.message : 'Unknown error'}`, 'error');
+    }
+  }
+
   connectGlobalWebSocket() {
+    this.wsStopped = false;
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const url = `${protocol}//${location.host}/ws/global`;
     this.ws = new WebSocket(url, [`bearer.${getToken()}`]);
     this.ws.onopen = () => { this.wsConnected = true; };
     this.ws.onclose = () => {
       this.wsConnected = false;
+      if (this.wsStopped) return;
       setTimeout(() => this.connectGlobalWebSocket(), 5000);
     };
     this.ws.onmessage = (ev) => {
@@ -91,6 +135,7 @@ class GlobalState {
   }
 
   stopPolling() {
+    this.wsStopped = true;
     this.pollIntervals.forEach(clearInterval);
     this.pollIntervals = [];
     this.ws?.close();

@@ -32,7 +32,7 @@
 </script>
 
 {#if project}
-  <ProjectTabs projectId={params.pid} projectName={project.name} />
+  <ProjectTabs projectId={params.pid} projectName={project.name} projectStatus={project.status} />
 {/if}
 
 <div class="p-6 w-full max-w-5xl">

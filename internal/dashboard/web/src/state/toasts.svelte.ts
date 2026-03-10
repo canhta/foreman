@@ -2,14 +2,14 @@ export interface Toast {
   id: string;
   message: string;
   ticketId?: string;
-  severity: string;
+  severity: 'info' | 'success' | 'warning' | 'error';
   createdAt: number;
 }
 
 class ToastState {
   toasts = $state<Toast[]>([]);
 
-  add(message: string, severity = 'info', ticketId?: string) {
+  add(message: string, severity: 'info' | 'success' | 'warning' | 'error' = 'info', ticketId?: string) {
     const toast: Toast = {
       id: crypto.randomUUID(),
       message,

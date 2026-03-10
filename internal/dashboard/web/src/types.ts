@@ -38,9 +38,9 @@ export interface Ticket {
   CompletedAt: string | null;
   ClarificationRequestedAt: string | null;
   ErrorMessage: string;
-  Comments: TicketComment[];
-  Labels: string[];
-  ChildTicketIDs: string[];
+  Comments: TicketComment[] | null;
+  Labels: string[] | null;
+  ChildTicketIDs: string[] | null;
 }
 
 export interface TicketComment {
@@ -71,11 +71,11 @@ export interface Task {
   Sequence: number;
   AgentRunner: string;  // "builtin" | "claudecode" | "copilot" | ""
   EstimatedComplexity: string;
-  DependsOn: string[];
-  FilesToModify: string[];
-  FilesToRead: string[];
-  AcceptanceCriteria: string[];
-  TestAssertions: string[];
+  DependsOn: string[] | null;
+  FilesToModify: string[] | null;
+  FilesToRead: string[] | null;
+  AcceptanceCriteria: string[] | null;
+  TestAssertions: string[] | null;
   ImplementationAttempts: number;
   SpecReviewAttempts: number;
   QualityReviewAttempts: number;

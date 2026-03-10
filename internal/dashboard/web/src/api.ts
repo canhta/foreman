@@ -32,14 +32,19 @@ function handleResponse(res: Response): Response {
     }
     throw new Error('Unauthorized');
   }
-  if (!res.ok) throw new Error(res.statusText);
+  if (!res.ok) throw new Error(res.statusText || `HTTP ${res.status}`);
   return res;
 }
 
 export async function fetchJSON<T>(url: string): Promise<T> {
   if (!token) throw new Error('No token');
   const res = await fetch(url, { headers: headers() });
-  return handleResponse(res).json();
+  handleResponse(res);
+  const contentType = res.headers.get('content-type') ?? '';
+  if (!contentType.includes('application/json')) {
+    throw new Error(`HTTP ${res.status}: non-JSON response`);
+  }
+  return res.json();
 }
 
 export async function postJSON<T>(url: string): Promise<T> {

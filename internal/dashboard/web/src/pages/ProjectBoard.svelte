@@ -46,7 +46,7 @@
 </script>
 
 {#if project}
-  <ProjectTabs projectId={params.pid} projectName={project.name} />
+  <ProjectTabs projectId={params.pid} projectName={project.name} projectStatus={project.status} />
 {/if}
 
 <div class="flex relative {project ? 'h-[calc(100vh-3rem)]' : 'h-screen'}">
