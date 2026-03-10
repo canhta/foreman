@@ -33,7 +33,7 @@ CGO is required (go-sqlite3). Ensure a C toolchain is available.
 |---------|---------|
 | `config` | TOML config loading via Viper |
 | `daemon` | 24/7 scheduler, file reservation, crash recovery |
-| `db` | Database interface with SQLite (default) and PostgreSQL backends |
+| `db` | Database interface with SQLite backend |
 | `pipeline` | State machine orchestrator — planner, implementer, TDD verifier, reviewers (spec, quality, final), feedback loops |
 | `context` | Context assembly — file selection, token budgets, secrets scanning, repo analysis |
 | `llm` | LLM provider interface + implementations (Anthropic, OpenAI, OpenRouter, local) |
@@ -134,7 +134,7 @@ TOML config (`foreman.toml`) with `${ENV_VAR}` substitution for secrets. Key sec
 ## Key Dependencies
 
 - **CLI:** cobra + viper
-- **Database:** go-sqlite3 (CGo required), pgx (PostgreSQL), sqlx
+- **Database:** go-sqlite3 (CGo required)
 - **Git:** native CLI (default), go-git (fallback)
 - **Templates:** pongo2 (Jinja2-compatible)
 - **Logging:** zerolog
