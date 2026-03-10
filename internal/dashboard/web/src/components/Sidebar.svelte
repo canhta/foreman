@@ -13,80 +13,111 @@
   function statusIndicator(status: string): string {
     switch (status) {
       case 'running': return '●';
-      case 'paused': return '⏸';
-      case 'error': return '⚠';
-      default: return '○';
+      case 'paused':  return '◼';
+      case 'error':   return '▲';
+      default:        return '○';
     }
   }
 
   function statusColor(status: string): string {
     switch (status) {
       case 'running': return 'text-[var(--color-success)]';
-      case 'error': return 'text-[var(--color-danger)]';
-      case 'paused': return 'text-[var(--color-warning)]';
-      default: return 'text-[var(--color-muted)]';
+      case 'error':   return 'text-[var(--color-danger)]';
+      case 'paused':  return 'text-[var(--color-warning)]';
+      default:        return 'text-[var(--color-muted)]';
     }
   }
 
   function isActive(path: string): boolean {
     return $location === path || $location.startsWith(path + '/');
   }
+
+  const overviewActive = $derived(
+    $location === '/' || $location === ''
+  );
 </script>
 
 <aside
-  class="h-screen border-r border-[var(--color-border)] bg-[var(--color-bg)] flex flex-col transition-all duration-200"
+  class="h-screen border-r border-[var(--color-border)] bg-[var(--color-bg)] flex flex-col transition-all duration-200 shrink-0"
   class:w-52={!collapsed}
   class:w-14={collapsed}
 >
   <!-- Logo -->
-  <div class="h-12 flex items-center px-4 border-b border-[var(--color-border)]">
+  <div class="h-12 flex items-center px-4 border-b border-[var(--color-border)] shrink-0">
     {#if !collapsed}
-      <span class="text-sm font-bold tracking-[0.3em] text-[var(--color-accent)]">FOREMAN</span>
-      <span class="text-[10px] text-[var(--color-muted)] ml-auto tracking-wider">v2</span>
+      <div class="flex items-baseline gap-2 flex-1 min-w-0">
+        <span class="text-base font-bold tracking-[0.25em] text-[var(--color-accent)] leading-none">FOREMAN</span>
+        <span class="text-[10px] text-[var(--color-muted)] tracking-widest leading-none">v2</span>
+      </div>
     {:else}
-      <span class="text-sm font-bold text-[var(--color-accent)]">F</span>
+      <span class="text-base font-bold text-[var(--color-accent)] leading-none mx-auto">F</span>
     {/if}
   </div>
 
-  <!-- Overview -->
-  <nav class="flex-1 overflow-y-auto py-2">
+  <!-- Nav -->
+  <nav class="flex-1 overflow-y-auto py-3 space-y-0.5">
+
+    <!-- Overview -->
     <a
       href="/"
       use:link
-      class="flex items-center gap-2 px-4 py-2 text-xs tracking-widest hover:bg-[var(--color-surface-hover)] transition-colors"
-      class:bg-[var(--color-accent-bg)]={isActive('/')}
-      class:text-[var(--color-accent)]={isActive('/')}
-      class:text-[var(--color-muted-bright)]={!isActive('/')}
+      class="flex items-center gap-2.5 px-4 py-2 text-xs tracking-[0.15em] uppercase transition-colors relative group"
+      class:bg-[var(--color-accent-bg)]={overviewActive}
+      class:text-[var(--color-accent)]={overviewActive}
+      class:font-bold={overviewActive}
+      class:text-[var(--color-muted-bright)]={!overviewActive}
+      class:hover:text-[var(--color-text)]={!overviewActive}
+      class:hover:bg-[var(--color-surface-hover)]={!overviewActive}
     >
-      {#if !collapsed}OVERVIEW{:else}◈{/if}
+      {#if overviewActive}
+        <div class="absolute left-0 top-0 bottom-0 w-0.5 bg-[var(--color-accent)]"></div>
+      {/if}
+      {#if !collapsed}
+        <span class="text-[10px] shrink-0 {overviewActive ? 'text-[var(--color-accent)]' : 'text-[var(--color-muted)]'}">◈</span>
+        <span>Overview</span>
+      {:else}
+        <span class="text-[11px] mx-auto {overviewActive ? 'text-[var(--color-accent)]' : 'text-[var(--color-muted-bright)]'}">◈</span>
+      {/if}
     </a>
 
-    <!-- Projects section -->
+    <!-- Projects heading -->
     {#if !collapsed}
-      <div class="px-4 pt-4 pb-1 text-[10px] tracking-[0.2em] text-[var(--color-muted)] uppercase">
-        Projects
+      <div class="px-4 pt-4 pb-1.5 flex items-center justify-between">
+        <span class="text-[10px] tracking-[0.2em] text-[var(--color-muted)] uppercase">Projects</span>
+        <a href="/projects/new" use:link class="text-[10px] text-[var(--color-muted)] hover:text-[var(--color-accent)] transition-colors leading-none">+</a>
       </div>
     {:else}
-      <div class="border-b border-[var(--color-border)] mx-2 my-2"></div>
+      <div class="border-b border-[var(--color-border)] mx-3 my-2"></div>
     {/if}
 
+    <!-- Project entries -->
     {#each globalState.projects as project}
+      {@const active = isActive(`/projects/${project.id}`)}
+      {@const hasInput = (project.needsInput ?? 0) > 0}
       <a
         href="/projects/{project.id}/board"
         use:link
-        class="flex items-center gap-2 px-4 py-2 text-xs hover:bg-[var(--color-surface-hover)] transition-colors group relative"
-        class:bg-[var(--color-accent-bg)]={isActive(`/projects/${project.id}`)}
-        class:text-[var(--color-text)]={isActive(`/projects/${project.id}`)}
-        class:text-[var(--color-muted-bright)]={!isActive(`/projects/${project.id}`)}
+        class="flex items-center gap-2.5 px-4 py-2 text-xs transition-colors relative group"
+        class:bg-[var(--color-surface-hover)]={active}
+        class:text-[var(--color-text)]={active}
+        class:font-medium={active}
+        class:text-[var(--color-muted-bright)]={!active}
+        class:hover:text-[var(--color-text)]={!active}
+        class:hover:bg-[var(--color-surface-hover)]={!active}
       >
-        {#if isActive(`/projects/${project.id}`)}
-          <div class="absolute left-0 top-1 bottom-1 w-0.5 bg-[var(--color-accent)]"></div>
+        {#if active}
+          <div class="absolute left-0 top-0 bottom-0 w-0.5 bg-[var(--color-accent)]"></div>
         {/if}
-        <span class={statusColor(project.status ?? 'stopped')}>{statusIndicator(project.status ?? 'stopped')}</span>
+        <!-- Status dot -->
+        <span class="text-[10px] shrink-0 leading-none {statusColor(project.status ?? 'stopped')}"
+              class:animate-pulse={project.status === 'running'}>
+          {statusIndicator(project.status ?? 'stopped')}
+        </span>
         {#if !collapsed}
-          <span class="truncate">{project.name}</span>
-          {#if (project.needsInput ?? 0) > 0}
-            <span class="ml-auto text-[10px] bg-[var(--color-warning-bg)] text-[var(--color-warning)] px-1.5">
+          <span class="truncate flex-1 leading-snug">{project.name}</span>
+          {#if hasInput}
+            <span class="shrink-0 text-[10px] font-bold text-[var(--color-warning)] bg-[var(--color-warning-bg)]
+                         border border-[var(--color-warning)]/30 px-1.5 py-0.5 leading-none min-w-[1.2rem] text-center">
               {project.needsInput}
             </span>
           {/if}
@@ -94,28 +125,43 @@
       </a>
     {/each}
 
-    <a
-      href="/projects/new"
-      use:link
-      class="flex items-center gap-2 px-4 py-2 text-xs text-[var(--color-muted)] hover:text-[var(--color-accent)] hover:bg-[var(--color-surface-hover)] transition-colors"
-    >
-      {#if !collapsed}+ Add Project{:else}+{/if}
-    </a>
+    <!-- Add project (expanded) -->
+    {#if !collapsed}
+      <a
+        href="/projects/new"
+        use:link
+        class="flex items-center gap-2.5 px-4 py-2 text-xs text-[var(--color-muted)] hover:text-[var(--color-accent)] hover:bg-[var(--color-surface-hover)] transition-colors"
+      >
+        <span class="text-[10px] leading-none">+</span>
+        <span>Add Project</span>
+      </a>
+    {/if}
   </nav>
 
   <!-- Bottom section -->
-  <div class="border-t border-[var(--color-border)] py-2">
+  <div class="border-t border-[var(--color-border)] py-1.5 shrink-0">
     <button
       onclick={toggle}
-      class="flex items-center gap-2 px-4 py-2 text-xs text-[var(--color-muted)] hover:text-[var(--color-text)] w-full text-left"
+      class="flex items-center gap-2.5 px-4 py-2 text-[11px] text-[var(--color-muted)] hover:text-[var(--color-text)] w-full text-left transition-colors"
+      title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
     >
-      {#if !collapsed}◁ Collapse{:else}▷{/if}
+      {#if !collapsed}
+        <span class="text-[10px]">◁</span>
+        <span class="tracking-wider text-[10px] uppercase">Collapse</span>
+      {:else}
+        <span class="text-[10px] mx-auto">▷</span>
+      {/if}
     </button>
     <button
       onclick={() => globalState.logout()}
-      class="flex items-center gap-2 px-4 py-2 text-xs text-[var(--color-muted)] hover:text-[var(--color-danger)] w-full text-left"
+      class="flex items-center gap-2.5 px-4 py-2 text-[10px] text-[var(--color-muted)] hover:text-[var(--color-danger)] w-full text-left transition-colors uppercase tracking-[0.15em]"
     >
-      {#if !collapsed}Logout{:else}✕{/if}
+      {#if !collapsed}
+        <span class="text-[10px]">✕</span>
+        <span>Logout</span>
+      {:else}
+        <span class="text-[10px] mx-auto">✕</span>
+      {/if}
     </button>
   </div>
 </aside>
