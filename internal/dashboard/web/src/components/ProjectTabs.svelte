@@ -1,6 +1,7 @@
 <script lang="ts">
   import { link, location } from 'svelte-spa-router';
   import { projectState } from '../state/project.svelte';
+  import { IconRefresh, IconPlayerPlay, IconPlayerPause } from '@tabler/icons-svelte';
 
   interface Props {
     projectId: string;
@@ -84,7 +85,7 @@
              hover:border-[var(--color-accent)] hover:text-[var(--color-accent)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
       title="Sync from tracker"
     >
-      {syncing ? '↻' : '↻'} {syncing ? 'Syncing…' : 'Sync'}
+      <span class="flex items-center gap-1"><IconRefresh size={14} stroke={1.5} /> {syncing ? 'Syncing…' : 'Sync'}</span>
     </button>
 
     <!-- Pause / Resume -->
@@ -96,7 +97,7 @@
                hover:bg-[var(--color-warning)]/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         title="Resume project"
       >
-        ▶ Resume
+        <span class="flex items-center gap-1"><IconPlayerPlay size={14} stroke={1.5} /> Resume</span>
       </button>
     {:else if isRunning}
       <button
@@ -106,7 +107,7 @@
                hover:border-[var(--color-warning)] hover:text-[var(--color-warning)] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         title="Pause project"
       >
-        ◼ Pause
+        <span class="flex items-center gap-1"><IconPlayerPause size={14} stroke={1.5} /> Pause</span>
       </button>
     {/if}
   </div>
