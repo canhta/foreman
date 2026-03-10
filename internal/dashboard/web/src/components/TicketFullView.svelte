@@ -1,6 +1,10 @@
 <script lang="ts">
   import { projectState } from '../state/project.svelte';
-  import { formatRelative, formatCost, severityIcon, linkifyParts } from '../format';
+  import { formatRelative, formatCost, linkifyParts } from '../format';
+  import {
+    IconCheck, IconX, IconAlertTriangle, IconCircleFilled,
+    IconChevronUp, IconChevronDown, IconExternalLink
+  } from '@tabler/icons-svelte';
   import { PR_STATUSES } from '../types';
   import TaskCard from './TaskCard.svelte';
   import ChatInterface from './ChatInterface.svelte';
@@ -56,7 +60,9 @@
         <span>Cost: <span class="text-[var(--color-text)]">{formatCost(ticket.CostUSD ?? 0)}</span></span>
         {#if hasPR && ticket.PRURL && ticket.PRNumber > 0}
           <a href={ticket.PRURL} target="_blank" rel="noopener"
-             class="status-chip status-chip-active hover:underline">↗ PR #{ticket.PRNumber}</a>
+             class="status-chip status-chip-active hover:underline flex items-center gap-1">
+            <IconExternalLink size={12} stroke={1.5} /> PR #{ticket.PRNumber}
+          </a>
         {/if}
       </div>
     </div>
@@ -120,14 +126,19 @@
                 <span class="status-chip status-chip-neutral">{projectState.ticketEvents.length}</span>
               {/if}
             </div>
-            <span class="text-[10px] text-[var(--color-muted)]">{eventsExpanded ? '▲' : '▼'}</span>
+            <span class="text-[var(--color-muted)] flex items-center">
+              {#if eventsExpanded}<IconChevronUp size={14} stroke={1.5} />{:else}<IconChevronDown size={14} stroke={1.5} />{/if}
+            </span>
           </button>
           {#if eventsExpanded}
             <div class="divide-y divide-[var(--color-border)] border-t border-[var(--color-border)]">
               {#each projectState.ticketEvents as evt (evt.ID)}
                 <div class="px-4 py-2.5 flex gap-2 items-start hover:bg-[var(--color-surface-hover)] {severityRowBg(evt.Severity)}">
-                  <span class="shrink-0 text-xs {severityColor(evt.Severity)} mt-0.5">
-                    {severityIcon(evt.Severity)}
+                  <span class="shrink-0 flex items-center mt-0.5 {severityColor(evt.Severity)}">
+                    {#if evt.Severity === 'success'}<IconCheck size={14} stroke={1.5} />
+                    {:else if evt.Severity === 'error'}<IconX size={14} stroke={1.5} />
+                    {:else if evt.Severity === 'warning'}<IconAlertTriangle size={14} stroke={1.5} />
+                    {:else}<IconCircleFilled size={14} stroke={1.5} />{/if}
                   </span>
                   <div class="min-w-0 flex-1">
                     <div class="text-xs text-[var(--color-text)] leading-snug">
