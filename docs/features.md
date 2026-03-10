@@ -16,19 +16,19 @@ Who controls what? Foreman controls the implementation loop. You control the tic
 flowchart TD
     A([Label ticket foreman-ready]) --> B[Daemon picks up ticket]
     B --> C{Ticket clear enough?}
-    C -- No --> D[Post clarification comment\nwait for author]
+    C -- No --> D[Post clarification comment<br/>wait for author]
     D --> C
-    C -- Yes --> E[Planner reads ticket\nexplores codebase\nproduces task list]
+    C -- Yes --> E[Planner reads ticket<br/>explores codebase<br/>produces task list]
     E --> F{Plan quality OK?}
     F -- Low confidence --> D
-    F -- OK --> G[Execute tasks in parallel\nrespecting dependencies]
-    G --> H[Per task: write tests RED\nwrite code GREEN\nlint + spec + quality review]
-    H --> I[Rebase onto main\nrun full test suite\nfinal review]
+    F -- OK --> G[Execute tasks in parallel<br/>respecting dependencies]
+    G --> H[Per task: write tests RED<br/>write code GREEN<br/>lint + spec + quality review]
+    H --> I[Rebase onto main<br/>run full test suite<br/>final review]
     I --> J([Open Pull Request])
     J --> K[MergeChecker watches PR]
     K --> L{PR merged?}
-    L -- Yes --> M[Run post-merge hooks\nclose parent ticket if decomposed]
-    L -- Pushed to --> N[Flag as updated\nwait for re-label]
+    L -- Yes --> M[Run post-merge hooks<br/>close parent ticket if decomposed]
+    L -- Pushed to --> N[Flag as updated<br/>wait for re-label]
 ```
 
 Each phase is described below with a concrete explanation of what happens and why.

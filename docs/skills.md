@@ -24,7 +24,7 @@ flowchart LR
     COMMIT -. "... more tasks ..." .-> FR
 
     FR["Final Review"] --> PPR(["pre_pr"]):::hook
-    PPR --> CREATEPR["Create PR\n+ sync tracker"]
+    PPR --> CREATEPR["Create PR<br/>+ sync tracker"]
     CREATEPR --> POSTPR(["post_pr"]):::hook
     POSTPR --> AWAIT["awaiting_merge"]
     AWAIT --> MERGED["PR merged"]
@@ -225,12 +225,12 @@ Steps in a skill run sequentially. Each step can reference outputs from previous
 
 ```mermaid
 flowchart LR
-    CTX["Pipeline context\n.Ticket · .Diff · .WorkDir\n.Models · .BranchName"] --> S1
+    CTX["Pipeline context<br/>.Ticket · .Diff · .WorkDir<br/>.Models · .BranchName"] --> S1
 
-    S1["git_diff\nid: get-diff"] -- ".Steps.get-diff.current_diff" --> S2
-    S2["agentsdk\nid: audit\noutput_format: json"] -- ".Steps.audit.result" --> S3
-    S3["llm_call\nid: summarise\nprompt_template uses audit result"] -- ".Steps.summarise.output" --> S4
-    S4["file_write\npath: .foreman/report.md\ncontent: {{ .Steps.summarise.output }}"]
+    S1["git_diff<br/>id: get-diff"] -- ".Steps.get-diff.current_diff" --> S2
+    S2["agentsdk<br/>id: audit<br/>output_format: json"] -- ".Steps.audit.result" --> S3
+    S3["llm_call<br/>id: summarise<br/>prompt_template uses audit result"] -- ".Steps.summarise.output" --> S4
+    S4["file_write<br/>path: .foreman/report.md<br/>content: {{ .Steps.summarise.output }}"]
 
     style CTX fill:#f1f5f9,stroke:#94a3b8
     style S1 fill:#e0f2fe,stroke:#0284c7

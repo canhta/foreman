@@ -104,19 +104,19 @@ Here is the end-to-end path from install to running ticket:
 
 ```mermaid
 flowchart TD
-    A([Install foreman\nbinary or build from source]) --> B["Copy foreman.example.toml\n→ foreman.toml"]
-    B --> C["Set environment variables\nGITHUB_TOKEN · ANTHROPIC_API_KEY\nFOREMAN_DASHBOARD_TOKEN"]
-    C --> D["./foreman setup-ssh\n(private repos only)\nthen ./foreman doctor"]
+    A([Install foreman<br/>binary or build from source]) --> B["Copy foreman.example.toml<br/>→ foreman.toml"]
+    B --> C["Set environment variables<br/>GITHUB_TOKEN · ANTHROPIC_API_KEY<br/>FOREMAN_DASHBOARD_TOKEN"]
+    C --> D["./foreman setup-ssh<br/>(private repos only)<br/>then ./foreman doctor"]
     D -- "errors" --> C
-    D -- "all green" --> E{How do you\nwant to run?}
+    D -- "all green" --> E{How do you<br/>want to run?}
 
-    E -- "test one ticket" --> F["./foreman run PROJ-123\n(or --dry-run to plan only)"]
-    E -- "continuous daemon" --> G["./foreman start\nor ./foreman start --daemon"]
+    E -- "test one ticket" --> F["./foreman run PROJ-123<br/>(or --dry-run to plan only)"]
+    E -- "continuous daemon" --> G["./foreman start<br/>or ./foreman start --daemon"]
 
-    F --> H["Label a ticket foreman-ready\nin your issue tracker"]
+    F --> H["Label a ticket foreman-ready<br/>in your issue tracker"]
     G --> H
-    H --> I(["Foreman picks it up\nautomatically on next poll"])
-    I --> J["Monitor: ./foreman ps\nor open dashboard :8080"]
+    H --> I(["Foreman picks it up<br/>automatically on next poll"])
+    I --> J["Monitor: ./foreman ps<br/>or open dashboard :8080"]
 ```
 
 ### Health Check
