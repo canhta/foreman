@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { TicketSummary } from '../types';
+  import { PR_STATUSES } from '../types';
 
   interface Props {
     ticket: TicketSummary;
@@ -17,9 +18,7 @@
     ticket.Status === 'clarification_needed'
   );
 
-  let hasPR = $derived(
-    ['pr_created', 'pr_updated', 'awaiting_merge', 'merged', 'pr_closed'].includes(ticket.Status)
-  );
+  let hasPR = $derived(PR_STATUSES.includes(ticket.Status));
 </script>
 
 <button

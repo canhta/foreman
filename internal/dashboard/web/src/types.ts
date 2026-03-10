@@ -8,6 +8,8 @@ export type TaskStatus =
   | 'pending' | 'implementing' | 'tdd_verifying' | 'testing'
   | 'spec_review' | 'quality_review' | 'done' | 'failed' | 'skipped' | 'escalated';
 
+export const PR_STATUSES: TicketStatus[] = ['pr_created', 'pr_updated', 'awaiting_merge', 'merged', 'pr_closed'];
+
 export const ACTIVE_STATUSES: TicketStatus[] = [
   'queued', 'planning', 'plan_validating', 'implementing', 'reviewing',
   'pr_created', 'pr_updated', 'awaiting_merge', 'clarification_needed', 'decomposing',

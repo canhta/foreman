@@ -140,6 +140,8 @@ func TestCircuitBreaker_RecoversThroughHalfOpen(t *testing.T) {
 	// Not a CircuitBreakerOpenError — the inner error should propagate.
 	var openErr *CircuitBreakerOpenError
 	assert.False(t, errors.As(err, &openErr))
+	var connErr *ConnectionError
+	assert.ErrorAs(t, err, &connErr, "inner ConnectionError should propagate through half-open probe")
 }
 
 func TestCircuitBreaker_ClosesOnSuccessFromHalfOpen(t *testing.T) {

@@ -35,10 +35,10 @@
   <ProjectTabs projectId={params.pid} projectName={project.name} />
 {/if}
 
-<div class="flex h-[calc(100vh-theme(spacing.12))]">
+<div class={project ? 'flex h-[calc(100vh-3rem)]' : 'flex h-screen'}>
   <!-- Board columns -->
   <div class="flex-1 overflow-x-auto">
-    <div class="flex gap-0 min-w-max h-full">
+    <div class="flex min-w-max h-full">
       {#each columns as col}
         {@const tickets = ticketsForColumn(col.statuses)}
         <div class="w-56 border-r border-[var(--color-border)] flex flex-col">

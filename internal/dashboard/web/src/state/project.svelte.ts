@@ -82,6 +82,10 @@ class ProjectState {
     }
   }
 
+  expandPanel() {
+    this.panelExpanded = true;
+  }
+
   deselectTicket() {
     this.selectedTicketId = null;
     this.ticketDetail = null;

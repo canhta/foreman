@@ -25,7 +25,7 @@
       </div>
       <div class="flex items-center gap-2">
         <button
-          onclick={() => projectState.panelExpanded = true}
+          onclick={() => projectState.expandPanel()}
           class="text-[10px] text-[var(--color-muted)] hover:text-[var(--color-text)] px-2 py-1 border border-[var(--color-border)]"
         >
           Expand ▸
@@ -45,7 +45,7 @@
       {@const total = projectState.ticketTasks.length}
       <div class="flex items-center gap-2 mb-4">
         <div class="flex-1 h-1.5 bg-[var(--color-surface)]">
-          <div class="h-full bg-[var(--color-accent)]" style="width: {(done/total)*100}%"></div>
+          <div class="h-full bg-[var(--color-accent)]" style="width: {total > 0 ? (done/total)*100 : 0}%"></div>
         </div>
         <span class="text-[10px] text-[var(--color-muted)]">{done}/{total} tasks</span>
       </div>
