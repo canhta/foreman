@@ -115,6 +115,8 @@ type PromptSnapshotQuerier interface {
 }
 
 // API handles REST API requests for the dashboard.
+//
+//nolint:govet // fieldalignment: struct field order prioritises readability over padding
 type API struct {
 	startedAt       time.Time
 	db              DashboardDB
@@ -1224,6 +1226,7 @@ type projectConfigDTO struct {
 	TrackerProjectKey  string  `json:"tracker_project_key"`
 	TrackerLabels      string  `json:"tracker_labels"`
 	TrackerURL         string  `json:"tracker_url"`
+	TrackerEmail       string  `json:"tracker_email"`
 	AgentRunner        string  `json:"agent_runner"`
 	ModelPlanner       string  `json:"model_planner"`
 	ModelImplementer   string  `json:"model_implementer"`
@@ -1259,6 +1262,7 @@ func flattenProjectConfig(cfg *project.ProjectConfig) projectConfigDTO {
 		dto.TrackerToken = cfg.Tracker.Jira.APIToken
 		dto.TrackerProjectKey = cfg.Tracker.Jira.ProjectKey
 		dto.TrackerURL = cfg.Tracker.Jira.BaseURL
+		dto.TrackerEmail = cfg.Tracker.Jira.Email
 	case "linear":
 		dto.TrackerToken = cfg.Tracker.Linear.APIKey
 		dto.TrackerProjectKey = cfg.Tracker.Linear.TeamID
@@ -1296,6 +1300,7 @@ func expandProjectConfigDTO(dto projectConfigDTO) *project.ProjectConfig {
 		cfg.Tracker.Jira.APIToken = dto.TrackerToken
 		cfg.Tracker.Jira.ProjectKey = dto.TrackerProjectKey
 		cfg.Tracker.Jira.BaseURL = dto.TrackerURL
+		cfg.Tracker.Jira.Email = dto.TrackerEmail
 	case "linear":
 		cfg.Tracker.Linear.APIKey = dto.TrackerToken
 		cfg.Tracker.Linear.TeamID = dto.TrackerProjectKey
@@ -1650,12 +1655,12 @@ func (a *API) handleProjectGlobalEvents(w http.ResponseWriter, r *http.Request) 
 	limit := 50
 	offset := 0
 	if v := r.URL.Query().Get("limit"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 100 {
+		if n, nerr := strconv.Atoi(v); nerr == nil && n > 0 && n <= 100 {
 			limit = n
 		}
 	}
 	if v := r.URL.Query().Get("offset"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+		if n, nerr := strconv.Atoi(v); nerr == nil && n >= 0 {
 			offset = n
 		}
 	}
@@ -1741,7 +1746,7 @@ func (a *API) handleProjectGetChat(w http.ResponseWriter, r *http.Request) {
 	}
 	limit := 50
 	if v := r.URL.Query().Get("limit"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 200 {
+		if n, nerr := strconv.Atoi(v); nerr == nil && n > 0 && n <= 200 {
 			limit = n
 		}
 	}

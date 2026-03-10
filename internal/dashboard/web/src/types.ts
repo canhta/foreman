@@ -222,6 +222,7 @@ export interface ProjectConfig {
   tracker_project_key: string;
   tracker_labels: string;
   tracker_url: string;
+  tracker_email: string;
   agent_runner: string;
   model_planner: string;
   model_implementer: string;

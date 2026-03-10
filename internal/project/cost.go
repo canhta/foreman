@@ -7,6 +7,8 @@ import (
 
 // GlobalCostController aggregates costs across all projects.
 // Workers push costs to this controller via ReportCost.
+//
+//nolint:govet // fieldalignment: struct field order prioritises readability over padding
 type GlobalCostController struct {
 	maxDailyUSD   float64
 	maxMonthlyUSD float64

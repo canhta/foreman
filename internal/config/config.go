@@ -47,6 +47,10 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("daemon.work_dir", "") // set per-project by merge.go; never create a global work dir
 	v.SetDefault("daemon.log_level", "info")
 	v.SetDefault("daemon.log_format", "json")
+	v.SetDefault("daemon.max_parallel_tickets", 3)
+	v.SetDefault("daemon.max_parallel_tasks", 3)
+	v.SetDefault("daemon.task_timeout_minutes", 15)
+	v.SetDefault("daemon.merge_check_interval_secs", 60)
 
 	v.SetDefault("dashboard.enabled", true)
 	v.SetDefault("dashboard.port", 8080)

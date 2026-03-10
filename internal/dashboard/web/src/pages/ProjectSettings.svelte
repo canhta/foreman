@@ -183,14 +183,46 @@
             <option value="local">Local</option>
           </select>
         </label>
+        {#if config.tracker_provider !== 'local'}
+          <label class="block">
+            <span class="text-[10px] tracking-widest text-[var(--color-muted)] uppercase">
+              {config.tracker_provider === 'jira' ? 'API Token' : config.tracker_provider === 'linear' ? 'API Key' : 'Token'}
+            </span>
+            <input type="password" bind:value={config.tracker_token} class="mt-1 w-full bg-[var(--color-surface)] border border-[var(--color-border)] px-3 py-2 text-xs text-[var(--color-text)] focus:border-[var(--color-accent)] focus:outline-none" />
+          </label>
+          <label class="block">
+            <span class="text-[10px] tracking-widest text-[var(--color-muted)] uppercase">
+              {config.tracker_provider === 'github' ? 'Owner/Repo' : config.tracker_provider === 'linear' ? 'Team ID' : 'Project Key'}
+            </span>
+            <input bind:value={config.tracker_project_key} class="mt-1 w-full bg-[var(--color-surface)] border border-[var(--color-border)] px-3 py-2 text-xs text-[var(--color-text)] focus:border-[var(--color-accent)] focus:outline-none"
+              placeholder={config.tracker_provider === 'github' ? 'owner/repo' : config.tracker_provider === 'linear' ? 'team-id' : 'PROJECT'} />
+          </label>
+          {#if config.tracker_provider === 'jira'}
+            <label class="block">
+              <span class="text-[10px] tracking-widest text-[var(--color-muted)] uppercase">Jira Base URL</span>
+              <input bind:value={config.tracker_url} class="mt-1 w-full bg-[var(--color-surface)] border border-[var(--color-border)] px-3 py-2 text-xs text-[var(--color-text)] focus:border-[var(--color-accent)] focus:outline-none" placeholder="https://yourorg.atlassian.net" />
+            </label>
+            <label class="block">
+              <span class="text-[10px] tracking-widest text-[var(--color-muted)] uppercase">Email</span>
+              <input type="email" bind:value={config.tracker_email} class="mt-1 w-full bg-[var(--color-surface)] border border-[var(--color-border)] px-3 py-2 text-xs text-[var(--color-text)] focus:border-[var(--color-accent)] focus:outline-none" placeholder="you@example.com" />
+            </label>
+          {:else if config.tracker_provider === 'github' || config.tracker_provider === 'linear'}
+            <label class="block">
+              <span class="text-[10px] tracking-widest text-[var(--color-muted)] uppercase">Base URL <span class="normal-case">(optional, self-hosted)</span></span>
+              <input bind:value={config.tracker_url} class="mt-1 w-full bg-[var(--color-surface)] border border-[var(--color-border)] px-3 py-2 text-xs text-[var(--color-text)] focus:border-[var(--color-accent)] focus:outline-none" placeholder="leave empty for cloud" />
+            </label>
+          {/if}
+        {/if}
         <label class="block">
           <span class="text-[10px] tracking-widest text-[var(--color-muted)] uppercase">Labels</span>
           <input bind:value={config.tracker_labels} class="mt-1 w-full bg-[var(--color-surface)] border border-[var(--color-border)] px-3 py-2 text-xs text-[var(--color-text)] focus:border-[var(--color-accent)] focus:outline-none" placeholder="comma-separated" />
         </label>
-        <button onclick={() => testConnection('tracker')} disabled={testingTracker}
-                class="w-full sm:w-auto text-[10px] px-3 py-1.5 border border-[var(--color-border)] text-[var(--color-accent)] hover:bg-[var(--color-accent-bg)] disabled:opacity-50 tracking-wider">
-          {testingTracker ? 'TESTING...' : 'TEST CONNECTION'}
-        </button>
+        {#if config.tracker_provider !== 'local'}
+          <button onclick={() => testConnection('tracker')} disabled={testingTracker}
+                  class="w-full sm:w-auto text-[10px] px-3 py-1.5 border border-[var(--color-border)] text-[var(--color-accent)] hover:bg-[var(--color-accent-bg)] disabled:opacity-50 tracking-wider">
+            {testingTracker ? 'TESTING...' : 'TEST CONNECTION'}
+          </button>
+        {/if}
       </div>
     {/if}
   </div>

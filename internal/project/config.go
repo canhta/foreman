@@ -11,49 +11,51 @@ import (
 
 // ProjectMeta holds project identity fields.
 type ProjectMeta struct {
-	Name        string `mapstructure:"name"`
-	Description string `mapstructure:"description"`
+	Name        string `toml:"name" mapstructure:"name"`
+	Description string `toml:"description" mapstructure:"description"`
 }
 
 // ProjectLimits holds per-project execution limits.
 // Fields previously under [daemon] that are project-specific.
 type ProjectLimits struct {
-	MaxParallelTickets            int     `mapstructure:"max_parallel_tickets"`
-	MaxParallelTasks              int     `mapstructure:"max_parallel_tasks"`
-	TaskTimeoutMinutes            int     `mapstructure:"task_timeout_minutes"`
-	MaxTasksPerTicket             int     `mapstructure:"max_tasks_per_ticket"`
-	MaxImplementationRetries      int     `mapstructure:"max_implementation_retries"`
-	MaxSpecReviewCycles           int     `mapstructure:"max_spec_review_cycles"`
-	MaxQualityReviewCycles        int     `mapstructure:"max_quality_review_cycles"`
-	MaxLlmCallsPerTask            int     `mapstructure:"max_llm_calls_per_task"`
-	MaxTaskDurationSecs           int     `mapstructure:"max_task_duration_secs"`
-	MaxTotalDurationSecs          int     `mapstructure:"max_total_duration_secs"`
-	ContextTokenBudget            int     `mapstructure:"context_token_budget"`
-	EnablePartialPR               bool    `mapstructure:"enable_partial_pr"`
-	EnableClarification           bool    `mapstructure:"enable_clarification"`
-	EnableTDDVerification         bool    `mapstructure:"enable_tdd_verification"`
-	SearchReplaceSimilarity       float64 `mapstructure:"search_replace_similarity"`
-	SearchReplaceMinContextLines  int     `mapstructure:"search_replace_min_context_lines"`
-	PlanConfidenceThreshold       float64 `mapstructure:"plan_confidence_threshold"`
-	IntermediateReviewInterval    int     `mapstructure:"intermediate_review_interval"`
-	ConflictResolutionTokenBudget int     `mapstructure:"conflict_resolution_token_budget"`
+	MaxParallelTickets            int     `toml:"max_parallel_tickets" mapstructure:"max_parallel_tickets"`
+	MaxParallelTasks              int     `toml:"max_parallel_tasks" mapstructure:"max_parallel_tasks"`
+	TaskTimeoutMinutes            int     `toml:"task_timeout_minutes" mapstructure:"task_timeout_minutes"`
+	MaxTasksPerTicket             int     `toml:"max_tasks_per_ticket" mapstructure:"max_tasks_per_ticket"`
+	MaxImplementationRetries      int     `toml:"max_implementation_retries" mapstructure:"max_implementation_retries"`
+	MaxSpecReviewCycles           int     `toml:"max_spec_review_cycles" mapstructure:"max_spec_review_cycles"`
+	MaxQualityReviewCycles        int     `toml:"max_quality_review_cycles" mapstructure:"max_quality_review_cycles"`
+	MaxLlmCallsPerTask            int     `toml:"max_llm_calls_per_task" mapstructure:"max_llm_calls_per_task"`
+	MaxTaskDurationSecs           int     `toml:"max_task_duration_secs" mapstructure:"max_task_duration_secs"`
+	MaxTotalDurationSecs          int     `toml:"max_total_duration_secs" mapstructure:"max_total_duration_secs"`
+	ContextTokenBudget            int     `toml:"context_token_budget" mapstructure:"context_token_budget"`
+	EnablePartialPR               bool    `toml:"enable_partial_pr" mapstructure:"enable_partial_pr"`
+	EnableClarification           bool    `toml:"enable_clarification" mapstructure:"enable_clarification"`
+	EnableTDDVerification         bool    `toml:"enable_tdd_verification" mapstructure:"enable_tdd_verification"`
+	SearchReplaceSimilarity       float64 `toml:"search_replace_similarity" mapstructure:"search_replace_similarity"`
+	SearchReplaceMinContextLines  int     `toml:"search_replace_min_context_lines" mapstructure:"search_replace_min_context_lines"`
+	PlanConfidenceThreshold       float64 `toml:"plan_confidence_threshold" mapstructure:"plan_confidence_threshold"`
+	IntermediateReviewInterval    int     `toml:"intermediate_review_interval" mapstructure:"intermediate_review_interval"`
+	ConflictResolutionTokenBudget int     `toml:"conflict_resolution_token_budget" mapstructure:"conflict_resolution_token_budget"`
 }
 
 // ProjectConfig holds all per-project configuration.
+//
+//nolint:govet // fieldalignment: struct field order prioritises readability over padding
 type ProjectConfig struct {
-	Project     ProjectMeta              `mapstructure:"project"`
-	Tracker     models.TrackerConfig     `mapstructure:"tracker"`
-	Git         models.GitConfig         `mapstructure:"git"`
-	Models      models.ModelsConfig      `mapstructure:"models"`
-	Cost        models.CostConfig        `mapstructure:"cost"`
-	Limits      ProjectLimits            `mapstructure:"limits"`
-	AgentRunner models.AgentRunnerConfig `mapstructure:"agent_runner"`
-	Skills      models.SkillsConfig      `mapstructure:"skills"`
-	Decompose   models.DecomposeConfig   `mapstructure:"decompose"`
-	Context     models.ContextConfig     `mapstructure:"context"`
-	Runner      models.RunnerConfig      `mapstructure:"runner"`
-	EnvFiles    map[string]string        `mapstructure:"env_files"`
-	LLM         models.LLMConfig         `mapstructure:"llm"` // optional per-project API key overrides
+	Project     ProjectMeta              `toml:"project" mapstructure:"project"`
+	Tracker     models.TrackerConfig     `toml:"tracker" mapstructure:"tracker"`
+	Git         models.GitConfig         `toml:"git" mapstructure:"git"`
+	Models      models.ModelsConfig      `toml:"models" mapstructure:"models"`
+	Cost        models.CostConfig        `toml:"cost" mapstructure:"cost"`
+	Limits      ProjectLimits            `toml:"limits" mapstructure:"limits"`
+	AgentRunner models.AgentRunnerConfig `toml:"agent_runner" mapstructure:"agent_runner"`
+	Skills      models.SkillsConfig      `toml:"skills" mapstructure:"skills"`
+	Decompose   models.DecomposeConfig   `toml:"decompose" mapstructure:"decompose"`
+	Context     models.ContextConfig     `toml:"context" mapstructure:"context"`
+	Runner      models.RunnerConfig      `toml:"runner" mapstructure:"runner"`
+	EnvFiles    map[string]string        `toml:"env_files" mapstructure:"env_files"`
+	LLM         models.LLMConfig         `toml:"llm" mapstructure:"llm"` // optional per-project API key overrides
 }
 
 // LoadProjectConfig loads a project config from a TOML file.

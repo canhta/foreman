@@ -98,6 +98,7 @@
         tracker_project_key: trackerProjectKey.trim(),
         tracker_labels: trackerLabels.trim(),
         tracker_url: trackerUrl.trim(),
+        tracker_email: trackerEmail.trim(),
         agent_runner: agentRunner,
         model_planner: modelPlanner.trim(),
         model_implementer: modelImplementer.trim(),

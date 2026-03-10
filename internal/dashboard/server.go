@@ -134,11 +134,12 @@ func NewServer(db DashboardDB, emitter EventSubscriber, statusProvider DaemonSta
 		case strings.HasSuffix(path, "/reply"):
 			api.handleReplyToTicket(w, r)
 		case strings.HasSuffix(path, "/chat"):
-			if r.Method == http.MethodGet {
+			switch r.Method {
+			case http.MethodGet:
 				api.handleGetChat(w, r)
-			} else if r.Method == http.MethodPost {
+			case http.MethodPost:
 				api.handlePostChat(w, r)
-			} else {
+			default:
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			}
 		default:
@@ -234,11 +235,12 @@ func NewServer(db DashboardDB, emitter EventSubscriber, statusProvider DaemonSta
 				case "events":
 					api.handleProjectEvents(w, r)
 				case "chat":
-					if r.Method == http.MethodGet {
+					switch r.Method {
+					case http.MethodGet:
 						api.handleProjectGetChat(w, r)
-					} else if r.Method == http.MethodPost {
+					case http.MethodPost:
 						api.handleProjectPostChat(w, r)
-					} else {
+					default:
 						http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 					}
 				case "retry":

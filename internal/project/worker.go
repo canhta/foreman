@@ -36,10 +36,6 @@ type Worker struct {
 	mu     sync.RWMutex
 	log    zerolog.Logger
 	err    error
-
-	// setupFn is optionally called during Start to initialise project-specific
-	// resources (orchestrator, tracker, etc.). Set by ProjectManager.
-	setupFn func(ctx context.Context, w *Worker) error
 }
 
 // Status returns the current worker status.

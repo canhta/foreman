@@ -9,6 +9,8 @@ import (
 )
 
 // IndexEntry represents a project in the index.
+//
+//nolint:govet // fieldalignment: struct field order prioritises readability over padding
 type IndexEntry struct {
 	ID        string    `json:"id"`
 	Name      string    `json:"name"`
