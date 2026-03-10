@@ -38,13 +38,7 @@ var logsCmd = &cobra.Command{
 		}
 
 		var database db.Database
-		switch cfg.Database.Driver {
-		case "postgres", "postgresql":
-			maxConns := 10
-			database, err = db.NewPostgresDB(cfg.Database.Postgres.URL, maxConns)
-		default: // "sqlite" or empty
-			database, err = db.NewSQLiteDB(expandHomePath(cfg.Database.SQLite.Path))
-		}
+		database, err = db.NewSQLiteDB(expandHomePath(cfg.Database.SQLite.Path))
 		if err != nil {
 			return err
 		}

@@ -44,12 +44,7 @@ func loadConfigAndDB() (*models.Config, db.Database, error) {
 }
 
 func openDB(cfg *models.Config) (db.Database, error) {
-	switch cfg.Database.Driver {
-	case "postgres":
-		return db.NewPostgresDB(cfg.Database.Postgres.URL, cfg.Database.Postgres.MaxConnections)
-	default:
-		return db.NewSQLiteDB(cfg.Database.SQLite.Path)
-	}
+	return db.NewSQLiteDB(cfg.Database.SQLite.Path)
 }
 
 // sshHostFromURL returns the SSH hostname from a git clone URL.

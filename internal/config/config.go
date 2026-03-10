@@ -185,7 +185,6 @@ func expandEnvVars(cfg *models.Config) {
 	cfg.LLM.OpenAI.APIKey = expandEnv(cfg.LLM.OpenAI.APIKey)
 	cfg.LLM.OpenRouter.APIKey = expandEnv(cfg.LLM.OpenRouter.APIKey)
 	cfg.Dashboard.AuthToken = expandEnv(cfg.Dashboard.AuthToken)
-	cfg.Database.Postgres.URL = expandEnv(cfg.Database.Postgres.URL)
 	cfg.Skills.AgentRunner.Copilot.GitHubToken = expandEnv(cfg.Skills.AgentRunner.Copilot.GitHubToken)
 	cfg.Tracker.Jira.APIToken = expandEnv(cfg.Tracker.Jira.APIToken)
 	cfg.Tracker.GitHub.Token = expandEnv(cfg.Tracker.GitHub.Token)
@@ -228,8 +227,8 @@ func Validate(cfg *models.Config) []error {
 		errs = append(errs, fmt.Errorf("task_timeout_minutes must be at least 1 (got %d)", cfg.Daemon.TaskTimeoutMinutes))
 	}
 
-	if cfg.Database.Driver == "sqlite" && cfg.Daemon.MaxParallelTickets > 3 {
-		errs = append(errs, fmt.Errorf("max_parallel_tickets cannot exceed 3 with SQLite (got %d), use PostgreSQL for higher concurrency", cfg.Daemon.MaxParallelTickets))
+	if cfg.Daemon.MaxParallelTickets > 3 {
+		errs = append(errs, fmt.Errorf("max_parallel_tickets cannot exceed 3 (got %d)", cfg.Daemon.MaxParallelTickets))
 	}
 
 	// Validate LLM provider has API key

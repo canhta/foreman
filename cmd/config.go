@@ -82,13 +82,8 @@ func newConfigCmd() *cobra.Command {
 
 			// DATABASE
 			fmt.Fprintln(w, "[DATABASE]")
-			fmt.Fprintf(w, "  driver\t%s\n", cfg.Database.Driver)
-			switch cfg.Database.Driver {
-			case "postgres":
-				fmt.Fprintf(w, "  url\t%s\n", redactConfigKey(cfg.Database.Postgres.URL))
-			default:
-				fmt.Fprintf(w, "  path\t%s\n", cfg.Database.SQLite.Path)
-			}
+			fmt.Fprintf(w, "  driver\tsqlite\n")
+			fmt.Fprintf(w, "  path\t%s\n", cfg.Database.SQLite.Path)
 			fmt.Fprintln(w)
 
 			// MCP SERVERS
@@ -156,13 +151,8 @@ func buildConfigSummaryMap(cfg *models.Config) map[string]interface{} {
 	}
 
 	dbInfo := map[string]string{
-		"driver": cfg.Database.Driver,
-	}
-	switch cfg.Database.Driver {
-	case "postgres":
-		dbInfo["url"] = redactConfigKey(cfg.Database.Postgres.URL)
-	default:
-		dbInfo["path"] = cfg.Database.SQLite.Path
+		"driver": "sqlite",
+		"path":   cfg.Database.SQLite.Path,
 	}
 
 	return map[string]interface{}{
