@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { EventRecord, Task } from '../types';
-  import { severityIcon, formatRelative, taskIcon, linkifyParts } from '../format';
+  import { formatRelative, linkifyParts } from '../format';
+  import { IconCheck, IconX, IconAlertTriangle, IconCircleFilled } from '@tabler/icons-svelte';
 
   let { events = [], tasks = [] }: { events: EventRecord[]; tasks: Task[] } = $props();
 
@@ -70,8 +71,11 @@
     <div class="px-3 py-3 border-b border-[var(--color-border)] {severityLeft(evt.Severity)} {evt.isNew ? 'animate-fade-in' : ''}">
       <div class="flex items-start gap-2">
         <!-- Icon -->
-        <span class="text-xs shrink-0 mt-0.5 w-3 text-center {severityTextCls(evt.Severity)}">
-          {severityIcon(evt.Severity)}
+        <span class="shrink-0 mt-0.5 {severityTextCls(evt.Severity)}">
+          {#if evt.Severity === 'success'}<IconCheck size={14} stroke={1.5} />
+          {:else if evt.Severity === 'error'}<IconX size={14} stroke={1.5} />
+          {:else if evt.Severity === 'warning'}<IconAlertTriangle size={14} stroke={1.5} />
+          {:else}<IconCircleFilled size={14} stroke={1.5} />{/if}
         </span>
 
         <div class="flex-1 min-w-0">
