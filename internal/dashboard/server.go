@@ -119,63 +119,12 @@ func NewServer(db DashboardDB, emitter EventSubscriber, statusProvider DaemonSta
 	auth := authMiddleware(db)
 
 	mux.Handle("/api/status", auth(http.HandlerFunc(api.handleStatus)))
-	mux.Handle("/api/tickets", auth(http.HandlerFunc(api.handleListTickets)))
-	mux.Handle("/api/tickets/", auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		path := r.URL.Path
-		switch {
-		case strings.HasSuffix(path, "/tasks"):
-			api.handleGetTasks(w, r)
-		case strings.HasSuffix(path, "/events"):
-			api.handleGetEvents(w, r)
-		case strings.HasSuffix(path, "/llm-calls"):
-			api.handleGetLlmCalls(w, r)
-		case strings.HasSuffix(path, "/retry"):
-			api.handleRetryTicket(w, r)
-		case strings.HasSuffix(path, "/reply"):
-			api.handleReplyToTicket(w, r)
-		case strings.HasSuffix(path, "/chat"):
-			switch r.Method {
-			case http.MethodGet:
-				api.handleGetChat(w, r)
-			case http.MethodPost:
-				api.handlePostChat(w, r)
-			default:
-				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			}
-		default:
-			if r.Method == http.MethodDelete {
-				api.handleDeleteTicket(w, r)
-			} else {
-				api.handleGetTicket(w, r)
-			}
-		}
-	})))
-	mux.Handle("/api/costs/today", auth(http.HandlerFunc(api.handleCostsToday)))
-	mux.Handle("/api/pipeline/active", auth(http.HandlerFunc(api.handleActivePipelines)))
-	mux.Handle("/api/costs/week", auth(http.HandlerFunc(api.handleCostsWeek)))
-	mux.Handle("/api/costs/month", auth(http.HandlerFunc(api.handleCostsMonth)))
 	mux.Handle("/api/costs/budgets", auth(http.HandlerFunc(api.handleCostsBudgets)))
 	mux.Handle("/api/daemon/pause", auth(http.HandlerFunc(api.handleDaemonPause)))
 	mux.Handle("/api/daemon/resume", auth(http.HandlerFunc(api.handleDaemonResume)))
 	mux.Handle("/api/daemon/sync", auth(http.HandlerFunc(api.handleDaemonSync)))
-	mux.Handle("/api/stats/team", auth(http.HandlerFunc(api.handleTeamStats)))
-	mux.Handle("/api/stats/recent-prs", auth(http.HandlerFunc(api.handleRecentPRs)))
-	mux.Handle("/api/ticket-summaries", auth(http.HandlerFunc(api.handleTicketSummaries)))
-	mux.Handle("/api/events", auth(http.HandlerFunc(api.handleGlobalEvents)))
 	mux.Handle("/api/config/summary", auth(http.HandlerFunc(api.handleConfigSummary)))
-	mux.Handle("/api/usage/activity", auth(http.HandlerFunc(api.handleActivityBreakdown)))
 	mux.Handle("/api/usage/claude-code", auth(http.HandlerFunc(api.handleClaudeCodeUsage)))
-	mux.Handle("/api/tasks/", auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasSuffix(r.URL.Path, "/context") {
-			api.handleTaskContext(w, r)
-			return
-		}
-		if strings.HasSuffix(r.URL.Path, "/retry") {
-			api.handleRetryTask(w, r)
-			return
-		}
-		http.NotFound(w, r)
-	})))
 	mux.Handle("/api/prompts/versions", auth(http.HandlerFunc(api.handlePromptVersions)))
 	mux.Handle("/api/commands", auth(http.HandlerFunc(api.handleListCommands)))
 	mux.Handle("/api/commands/", auth(http.HandlerFunc(api.handleRenderCommand)))

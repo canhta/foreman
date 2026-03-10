@@ -20,15 +20,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TaskContextStatsDB is a local alias for test readability.
-type TaskContextStatsDB = TaskContextStats
+// TaskContextStatsDB was a local alias for test readability; removed with task context handler.
 
 type mockDashboardDB struct {
 	tickets           []models.Ticket
 	events            []models.EventRecord
-	teamStats         []models.TeamStat
 	summaries         []models.TicketSummary
-	contextStats      map[string]TaskContextStatsDB
 	savedDAGState     *db.DAGState
 	taskStatusUpdates []struct {
 		id     string
@@ -67,10 +64,6 @@ func (m *mockDashboardDB) GetDailyCost(_ context.Context, _ string) (float64, er
 	return 12.50, nil
 }
 
-func (m *mockDashboardDB) GetTicketCost(_ context.Context, _ string) (float64, error) {
-	return 3.25, nil
-}
-
 func (m *mockDashboardDB) ListTasks(_ context.Context, ticketID string) ([]models.Task, error) {
 	return nil, nil
 }
@@ -102,45 +95,12 @@ func (m *mockDashboardDB) UpdateTicketStatus(_ context.Context, _ string, _ mode
 
 func (m *mockDashboardDB) DeleteTicket(_ context.Context, _ string) error { return nil }
 
-func (m *mockDashboardDB) AppendTicketDescription(_ context.Context, _ string, _ string) error {
-	return nil
-}
-
-func (m *mockDashboardDB) GetTaskContextStats(_ context.Context, taskID string) (TaskContextStats, error) {
-	if m.contextStats != nil {
-		if s, ok := m.contextStats[taskID]; ok {
-			return s, nil
-		}
-	}
-	return TaskContextStats{}, nil
-}
-
-func (m *mockDashboardDB) UpdateTaskContextStats(_ context.Context, _ string, _ TaskContextStats) error {
-	return nil
-}
-
-func (m *mockDashboardDB) GetTeamStats(_ context.Context, _ time.Time) ([]models.TeamStat, error) {
-	return m.teamStats, nil
-}
-
-func (m *mockDashboardDB) GetRecentPRs(_ context.Context, _ int) ([]models.Ticket, error) {
-	return m.tickets, nil
-}
-
 func (m *mockDashboardDB) GetTicketSummaries(_ context.Context, _ models.TicketFilter) ([]models.TicketSummary, error) {
 	return m.summaries, nil
 }
 
 func (m *mockDashboardDB) GetGlobalEvents(_ context.Context, _, _ int) ([]models.EventRecord, error) {
 	return m.events, nil
-}
-
-func (m *mockDashboardDB) GetLlmCallAggregates(_ context.Context, _ time.Time) ([]db.RunnerAggregate, []db.ModelAggregate, []db.RoleAggregate, error) {
-	return nil, nil, nil, nil
-}
-
-func (m *mockDashboardDB) GetRecentLlmCalls(_ context.Context, _ int) ([]db.RecentLlmCall, error) {
-	return nil, nil
 }
 
 func (m *mockDashboardDB) CreateChatMessage(_ context.Context, _ *models.ChatMessage) error {
@@ -218,116 +178,6 @@ func TestAPIGetStatus(t *testing.T) {
 	}
 }
 
-func TestAPIListTickets(t *testing.T) {
-	db := &mockDashboardDB{
-		tickets: []models.Ticket{
-			{ID: "t1", Title: "Add login", Status: models.TicketStatusImplementing, CreatedAt: time.Now()},
-		},
-	}
-	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
-
-	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/tickets", nil)
-	rec := httptest.NewRecorder()
-	api.handleListTickets(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
-	}
-
-	var tickets []map[string]interface{}
-	json.NewDecoder(rec.Body).Decode(&tickets)
-	if len(tickets) != 1 {
-		t.Fatalf("expected 1 ticket, got %d", len(tickets))
-	}
-}
-
-func TestAPIGetTicket(t *testing.T) {
-	db := &mockDashboardDB{
-		tickets: []models.Ticket{{ID: "t1", Title: "Test", Status: models.TicketStatusImplementing}},
-	}
-	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/tickets/t1", nil)
-	rec := httptest.NewRecorder()
-	api.handleGetTicket(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
-	}
-}
-
-func TestAPIGetTicketNotFound(t *testing.T) {
-	db := &mockDashboardDB{}
-	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/tickets/nonexistent", nil)
-	rec := httptest.NewRecorder()
-	api.handleGetTicket(rec, req)
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("expected 404, got %d", rec.Code)
-	}
-}
-
-func TestAPIGetEvents(t *testing.T) {
-	db := &mockDashboardDB{
-		events: []models.EventRecord{
-			{ID: "e1", TicketID: "t1", EventType: "task_started"},
-		},
-	}
-	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/tickets/t1/events", nil)
-	rec := httptest.NewRecorder()
-	api.handleGetEvents(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
-	}
-}
-
-func TestAPICostsToday(t *testing.T) {
-	db := &mockDashboardDB{}
-	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/costs/today", nil)
-	rec := httptest.NewRecorder()
-	api.handleCostsToday(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
-	}
-}
-
-func TestAPIGetTicketTasks(t *testing.T) {
-	db := &mockDashboardDB{}
-	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/tickets/t1/tasks", nil)
-	rec := httptest.NewRecorder()
-	api.handleGetTasks(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
-	}
-}
-
-func TestAPIGetCostsWeek(t *testing.T) {
-	db := &mockDashboardDB{}
-	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/costs/week", nil)
-	rec := httptest.NewRecorder()
-	api.handleCostsWeek(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
-	}
-}
-
-func TestAPIGetActivePipelines(t *testing.T) {
-	db := &mockDashboardDB{
-		tickets: []models.Ticket{
-			{ID: "t1", Title: "Active", Status: models.TicketStatusImplementing},
-		},
-	}
-	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/pipeline/active", nil)
-	rec := httptest.NewRecorder()
-	api.handleActivePipelines(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
-	}
-}
-
 func TestAPIGetStatus_DaemonRunning(t *testing.T) {
 	db := &mockDashboardDB{}
 	api := NewAPI(db, nil, &mockDaemonStatus{running: true, paused: false}, models.CostConfig{}, "1.0.0")
@@ -398,38 +248,6 @@ func TestAPIGetStatus_DaemonStopped(t *testing.T) {
 	}
 }
 
-func TestAPIGetLlmCalls(t *testing.T) {
-	db := &mockDashboardDB{}
-	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/tickets/t1/llm-calls", nil)
-	rec := httptest.NewRecorder()
-	api.handleGetLlmCalls(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
-	}
-}
-
-func TestAPICostsMonth(t *testing.T) {
-	db := &mockDashboardDB{}
-	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/costs/month", nil)
-	rec := httptest.NewRecorder()
-	api.handleCostsMonth(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
-	}
-	var resp map[string]interface{}
-	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
-		t.Fatalf("failed to decode response: %v", err)
-	}
-	if _, ok := resp["month"]; !ok {
-		t.Errorf("expected 'month' key in response, got %v", resp)
-	}
-	if _, ok := resp["cost_usd"]; !ok {
-		t.Errorf("expected 'cost_usd' key in response, got %v", resp)
-	}
-}
-
 func TestAPIRetryTicket_NoRetrier(t *testing.T) {
 	db := &mockDashboardDB{}
 	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
@@ -492,66 +310,6 @@ func TestAPIGetStatus_WithChannelHealth(t *testing.T) {
 	}
 	if wa["connected"] != true {
 		t.Errorf("expected connected=true, got %v", wa["connected"])
-	}
-}
-
-func TestAPIGetTeamStats(t *testing.T) {
-	db := &mockDashboardDB{
-		teamStats: []models.TeamStat{
-			{ChannelSenderID: "84123@s.whatsapp.net", TicketCount: 5, CostUSD: 10.0, FailedCount: 1},
-		},
-	}
-	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/stats/team", nil)
-	rec := httptest.NewRecorder()
-	api.handleTeamStats(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
-	}
-}
-
-func TestAPIGetRecentPRs(t *testing.T) {
-	db := &mockDashboardDB{
-		tickets: []models.Ticket{
-			{ID: "t1", Title: "PR ticket", PRURL: "https://github.com/repo/pull/1"},
-		},
-	}
-	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/stats/recent-prs", nil)
-	rec := httptest.NewRecorder()
-	api.handleRecentPRs(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
-	}
-}
-
-func TestAPIGetTicketSummaries(t *testing.T) {
-	db := &mockDashboardDB{
-		summaries: []models.TicketSummary{
-			{Ticket: models.Ticket{ID: "t1", Title: "Test", Status: models.TicketStatusImplementing}, TasksTotal: 6, TasksDone: 4},
-		},
-	}
-	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/ticket-summaries", nil)
-	rec := httptest.NewRecorder()
-	api.handleTicketSummaries(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
-	}
-}
-
-func TestAPIGetGlobalEvents(t *testing.T) {
-	db := &mockDashboardDB{
-		events: []models.EventRecord{
-			{ID: "e1", TicketID: "t1", EventType: "task_started", Message: "Starting task"},
-		},
-	}
-	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/events", nil)
-	rec := httptest.NewRecorder()
-	api.handleGlobalEvents(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
 	}
 }
 
@@ -649,86 +407,6 @@ func TestAPIRetryTicket_EmitsActivityEvent(t *testing.T) {
 	}
 	if evt.message != "Retry requested from dashboard" {
 		t.Errorf("unexpected message: %s", evt.message)
-	}
-}
-
-func TestAPIRetryTask(t *testing.T) {
-	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequestWithContext(t.Context(), "POST", "/api/tasks/task-1/retry", nil)
-	rec := httptest.NewRecorder()
-	api.handleRetryTask(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
-	}
-}
-
-func TestHandleTaskContext_ReturnsUtilization(t *testing.T) {
-	db := &mockDashboardDB{
-		contextStats: map[string]TaskContextStatsDB{
-			"task-123": {Budget: 100000, Used: 75000, FilesSelected: 12, FilesTouched: 8, CacheHits: 3},
-		},
-	}
-	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/tasks/task-123/context", nil)
-	rec := httptest.NewRecorder()
-	api.handleTaskContext(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
-	}
-	var resp TaskContextResponse
-	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
-		t.Fatalf("failed to decode response: %v", err)
-	}
-	if resp.Budget != 100000 {
-		t.Errorf("expected budget=100000, got %d", resp.Budget)
-	}
-	if resp.Used != 75000 {
-		t.Errorf("expected used=75000, got %d", resp.Used)
-	}
-	if resp.UtilizationPct != 75.0 {
-		t.Errorf("expected utilization_pct=75.0, got %f", resp.UtilizationPct)
-	}
-	if resp.FilesSelected != 12 {
-		t.Errorf("expected files_selected=12, got %d", resp.FilesSelected)
-	}
-	if resp.FilesTouched != 8 {
-		t.Errorf("expected files_touched=8, got %d", resp.FilesTouched)
-	}
-	if resp.CacheHits != 3 {
-		t.Errorf("expected cache_hits=3, got %d", resp.CacheHits)
-	}
-}
-
-func TestHandleTaskContext_ZeroBudget_NoDiv(t *testing.T) {
-	db := &mockDashboardDB{
-		contextStats: map[string]TaskContextStatsDB{
-			"task-456": {Budget: 0, Used: 0},
-		},
-	}
-	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/tasks/task-456/context", nil)
-	rec := httptest.NewRecorder()
-	api.handleTaskContext(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
-	}
-	var resp TaskContextResponse
-	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
-		t.Fatalf("failed to decode response: %v", err)
-	}
-	if resp.UtilizationPct != 0.0 {
-		t.Errorf("expected utilization_pct=0.0 for zero budget, got %f", resp.UtilizationPct)
-	}
-}
-
-func TestHandleTaskContext_MethodNotAllowed(t *testing.T) {
-	db := &mockDashboardDB{}
-	api := NewAPI(db, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequestWithContext(t.Context(), "POST", "/api/tasks/task-123/context", nil)
-	rec := httptest.NewRecorder()
-	api.handleTaskContext(rec, req)
-	if rec.Code != http.StatusMethodNotAllowed {
-		t.Fatalf("expected 405, got %d", rec.Code)
 	}
 }
 
@@ -902,126 +580,6 @@ func TestAPIPromptVersions_MethodNotAllowed(t *testing.T) {
 	}
 }
 
-// --- handleDeleteTicket ---
-
-func TestAPIDeleteTicket_Success(t *testing.T) {
-	dbm := &mockDashboardDB{
-		tickets: []models.Ticket{{ID: "t1", Title: "Test"}},
-	}
-	api := NewAPI(dbm, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequestWithContext(t.Context(), "DELETE", "/api/tickets/t1", nil)
-	rec := httptest.NewRecorder()
-	api.handleDeleteTicket(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
-	}
-	var resp map[string]string
-	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	if resp["status"] != "deleted" {
-		t.Errorf("expected status=deleted, got %v", resp["status"])
-	}
-	if resp["ticket_id"] != "t1" {
-		t.Errorf("expected ticket_id=t1, got %v", resp["ticket_id"])
-	}
-}
-
-func TestAPIDeleteTicket_MethodNotAllowed(t *testing.T) {
-	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/tickets/t1", nil)
-	rec := httptest.NewRecorder()
-	api.handleDeleteTicket(rec, req)
-	if rec.Code != http.StatusMethodNotAllowed {
-		t.Fatalf("expected 405, got %d", rec.Code)
-	}
-}
-
-func TestAPIDeleteTicket_MissingID(t *testing.T) {
-	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequestWithContext(t.Context(), "DELETE", "/api/tickets/", nil)
-	rec := httptest.NewRecorder()
-	api.handleDeleteTicket(rec, req)
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", rec.Code)
-	}
-}
-
-func TestAPIDeleteTicket_DBError(t *testing.T) {
-	dbm := &mockErrorDB{}
-	api := NewAPI(dbm, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequestWithContext(t.Context(), "DELETE", "/api/tickets/t1", nil)
-	rec := httptest.NewRecorder()
-	api.handleDeleteTicket(rec, req)
-	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500, got %d", rec.Code)
-	}
-}
-
-// mockErrorDB extends mockDashboardDB but returns errors from write operations.
-type mockErrorDB struct {
-	mockDashboardDB
-}
-
-func (m *mockErrorDB) DeleteTicket(_ context.Context, _ string) error {
-	return fmt.Errorf("db error")
-}
-
-func (m *mockErrorDB) AppendTicketDescription(_ context.Context, _ string, _ string) error {
-	return fmt.Errorf("db error")
-}
-
-func (m *mockErrorDB) UpdateTicketStatus(_ context.Context, _ string, _ models.TicketStatus) error {
-	return fmt.Errorf("db error")
-}
-
-func (m *mockErrorDB) UpdateTaskStatus(_ context.Context, _ string, _ models.TaskStatus) error {
-	return fmt.Errorf("db error")
-}
-
-func (m *mockErrorDB) GetTaskContextStats(_ context.Context, _ string) (TaskContextStats, error) {
-	return TaskContextStats{}, db.ErrNotFound
-}
-
-// --- handleListTickets status filter ---
-
-func TestAPIListTickets_InvalidStatus(t *testing.T) {
-	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/tickets?status=notavalidstatus", nil)
-	rec := httptest.NewRecorder()
-	api.handleListTickets(rec, req)
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for invalid status filter, got %d", rec.Code)
-	}
-}
-
-func TestAPIListTickets_ValidStatusFilter(t *testing.T) {
-	dbm := &mockDashboardDB{
-		tickets: []models.Ticket{
-			{ID: "t1", Status: models.TicketStatusFailed},
-		},
-	}
-	api := NewAPI(dbm, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/tickets?status=failed", nil)
-	rec := httptest.NewRecorder()
-	api.handleListTickets(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
-	}
-}
-
-// --- handleGetTicket missing ID ---
-
-func TestAPIGetTicket_MissingID(t *testing.T) {
-	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/tickets/", nil)
-	rec := httptest.NewRecorder()
-	api.handleGetTicket(rec, req)
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", rec.Code)
-	}
-}
-
 // --- handleRetryTicket method check ---
 
 func TestAPIRetryTicket_MethodNotAllowed(t *testing.T) {
@@ -1031,39 +589,6 @@ func TestAPIRetryTicket_MethodNotAllowed(t *testing.T) {
 	api.handleRetryTicket(rec, req)
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("expected 405, got %d", rec.Code)
-	}
-}
-
-// --- handleRetryTask method/id checks ---
-
-func TestAPIRetryTask_MethodNotAllowed(t *testing.T) {
-	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/tasks/task-1/retry", nil)
-	rec := httptest.NewRecorder()
-	api.handleRetryTask(rec, req)
-	if rec.Code != http.StatusMethodNotAllowed {
-		t.Fatalf("expected 405, got %d", rec.Code)
-	}
-}
-
-func TestAPIRetryTask_MissingID(t *testing.T) {
-	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
-	// Path trims "/api/tasks/" then "/retry" — empty string remains.
-	req := httptest.NewRequestWithContext(t.Context(), "POST", "/api/tasks//retry", nil)
-	rec := httptest.NewRecorder()
-	api.handleRetryTask(rec, req)
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", rec.Code)
-	}
-}
-
-func TestAPIRetryTask_DBError(t *testing.T) {
-	api := NewAPI(&mockErrorDB{}, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequestWithContext(t.Context(), "POST", "/api/tasks/task-1/retry", nil)
-	rec := httptest.NewRecorder()
-	api.handleRetryTask(rec, req)
-	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500, got %d", rec.Code)
 	}
 }
 
@@ -1086,97 +611,6 @@ func TestAPIDaemonResume_MethodNotAllowed(t *testing.T) {
 	api.handleDaemonResume(rec, req)
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("expected 405, got %d", rec.Code)
-	}
-}
-
-// --- handleTaskContext db.ErrNotFound ---
-
-func TestHandleTaskContext_NotFound(t *testing.T) {
-	api := NewAPI(&mockErrorDB{}, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/tasks/nonexistent/context", nil)
-	rec := httptest.NewRecorder()
-	api.handleTaskContext(rec, req)
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("expected 404 when task not found, got %d: %s", rec.Code, rec.Body.String())
-	}
-}
-
-// --- handleGlobalEvents pagination ---
-
-// mockGlobalEventsDB records the limit/offset values passed to GetGlobalEvents.
-type mockGlobalEventsDB struct {
-	mockDashboardDB
-	lastLimit  int
-	lastOffset int
-}
-
-func (m *mockGlobalEventsDB) GetGlobalEvents(_ context.Context, limit, offset int) ([]models.EventRecord, error) {
-	m.lastLimit = limit
-	m.lastOffset = offset
-	return m.events, nil
-}
-
-func TestAPIGetGlobalEvents_DefaultPagination(t *testing.T) {
-	dbm := &mockGlobalEventsDB{}
-	api := NewAPI(dbm, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/events", nil)
-	rec := httptest.NewRecorder()
-	api.handleGlobalEvents(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
-	}
-	if dbm.lastLimit != 50 {
-		t.Errorf("expected default limit=50, got %d", dbm.lastLimit)
-	}
-	if dbm.lastOffset != 0 {
-		t.Errorf("expected default offset=0, got %d", dbm.lastOffset)
-	}
-}
-
-func TestAPIGetGlobalEvents_CustomPagination(t *testing.T) {
-	dbm := &mockGlobalEventsDB{}
-	api := NewAPI(dbm, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/events?limit=25&offset=10", nil)
-	rec := httptest.NewRecorder()
-	api.handleGlobalEvents(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
-	}
-	if dbm.lastLimit != 25 {
-		t.Errorf("expected limit=25, got %d", dbm.lastLimit)
-	}
-	if dbm.lastOffset != 10 {
-		t.Errorf("expected offset=10, got %d", dbm.lastOffset)
-	}
-}
-
-func TestAPIGetGlobalEvents_LimitCappedAt100(t *testing.T) {
-	dbm := &mockGlobalEventsDB{}
-	api := NewAPI(dbm, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/events?limit=200", nil)
-	rec := httptest.NewRecorder()
-	api.handleGlobalEvents(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
-	}
-	// 200 exceeds the max (100), so the default (50) is kept.
-	if dbm.lastLimit != 50 {
-		t.Errorf("expected limit capped to default=50 for out-of-range value, got %d", dbm.lastLimit)
-	}
-}
-
-func TestAPIGetGlobalEvents_InvalidLimitIgnored(t *testing.T) {
-	dbm := &mockGlobalEventsDB{}
-	api := NewAPI(dbm, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/events?limit=notanumber", nil)
-	rec := httptest.NewRecorder()
-	api.handleGlobalEvents(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
-	}
-	// Non-numeric limit is ignored; default is used.
-	if dbm.lastLimit != 50 {
-		t.Errorf("expected default limit=50 for non-numeric input, got %d", dbm.lastLimit)
 	}
 }
 
@@ -1225,63 +659,6 @@ func TestAPISetChannelHealth_MultipleChannels(t *testing.T) {
 	tg := channels["telegram"].(map[string]interface{})
 	if tg["connected"] != false {
 		t.Errorf("expected telegram connected=false")
-	}
-}
-
-// --- handleReplyToTicket ---
-
-func TestAPIReplyToTicket_Success(t *testing.T) {
-	dbm := &mockDashboardDB{
-		tickets: []models.Ticket{
-			{ID: "t1", Title: "Test", Status: models.TicketStatusClarificationNeeded},
-		},
-	}
-	api := NewAPI(dbm, nil, nil, models.CostConfig{}, "1.0.0")
-	body := strings.NewReader(`{"message":"here is the clarification"}`)
-	req := httptest.NewRequestWithContext(t.Context(), "POST", "/api/tickets/t1/reply", body)
-	rec := httptest.NewRecorder()
-	api.handleReplyToTicket(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
-	}
-	var resp map[string]string
-	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	if resp["status"] != "queued" {
-		t.Errorf("expected status=queued, got %v", resp["status"])
-	}
-}
-
-func TestAPIReplyToTicket_MethodNotAllowed(t *testing.T) {
-	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
-	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/tickets/t1/reply", nil)
-	rec := httptest.NewRecorder()
-	api.handleReplyToTicket(rec, req)
-	if rec.Code != http.StatusMethodNotAllowed {
-		t.Fatalf("expected 405, got %d", rec.Code)
-	}
-}
-
-func TestAPIReplyToTicket_EmptyMessage(t *testing.T) {
-	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
-	body := strings.NewReader(`{"message":""}`)
-	req := httptest.NewRequestWithContext(t.Context(), "POST", "/api/tickets/t1/reply", body)
-	rec := httptest.NewRecorder()
-	api.handleReplyToTicket(rec, req)
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", rec.Code)
-	}
-}
-
-func TestAPIReplyToTicket_TicketNotFound(t *testing.T) {
-	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
-	body := strings.NewReader(`{"message":"reply text"}`)
-	req := httptest.NewRequestWithContext(t.Context(), "POST", "/api/tickets/nonexistent/reply", body)
-	rec := httptest.NewRecorder()
-	api.handleReplyToTicket(rec, req)
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("expected 404, got %d", rec.Code)
 	}
 }
 
@@ -1483,36 +860,6 @@ func TestHandleConfigSummary_ShortAPIKey_ShowsRedacted(t *testing.T) {
 	apiKey := llm["api_key"].(string)
 	if apiKey != "****" {
 		t.Errorf("expected api_key='****' for short key, got %q", apiKey)
-	}
-}
-
-func TestHandleActivityBreakdown_ValidJSONStructure(t *testing.T) {
-	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
-
-	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/usage/activity", nil)
-	rec := httptest.NewRecorder()
-	api.handleActivityBreakdown(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
-	}
-
-	var resp map[string]interface{}
-	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-
-	if _, ok := resp["by_runner"]; !ok {
-		t.Error("expected by_runner key in response")
-	}
-	if _, ok := resp["by_model"]; !ok {
-		t.Error("expected by_model key in response")
-	}
-	if _, ok := resp["by_role"]; !ok {
-		t.Error("expected by_role key in response")
-	}
-	if _, ok := resp["recent_calls"]; !ok {
-		t.Error("expected recent_calls key in response")
 	}
 }
 
