@@ -216,4 +216,15 @@ CREATE INDEX IF NOT EXISTS idx_events_ticket_id ON events(ticket_id);
 CREATE INDEX IF NOT EXISTS idx_events_created_at ON events(created_at);
 CREATE INDEX IF NOT EXISTS idx_file_reservations_ticket ON file_reservations(ticket_id);
 CREATE INDEX IF NOT EXISTS idx_tickets_parent ON tickets(parent_ticket_id);
+
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id           TEXT PRIMARY KEY,
+    ticket_id    TEXT NOT NULL,
+    sender       TEXT NOT NULL,
+    message_type TEXT NOT NULL,
+    content      TEXT NOT NULL,
+    metadata     TEXT,
+    created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_ticket ON chat_messages(ticket_id, created_at);
 `

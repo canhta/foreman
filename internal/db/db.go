@@ -225,5 +225,9 @@ type Database interface {
 	// terminal state to prevent unbounded table growth.
 	DeleteDAGState(ctx context.Context, ticketID string) error
 
+	// Chat messages
+	CreateChatMessage(ctx context.Context, msg *models.ChatMessage) error
+	GetChatMessages(ctx context.Context, ticketID string, limit int) ([]models.ChatMessage, error)
+
 	io.Closer
 }

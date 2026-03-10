@@ -1623,3 +1623,36 @@ func (s *SQLiteDB) DeleteDAGState(ctx context.Context, ticketID string) error {
 	}
 	return nil
 }
+
+// CreateChatMessage inserts a new chat message for a ticket.
+func (s *SQLiteDB) CreateChatMessage(ctx context.Context, msg *models.ChatMessage) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO chat_messages (id, ticket_id, sender, message_type, content, metadata) VALUES (?, ?, ?, ?, ?, ?)`,
+		msg.ID, msg.TicketID, msg.Sender, msg.MessageType, msg.Content, msg.Metadata)
+	if err != nil {
+		return fmt.Errorf("create chat message: %w", err)
+	}
+	return nil
+}
+
+// GetChatMessages returns chat messages for a ticket, ordered by created_at ASC.
+func (s *SQLiteDB) GetChatMessages(ctx context.Context, ticketID string, limit int) ([]models.ChatMessage, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, ticket_id, sender, message_type, content, COALESCE(metadata, ''), created_at
+		 FROM chat_messages WHERE ticket_id = ? ORDER BY created_at ASC LIMIT ?`,
+		ticketID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("get chat messages: %w", err)
+	}
+	defer rows.Close()
+
+	var messages []models.ChatMessage
+	for rows.Next() {
+		var m models.ChatMessage
+		if err := rows.Scan(&m.ID, &m.TicketID, &m.Sender, &m.MessageType, &m.Content, &m.Metadata, &m.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan chat message: %w", err)
+		}
+		messages = append(messages, m)
+	}
+	return messages, rows.Err()
+}

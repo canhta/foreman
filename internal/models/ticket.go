@@ -147,3 +147,14 @@ type TicketSummary struct {
 	TasksTotal int `json:"tasks_total"`
 	TasksDone  int `json:"tasks_done"`
 }
+
+// ChatMessage represents a message in the agent-user chat for a ticket.
+type ChatMessage struct {
+	CreatedAt   time.Time `json:"created_at" db:"created_at"`
+	ID          string    `json:"id" db:"id"`
+	TicketID    string    `json:"ticket_id" db:"ticket_id"`
+	Sender      string    `json:"sender" db:"sender"`             // agent, user, system
+	MessageType string    `json:"message_type" db:"message_type"` // clarification, action_request, info, error, reply
+	Content     string    `json:"content" db:"content"`
+	Metadata    string    `json:"metadata,omitempty" db:"metadata"` // JSON
+}
