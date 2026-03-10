@@ -20,8 +20,8 @@
     { label: 'Queued', statuses: ['queued', 'clarification_needed'] },
     { label: 'Planning', statuses: ['planning', 'plan_validating', 'decomposing'] },
     { label: 'In Progress', statuses: ['implementing'] },
-    { label: 'In Review', statuses: ['reviewing', 'spec_review', 'quality_review'] },
-    { label: 'Awaiting Merge', statuses: ['awaiting_merge', 'pr_created'] },
+    { label: 'In Review', statuses: ['reviewing'] },
+    { label: 'Awaiting Merge', statuses: ['pr_created', 'pr_updated', 'awaiting_merge'] },
     { label: 'Done', statuses: ['done', 'merged'] },
     { label: 'Failed', statuses: ['failed', 'blocked', 'partial'] },
   ] as const;

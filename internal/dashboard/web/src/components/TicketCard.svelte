@@ -16,6 +16,10 @@
   let needsInput = $derived(
     ticket.Status === 'clarification_needed'
   );
+
+  let hasPR = $derived(
+    ['pr_created', 'pr_updated', 'awaiting_merge', 'merged', 'pr_closed'].includes(ticket.Status)
+  );
 </script>
 
 <button
@@ -44,6 +48,9 @@
     {/if}
     {#if needsInput}
       <span class="text-[var(--color-warning)]">needs input</span>
+    {/if}
+    {#if hasPR}
+      <span class="text-[var(--color-accent)]">PR</span>
     {/if}
   </div>
 </button>
