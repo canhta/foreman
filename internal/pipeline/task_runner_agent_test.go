@@ -162,7 +162,7 @@ func TestRunTask_AgentRunner_AutoCommit_DetectedAsSuccess(t *testing.T) {
 // for the range-based Diff call while keeping DiffWorking empty.
 type autoCommitMockGitProvider struct {
 	*realMockGitProvider
-	rangeDiff string
+	rangeDiff    string
 	commitCalled bool
 }
 

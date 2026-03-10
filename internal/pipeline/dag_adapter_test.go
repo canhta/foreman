@@ -79,14 +79,14 @@ func (m *mockAdapterDB) GetProgressPatterns(_ context.Context, _ string, _ []str
 
 // realMockGitProvider implements git.GitProvider using the real package types.
 type realMockGitProvider struct {
-	commitErr      error
-	cleanErr       error
-	cleanCalled    *int
-	diffOutput     string
-	commitSHA      string
-	logEntries     []git.CommitEntry // returned on first Log call
-	logEntriesSeq  [][]git.CommitEntry // optional: subsequent calls return next entry, last repeated
-	logCallCount   int
+	commitErr     error
+	cleanErr      error
+	cleanCalled   *int
+	diffOutput    string
+	commitSHA     string
+	logEntries    []git.CommitEntry   // returned on first Log call
+	logEntriesSeq [][]git.CommitEntry // optional: subsequent calls return next entry, last repeated
+	logCallCount  int
 }
 
 func (m *realMockGitProvider) EnsureRepo(_ context.Context, _ string) error      { return nil }
