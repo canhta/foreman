@@ -1877,3 +1877,185 @@ func TestFlattenThenExpand_RoundTrip_Jira(t *testing.T) {
 		t.Errorf("limits.max_parallel_tickets round-trip: got %d", got.Limits.MaxParallelTickets)
 	}
 }
+
+// ── handleGetProject / handleUpdateProject ────────────────────────────────────
+
+// mockProjectRegistry is a test double for the ProjectRegistry interface.
+type mockProjectRegistry struct {
+	projects map[string]*project.ProjectConfig
+	updated  map[string]*project.ProjectConfig
+}
+
+func newMockProjectRegistry(cfgs ...*project.ProjectConfig) *mockProjectRegistry {
+	m := &mockProjectRegistry{
+		projects: make(map[string]*project.ProjectConfig),
+		updated:  make(map[string]*project.ProjectConfig),
+	}
+	for i, c := range cfgs {
+		id := fmt.Sprintf("proj-%d", i+1)
+		m.projects[id] = c
+	}
+	return m
+}
+
+func (m *mockProjectRegistry) ListProjects() ([]project.IndexEntry, error) {
+	var entries []project.IndexEntry
+	for id, cfg := range m.projects {
+		entries = append(entries, project.IndexEntry{ID: id, Name: cfg.Project.Name})
+	}
+	return entries, nil
+}
+
+func (m *mockProjectRegistry) GetWorker(_ string) (*project.Worker, bool) { return nil, false }
+
+func (m *mockProjectRegistry) GetProject(id string) (*project.ProjectConfig, string, error) {
+	cfg, ok := m.projects[id]
+	if !ok {
+		return nil, "", fmt.Errorf("project not found: %s", id)
+	}
+	return cfg, "/tmp/fake-dir", nil
+}
+
+func (m *mockProjectRegistry) CreateProject(cfg *project.ProjectConfig) (string, error) {
+	id := fmt.Sprintf("proj-%d", len(m.projects)+1)
+	m.projects[id] = cfg
+	return id, nil
+}
+
+func (m *mockProjectRegistry) UpdateProject(id string, cfg *project.ProjectConfig) error {
+	if _, ok := m.projects[id]; !ok {
+		return fmt.Errorf("project not found: %s", id)
+	}
+	m.updated[id] = cfg
+	m.projects[id] = cfg
+	return nil
+}
+
+func (m *mockProjectRegistry) DeleteProject(id string) error {
+	if _, ok := m.projects[id]; !ok {
+		return fmt.Errorf("project not found: %s", id)
+	}
+	delete(m.projects, id)
+	return nil
+}
+
+func TestAPIGetProject_NilRegistry_Returns503(t *testing.T) {
+	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
+	// No SetProjectRegistry called.
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/projects/proj-1", nil)
+	rec := httptest.NewRecorder()
+	api.handleGetProject(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rec.Code)
+	}
+}
+
+func TestAPIGetProject_NotFound_Returns404(t *testing.T) {
+	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
+	api.SetProjectRegistry(newMockProjectRegistry()) // empty registry
+
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/projects/nonexistent", nil)
+	rec := httptest.NewRecorder()
+	api.handleGetProject(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rec.Code)
+	}
+}
+
+func TestAPIGetProject_ReturnsProjectDTO(t *testing.T) {
+	cfg := &project.ProjectConfig{}
+	cfg.Project.Name = "My Project"
+	cfg.Tracker.Provider = "jira"
+	cfg.Tracker.Jira.Email = "bot@company.com"
+	cfg.Tracker.Jira.APIToken = "jira-tok"
+	cfg.Tracker.Jira.ProjectKey = "PROJ"
+	cfg.Git.CloneURL = "git@github.com:org/repo.git"
+
+	reg := newMockProjectRegistry(cfg) // stored as "proj-1"
+	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
+	api.SetProjectRegistry(reg)
+
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/projects/proj-1", nil)
+	rec := httptest.NewRecorder()
+	api.handleGetProject(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var dto map[string]interface{}
+	if err := json.NewDecoder(rec.Body).Decode(&dto); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if dto["name"] != "My Project" {
+		t.Errorf("name: got %v", dto["name"])
+	}
+	if dto["tracker_provider"] != "jira" {
+		t.Errorf("tracker_provider: got %v", dto["tracker_provider"])
+	}
+	// tracker_email must be present for Jira
+	if dto["tracker_email"] != "bot@company.com" {
+		t.Errorf("tracker_email: got %v want bot@company.com", dto["tracker_email"])
+	}
+	if dto["git_clone_url"] != "git@github.com:org/repo.git" {
+		t.Errorf("git_clone_url: got %v", dto["git_clone_url"])
+	}
+}
+
+func TestAPIUpdateProject_NilRegistry_Returns503(t *testing.T) {
+	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
+	body := strings.NewReader(`{"name":"Updated","tracker_provider":"github"}`)
+	req := httptest.NewRequestWithContext(t.Context(), "PUT", "/api/projects/proj-1", body)
+	rec := httptest.NewRecorder()
+	api.handleUpdateProject(rec, req)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d", rec.Code)
+	}
+}
+
+func TestAPIUpdateProject_InvalidJSON_Returns400(t *testing.T) {
+	cfg := &project.ProjectConfig{}
+	reg := newMockProjectRegistry(cfg)
+	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
+	api.SetProjectRegistry(reg)
+
+	body := strings.NewReader(`{invalid json}`)
+	req := httptest.NewRequestWithContext(t.Context(), "PUT", "/api/projects/proj-1", body)
+	rec := httptest.NewRecorder()
+	api.handleUpdateProject(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestAPIUpdateProject_Success(t *testing.T) {
+	origCfg := &project.ProjectConfig{}
+	origCfg.Project.Name = "Original"
+	origCfg.Tracker.Provider = "github"
+
+	reg := newMockProjectRegistry(origCfg)
+	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
+	api.SetProjectRegistry(reg)
+
+	payload := `{"name":"Updated Name","tracker_provider":"jira","tracker_email":"new@company.com","tracker_token":"newtok","tracker_project_key":"NEWP","tracker_url":"https://new.atlassian.net"}`
+	req := httptest.NewRequestWithContext(t.Context(), "PUT", "/api/projects/proj-1", strings.NewReader(payload))
+	rec := httptest.NewRecorder()
+	api.handleUpdateProject(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	// Verify the registry was updated with Jira email
+	updated, ok := reg.updated["proj-1"]
+	if !ok {
+		t.Fatal("expected UpdateProject to be called with proj-1")
+	}
+	if updated.Project.Name != "Updated Name" {
+		t.Errorf("project.name after update: got %q", updated.Project.Name)
+	}
+	if updated.Tracker.Jira.Email != "new@company.com" {
+		t.Errorf("tracker.jira.email after update: got %q want new@company.com", updated.Tracker.Jira.Email)
+	}
+	if updated.Tracker.Jira.APIToken != "newtok" {
+		t.Errorf("tracker.jira.api_token after update: got %q", updated.Tracker.Jira.APIToken)
+	}
+}
