@@ -140,6 +140,14 @@ func (m *mockDashboardDB) GetRecentLlmCalls(_ context.Context, _ int) ([]db.Rece
 	return nil, nil
 }
 
+func (m *mockDashboardDB) CreateChatMessage(_ context.Context, _ *models.ChatMessage) error {
+	return nil
+}
+
+func (m *mockDashboardDB) GetChatMessages(_ context.Context, _ string, _ int) ([]models.ChatMessage, error) {
+	return nil, nil
+}
+
 // mockDaemonStatus implements DaemonStatusProvider for tests.
 type mockDaemonStatus struct {
 	running bool
