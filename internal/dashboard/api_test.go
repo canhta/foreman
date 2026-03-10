@@ -13,6 +13,7 @@ import (
 	"github.com/canhta/foreman/internal/command"
 	"github.com/canhta/foreman/internal/db"
 	"github.com/canhta/foreman/internal/models"
+	"github.com/canhta/foreman/internal/project"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -1607,4 +1608,272 @@ func newTestCommandRegistry() *command.Registry {
 		Source:      "builtin",
 	})
 	return r
+}
+
+// ── flattenProjectConfig / expandProjectConfigDTO ──────────────────────────────
+
+func TestFlattenProjectConfig_JiraTracker(t *testing.T) {
+	cfg := &project.ProjectConfig{}
+	cfg.Project.Name = "My Project"
+	cfg.Project.Description = "desc"
+	cfg.Git.CloneURL = "git@github.com:org/repo.git"
+	cfg.Git.DefaultBranch = "main"
+	cfg.Git.Provider = "github"
+	cfg.Git.GitHub.Token = "ghp_git"
+	cfg.Tracker.Provider = "jira"
+	cfg.Tracker.PickupLabel = "foreman-ready"
+	cfg.Tracker.Jira.APIToken = "jira-tok"
+	cfg.Tracker.Jira.ProjectKey = "PROJ"
+	cfg.Tracker.Jira.BaseURL = "https://company.atlassian.net"
+	cfg.Tracker.Jira.Email = "bot@company.com"
+	cfg.AgentRunner.Provider = "builtin"
+	cfg.Models.Planner = "anthropic:claude-sonnet-4-6"
+	cfg.Models.Implementer = "anthropic:claude-sonnet-4-6"
+	cfg.Limits.MaxParallelTickets = 3
+	cfg.Limits.MaxTasksPerTicket = 20
+	cfg.Cost.MaxCostPerTicketUSD = 10.0
+
+	dto := flattenProjectConfig(cfg)
+
+	if dto.Name != "My Project" {
+		t.Errorf("Name: got %q want My Project", dto.Name)
+	}
+	if dto.GitCloneURL != "git@github.com:org/repo.git" {
+		t.Errorf("GitCloneURL: got %q", dto.GitCloneURL)
+	}
+	if dto.GitDefaultBranch != "main" {
+		t.Errorf("GitDefaultBranch: got %q", dto.GitDefaultBranch)
+	}
+	if dto.TrackerProvider != "jira" {
+		t.Errorf("TrackerProvider: got %q", dto.TrackerProvider)
+	}
+	if dto.TrackerToken != "jira-tok" {
+		t.Errorf("TrackerToken: got %q want jira-tok", dto.TrackerToken)
+	}
+	if dto.TrackerProjectKey != "PROJ" {
+		t.Errorf("TrackerProjectKey: got %q want PROJ", dto.TrackerProjectKey)
+	}
+	if dto.TrackerURL != "https://company.atlassian.net" {
+		t.Errorf("TrackerURL: got %q", dto.TrackerURL)
+	}
+	// tracker_email is the key field added in this session
+	if dto.TrackerEmail != "bot@company.com" {
+		t.Errorf("TrackerEmail: got %q want bot@company.com", dto.TrackerEmail)
+	}
+	if dto.MaxParallelTickets != 3 {
+		t.Errorf("MaxParallelTickets: got %d want 3", dto.MaxParallelTickets)
+	}
+	if dto.MaxCostPerTicket != 10.0 {
+		t.Errorf("MaxCostPerTicket: got %f want 10.0", dto.MaxCostPerTicket)
+	}
+}
+
+func TestFlattenProjectConfig_GitHubTracker(t *testing.T) {
+	cfg := &project.ProjectConfig{}
+	cfg.Tracker.Provider = "github"
+	cfg.Tracker.GitHub.Token = "ghp_tracker"
+	cfg.Tracker.GitHub.Owner = "myorg"
+	cfg.Tracker.GitHub.Repo = "myrepo"
+	cfg.Tracker.GitHub.BaseURL = "https://api.github.com"
+
+	dto := flattenProjectConfig(cfg)
+
+	if dto.TrackerProvider != "github" {
+		t.Errorf("TrackerProvider: got %q want github", dto.TrackerProvider)
+	}
+	if dto.TrackerToken != "ghp_tracker" {
+		t.Errorf("TrackerToken: got %q want ghp_tracker", dto.TrackerToken)
+	}
+	if dto.TrackerProjectKey != "myorg/myrepo" {
+		t.Errorf("TrackerProjectKey: got %q want myorg/myrepo", dto.TrackerProjectKey)
+	}
+	if dto.TrackerURL != "https://api.github.com" {
+		t.Errorf("TrackerURL: got %q", dto.TrackerURL)
+	}
+	// email must be empty for non-Jira trackers
+	if dto.TrackerEmail != "" {
+		t.Errorf("TrackerEmail: expected empty for github, got %q", dto.TrackerEmail)
+	}
+}
+
+func TestFlattenProjectConfig_LinearTracker(t *testing.T) {
+	cfg := &project.ProjectConfig{}
+	cfg.Tracker.Provider = "linear"
+	cfg.Tracker.Linear.APIKey = "lin_api_abc"
+	cfg.Tracker.Linear.TeamID = "TEAM1"
+	cfg.Tracker.Linear.BaseURL = "https://api.linear.app"
+
+	dto := flattenProjectConfig(cfg)
+
+	if dto.TrackerProvider != "linear" {
+		t.Errorf("TrackerProvider: got %q", dto.TrackerProvider)
+	}
+	if dto.TrackerToken != "lin_api_abc" {
+		t.Errorf("TrackerToken: got %q", dto.TrackerToken)
+	}
+	if dto.TrackerProjectKey != "TEAM1" {
+		t.Errorf("TrackerProjectKey: got %q want TEAM1", dto.TrackerProjectKey)
+	}
+	if dto.TrackerURL != "https://api.linear.app" {
+		t.Errorf("TrackerURL: got %q", dto.TrackerURL)
+	}
+	if dto.TrackerEmail != "" {
+		t.Errorf("TrackerEmail: expected empty for linear, got %q", dto.TrackerEmail)
+	}
+}
+
+func TestExpandProjectConfigDTO_JiraTracker(t *testing.T) {
+	dto := projectConfigDTO{
+		Name:               "Expanded",
+		Description:        "desc",
+		GitCloneURL:        "git@github.com:org/repo.git",
+		GitDefaultBranch:   "main",
+		GitProvider:        "github",
+		GitToken:           "ghp_git",
+		TrackerProvider:    "jira",
+		TrackerLabels:      "foreman-ready",
+		TrackerToken:       "jira-tok",
+		TrackerProjectKey:  "PROJ",
+		TrackerURL:         "https://company.atlassian.net",
+		TrackerEmail:       "bot@company.com",
+		AgentRunner:        "builtin",
+		ModelPlanner:       "anthropic:claude-sonnet-4-6",
+		ModelImplementer:   "anthropic:claude-sonnet-4-6",
+		MaxParallelTickets: 4,
+		MaxTasksPerTicket:  15,
+		MaxCostPerTicket:   12.0,
+	}
+
+	cfg := expandProjectConfigDTO(dto)
+
+	if cfg.Project.Name != "Expanded" {
+		t.Errorf("project.name: got %q", cfg.Project.Name)
+	}
+	if cfg.Git.CloneURL != "git@github.com:org/repo.git" {
+		t.Errorf("git.clone_url: got %q", cfg.Git.CloneURL)
+	}
+	if cfg.Git.DefaultBranch != "main" {
+		t.Errorf("git.default_branch: got %q", cfg.Git.DefaultBranch)
+	}
+	if cfg.Tracker.Provider != "jira" {
+		t.Errorf("tracker.provider: got %q", cfg.Tracker.Provider)
+	}
+	if cfg.Tracker.Jira.APIToken != "jira-tok" {
+		t.Errorf("tracker.jira.api_token: got %q", cfg.Tracker.Jira.APIToken)
+	}
+	if cfg.Tracker.Jira.ProjectKey != "PROJ" {
+		t.Errorf("tracker.jira.project_key: got %q", cfg.Tracker.Jira.ProjectKey)
+	}
+	if cfg.Tracker.Jira.BaseURL != "https://company.atlassian.net" {
+		t.Errorf("tracker.jira.base_url: got %q", cfg.Tracker.Jira.BaseURL)
+	}
+	// tracker_email is the key field
+	if cfg.Tracker.Jira.Email != "bot@company.com" {
+		t.Errorf("tracker.jira.email: got %q want bot@company.com", cfg.Tracker.Jira.Email)
+	}
+	if cfg.Limits.MaxParallelTickets != 4 {
+		t.Errorf("limits.max_parallel_tickets: got %d want 4", cfg.Limits.MaxParallelTickets)
+	}
+	if cfg.Limits.MaxTasksPerTicket != 15 {
+		t.Errorf("limits.max_tasks_per_ticket: got %d want 15", cfg.Limits.MaxTasksPerTicket)
+	}
+	if cfg.Cost.MaxCostPerTicketUSD != 12.0 {
+		t.Errorf("cost.max_cost_per_ticket_usd: got %f want 12.0", cfg.Cost.MaxCostPerTicketUSD)
+	}
+}
+
+func TestExpandProjectConfigDTO_GitHubTracker_SplitsOwnerRepo(t *testing.T) {
+	dto := projectConfigDTO{
+		TrackerProvider:   "github",
+		TrackerToken:      "ghp_tracker",
+		TrackerProjectKey: "myorg/myrepo",
+		TrackerURL:        "https://api.github.com",
+	}
+
+	cfg := expandProjectConfigDTO(dto)
+
+	if cfg.Tracker.GitHub.Token != "ghp_tracker" {
+		t.Errorf("tracker.github.token: got %q", cfg.Tracker.GitHub.Token)
+	}
+	if cfg.Tracker.GitHub.Owner != "myorg" {
+		t.Errorf("tracker.github.owner: got %q want myorg", cfg.Tracker.GitHub.Owner)
+	}
+	if cfg.Tracker.GitHub.Repo != "myrepo" {
+		t.Errorf("tracker.github.repo: got %q want myrepo", cfg.Tracker.GitHub.Repo)
+	}
+	if cfg.Tracker.GitHub.BaseURL != "https://api.github.com" {
+		t.Errorf("tracker.github.base_url: got %q", cfg.Tracker.GitHub.BaseURL)
+	}
+}
+
+func TestExpandProjectConfigDTO_GitHubTracker_NoSlash_DoesNotSplit(t *testing.T) {
+	dto := projectConfigDTO{
+		TrackerProvider:   "github",
+		TrackerProjectKey: "noslash",
+	}
+	cfg := expandProjectConfigDTO(dto)
+	// When there is no "/" the split is skipped; Owner and Repo remain empty
+	if cfg.Tracker.GitHub.Owner != "" || cfg.Tracker.GitHub.Repo != "" {
+		t.Errorf("expected empty owner/repo for no-slash key, got owner=%q repo=%q",
+			cfg.Tracker.GitHub.Owner, cfg.Tracker.GitHub.Repo)
+	}
+}
+
+func TestExpandProjectConfigDTO_LinearTracker(t *testing.T) {
+	dto := projectConfigDTO{
+		TrackerProvider:   "linear",
+		TrackerToken:      "lin_api_abc",
+		TrackerProjectKey: "TEAM1",
+		TrackerURL:        "https://api.linear.app",
+	}
+
+	cfg := expandProjectConfigDTO(dto)
+
+	if cfg.Tracker.Linear.APIKey != "lin_api_abc" {
+		t.Errorf("tracker.linear.api_key: got %q", cfg.Tracker.Linear.APIKey)
+	}
+	if cfg.Tracker.Linear.TeamID != "TEAM1" {
+		t.Errorf("tracker.linear.team_id: got %q want TEAM1", cfg.Tracker.Linear.TeamID)
+	}
+	if cfg.Tracker.Linear.BaseURL != "https://api.linear.app" {
+		t.Errorf("tracker.linear.base_url: got %q", cfg.Tracker.Linear.BaseURL)
+	}
+}
+
+// TestFlattenThenExpand_RoundTrip verifies that flatten → expand is lossless
+// for all three tracker providers.
+func TestFlattenThenExpand_RoundTrip_Jira(t *testing.T) {
+	orig := &project.ProjectConfig{}
+	orig.Project.Name = "Round Trip"
+	orig.Git.CloneURL = "git@github.com:org/repo.git"
+	orig.Git.DefaultBranch = "main"
+	orig.Git.Provider = "github"
+	orig.Git.GitHub.Token = "ghp_git"
+	orig.Tracker.Provider = "jira"
+	orig.Tracker.PickupLabel = "foreman-ready"
+	orig.Tracker.Jira.APIToken = "jira-tok"
+	orig.Tracker.Jira.ProjectKey = "PROJ"
+	orig.Tracker.Jira.BaseURL = "https://company.atlassian.net"
+	orig.Tracker.Jira.Email = "bot@company.com"
+	orig.AgentRunner.Provider = "builtin"
+	orig.Limits.MaxParallelTickets = 3
+	orig.Limits.MaxTasksPerTicket = 20
+	orig.Cost.MaxCostPerTicketUSD = 10.0
+
+	dto := flattenProjectConfig(orig)
+	got := expandProjectConfigDTO(dto)
+
+	if got.Tracker.Jira.Email != orig.Tracker.Jira.Email {
+		t.Errorf("tracker.jira.email round-trip: got %q want %q",
+			got.Tracker.Jira.Email, orig.Tracker.Jira.Email)
+	}
+	if got.Tracker.Jira.APIToken != orig.Tracker.Jira.APIToken {
+		t.Errorf("tracker.jira.api_token round-trip: got %q", got.Tracker.Jira.APIToken)
+	}
+	if got.Git.CloneURL != orig.Git.CloneURL {
+		t.Errorf("git.clone_url round-trip: got %q", got.Git.CloneURL)
+	}
+	if got.Limits.MaxParallelTickets != orig.Limits.MaxParallelTickets {
+		t.Errorf("limits.max_parallel_tickets round-trip: got %d", got.Limits.MaxParallelTickets)
+	}
 }

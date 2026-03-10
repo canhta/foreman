@@ -532,3 +532,13 @@ func TestValidateConfig_SQLiteMaxParallel(t *testing.T) {
 		t.Error("expected validation error for SQLite with max_parallel_tickets > 3")
 	}
 }
+
+func TestLoadConfig_DaemonMergeCheckIntervalDefault(t *testing.T) {
+	cfg, err := LoadDefaults()
+	if err != nil {
+		t.Fatalf("LoadDefaults: %v", err)
+	}
+	if cfg.Daemon.MergeCheckIntervalSecs != 60 {
+		t.Errorf("expected default merge_check_interval_secs=60, got %d", cfg.Daemon.MergeCheckIntervalSecs)
+	}
+}

@@ -53,15 +53,6 @@ export function shortModel(model: string): string {
   return model.replace(/^(claude-|gpt-)/, '');
 }
 
-export function severityIcon(severity: string): string {
-  switch (severity) {
-    case 'success': return '\u2713';
-    case 'error': return '\u2717';
-    case 'warning': return '\u26A0';
-    default: return '\u25CF';
-  }
-}
-
 /** Split text into alternating text/url parts for linkified rendering. */
 export function linkifyParts(text: string): { type: 'text' | 'url'; content: string }[] {
   if (!text) return [];
