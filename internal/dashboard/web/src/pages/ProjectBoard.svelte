@@ -17,7 +17,7 @@
   });
 
   const columns = [
-    { label: 'Queued', statuses: ['queued', 'clarification_needed'] },
+    { label: 'Queued', statuses: ['queued', 'clarification_needed', 'decomposed'] },
     { label: 'Planning', statuses: ['planning', 'plan_validating', 'decomposing'] },
     { label: 'In Progress', statuses: ['implementing'] },
     { label: 'In Review', statuses: ['reviewing'] },
