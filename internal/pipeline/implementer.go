@@ -33,9 +33,9 @@ type ImplementerInput struct {
 	Model          string
 	Feedback       string
 	PromptVersion  string
+	RetryErrorType ErrorType
 	MaxTokens      int
 	Attempt        int
-	RetryErrorType ErrorType
 }
 
 // ImplementerResult holds the raw LLM response from the implementer.

@@ -16,21 +16,21 @@ const (
 )
 
 type ManagedTask struct {
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 	ID          string
 	Description string
 	Prompt      string
-	Status      TaskStatus
 	Result      string
 	Error       string
 	Mode        string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	Status      TaskStatus
 }
 
 type TaskManager struct {
-	mu    sync.RWMutex
 	tasks map[string]*ManagedTask
 	seq   int
+	mu    sync.RWMutex
 }
 
 func NewTaskManager() *TaskManager {

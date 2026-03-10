@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	maxResponseSize    = 5 * 1024 * 1024 // 5MB
+	maxResponseSize     = 5 * 1024 * 1024 // 5MB
 	defaultFetchTimeout = 30 * time.Second
 )
 

@@ -118,11 +118,11 @@ func (r *ClaudeCodeRunner) Run(ctx context.Context, req AgentRequest) (AgentResu
 // sdkResultMessage mirrors the Claude Agent SDK's SDKResultMessage JSON output.
 type sdkResultMessage struct {
 	StructuredOutput json.RawMessage `json:"structured_output"`
-	Type             string      `json:"type"`
-	Subtype          string      `json:"subtype"`
-	Result           string      `json:"result"`
-	Model            string      `json:"model"`
-	Errors           []string    `json:"errors"`
+	Type             string          `json:"type"`
+	Subtype          string          `json:"subtype"`
+	Result           string          `json:"result"`
+	Model            string          `json:"model"`
+	Errors           []string        `json:"errors"`
 	Usage            struct {
 		InputTokens  int `json:"input_tokens"`
 		OutputTokens int `json:"output_tokens"`

@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -25,7 +26,7 @@ func TestLSPOperations(t *testing.T) {
 }
 
 func TestBuildGoplsCommand(t *testing.T) {
-	cmd := BuildLSPCommand("goToDefinition", "/path/to/file.go", 10, 5)
+	cmd := BuildLSPCommand(context.Background(), "goToDefinition", "/path/to/file.go", 10, 5)
 	require.NotNil(t, cmd)
 	assert.Contains(t, cmd.Args, "definition")
 }

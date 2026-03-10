@@ -36,12 +36,10 @@ type Registry struct {
 	tools           map[string]Tool
 	mcpMgr          *mcp.Manager
 	runFn           RunFn
-	allowedCommands []string
 	todoStore       *TodoStore
-	// parentBudget and parentDepth are set by the builtin runner before each run
-	// so the subagent tool can enforce budget and depth constraints.
-	parentBudget atomic.Int32
-	parentDepth  atomic.Int32
+	allowedCommands []string
+	parentBudget    atomic.Int32
+	parentDepth     atomic.Int32
 }
 
 // NewRegistry creates a Registry. gitProvider and cmdRunner may be nil — those
@@ -96,7 +94,8 @@ func (r *Registry) Execute(ctx context.Context, workDir, name string, input json
 			}
 			out, err := r.mcpMgr.CallTool(ctx, name, input)
 			if err == nil {
-				out, truncated := TruncateOutput(out, DefaultMaxLines, DefaultMaxBytes)
+				var truncated bool
+				out, truncated = TruncateOutput(out, DefaultMaxLines, DefaultMaxBytes)
 				if truncated {
 					out += "\n" + TruncateHint("")
 				}
@@ -122,7 +121,8 @@ func (r *Registry) Execute(ctx context.Context, workDir, name string, input json
 	}
 	out, err := t.Execute(ctx, workDir, input)
 	if err == nil {
-		out, truncated := TruncateOutput(out, DefaultMaxLines, DefaultMaxBytes)
+		var truncated bool
+		out, truncated = TruncateOutput(out, DefaultMaxLines, DefaultMaxBytes)
 		if truncated {
 			out += "\n" + TruncateHint("")
 		}

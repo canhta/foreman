@@ -51,8 +51,8 @@ tasks:
 
 // mockHandoffStore captures SetHandoff calls for assertions.
 type mockHandoffStore struct {
-	records []*models.HandoffRecord
 	err     error
+	records []*models.HandoffRecord
 }
 
 func (m *mockHandoffStore) SetHandoff(_ context.Context, h *models.HandoffRecord) error {
@@ -65,9 +65,9 @@ func (m *mockHandoffStore) SetHandoff(_ context.Context, h *models.HandoffRecord
 
 // stageLLM returns different responses based on the Stage field of the request.
 type stageLLM struct {
+	confidenceErr      error
 	planResponse       string
 	confidenceResponse string
-	confidenceErr      error
 }
 
 func (s *stageLLM) Complete(_ context.Context, req models.LlmRequest) (*models.LlmResponse, error) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/canhta/foreman/internal/agent/agentconst"
@@ -86,10 +87,8 @@ func validateBashCommand(command string, allowed []string) error {
 		return fmt.Errorf("empty command")
 	}
 	binary := parts[0]
-	for _, a := range allowed {
-		if binary == a {
-			return nil
-		}
+	if slices.Contains(allowed, binary) {
+		return nil
 	}
 	return fmt.Errorf("command %q is not in the allowed commands list", binary)
 }
@@ -163,10 +162,10 @@ func (t *subagentTool) Execute(ctx context.Context, workDir string, input json.R
 	}
 	var in struct {
 		Task     string   `json:"task"`
-		Tools    []string `json:"tools"`
-		MaxTurns int      `json:"max_turns"`
 		TaskID   string   `json:"task_id"`
 		Mode     string   `json:"mode"`
+		Tools    []string `json:"tools"`
+		MaxTurns int      `json:"max_turns"`
 	}
 	if err := json.Unmarshal(input, &in); err != nil {
 		return "", fmt.Errorf("subagent: %w", err)

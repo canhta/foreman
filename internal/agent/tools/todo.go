@@ -15,8 +15,8 @@ type Todo struct {
 }
 
 type TodoStore struct {
-	mu    sync.RWMutex
 	todos []Todo
+	mu    sync.RWMutex
 }
 
 func NewTodoStore() *TodoStore { return &TodoStore{} }

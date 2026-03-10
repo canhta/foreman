@@ -1,6 +1,7 @@
 package snapshot
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -132,7 +133,7 @@ func (s *Snapshot) ensureInit() error {
 	if _, err := os.Stat(headPath); err == nil {
 		return nil // already initialised
 	}
-	cmd := exec.Command("git", "init", "--bare", s.gitDir)
+	cmd := exec.CommandContext(context.Background(), "git", "init", "--bare", s.gitDir)
 	cmd.Dir = s.workDir
 	return cmd.Run()
 }
@@ -147,7 +148,7 @@ func (s *Snapshot) git(args ...string) (string, error) {
 		"--git-dir", s.gitDir,
 		"--work-tree", s.workDir,
 	}, args...)
-	cmd := exec.Command("git", fullArgs...)
+	cmd := exec.CommandContext(context.Background(), "git", fullArgs...)
 	cmd.Dir = s.workDir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

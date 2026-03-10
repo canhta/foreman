@@ -12,16 +12,16 @@ type Command struct {
 	Name        string
 	Description string
 	Template    string
-	Agent       string // optional: run with specific agent
-	Model       string // optional: override model
-	Subtask     bool   // run as subtask (background)
-	Source      string // "builtin", "config", "skill"
+	Agent       string
+	Model       string
+	Source      string
+	Subtask     bool
 }
 
 // Registry holds all available commands. It is safe for concurrent use.
 type Registry struct {
-	mu       sync.RWMutex
 	commands map[string]Command
+	mu       sync.RWMutex
 }
 
 // NewRegistry creates an empty command registry.

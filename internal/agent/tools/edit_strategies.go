@@ -17,14 +17,14 @@ func ApplyEditWithFallback(content, oldStr, newStr string) (string, string, erro
 	}
 
 	strategies := []struct {
-		name string
 		fn   func(string, string, string) (string, bool)
+		name string
 	}{
-		{"simple", SimpleReplace},
-		{"line_trimmed", LineTrimmedReplace},
-		{"block_anchor", BlockAnchorReplace},
-		{"whitespace_normalized", WhitespaceNormalizedReplace},
-		{"indent_flexible", IndentFlexibleReplace},
+		{fn: SimpleReplace, name: "simple"},
+		{fn: LineTrimmedReplace, name: "line_trimmed"},
+		{fn: BlockAnchorReplace, name: "block_anchor"},
+		{fn: WhitespaceNormalizedReplace, name: "whitespace_normalized"},
+		{fn: IndentFlexibleReplace, name: "indent_flexible"},
 	}
 
 	for _, s := range strategies {

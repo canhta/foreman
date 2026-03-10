@@ -20,10 +20,10 @@ type globalEntry struct {
 
 // Bus is a simple async pub/sub event bus for pipeline observability.
 type Bus struct {
-	mu     sync.RWMutex
 	subs   map[string][]*subEntry
 	global []*globalEntry
 	wg     sync.WaitGroup
+	mu     sync.RWMutex
 }
 
 // New creates a new Bus.

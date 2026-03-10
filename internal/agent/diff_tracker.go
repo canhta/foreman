@@ -19,15 +19,15 @@ type TrackedFileChange struct {
 }
 
 type DiffSummary struct {
+	Files          []TrackedFileChange
 	FilesChanged   int
 	TotalAdditions int
 	TotalDeletions int
-	Files          []TrackedFileChange
 }
 
 type DiffTracker struct {
-	mu      sync.Mutex
 	changes map[string]*TrackedFileChange
+	mu      sync.Mutex
 }
 
 func NewDiffTracker() *DiffTracker {

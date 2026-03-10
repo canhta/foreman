@@ -36,50 +36,26 @@ func (e *EscalationError) Error() string {
 //
 //nolint:govet // fieldalignment: struct field order prioritises readability over padding
 type TaskRunnerConfig struct {
-	Cache            *appcontext.ContextCache
-	Models           models.ModelsConfig
-	WorkDir          string
-	CodebasePatterns string
-	TestCommand      string
-	// PromptVersions maps prompt template filenames (e.g. "planner.md.j2") to
-	// their SHA256 hashes computed at startup (REQ-OBS-001). Used to populate
-	// LlmRequest.PromptVersion so each call is traceable to a specific template version.
-	PromptVersions map[string]string
-	// HookRunner fires post_lint skill hooks after each task commit (REQ-OBS-002).
-	// Optional — nil disables skill hooks in the task runner.
-	HookRunner               *skills.HookRunner
-	MaxImplementationRetries int
-	MaxSpecReviewCycles      int
-	MaxQualityReviewCycles   int
-	MaxLlmCallsPerTask       int
-	// ContextTokenBudget is the baseline token budget for context file loading.
-	// Dynamic budget scales this by task complexity (low=50%, medium=100%, high=150%).
-	// 0 means unlimited.
-	ContextTokenBudget      int
-	SearchReplaceSimilarity float64
-	EnableTDDVerification   bool
-	// ContextFeedbackBoost is the score multiplier for files that appeared in
-	// files_touched of prior similar tasks. Default 1.5 (REQ-CTX-003).
-	ContextFeedbackBoost float64
-	// IntermediateReviewInterval controls how often the cross-task consistency
-	// check runs. After every N completed tasks (where N = IntermediateReviewInterval),
-	// a lightweight LLM consistency check is triggered. 0 disables the check.
+	AgentRunner                agent.AgentRunner
+	DiscoveryBoard             *models.DiscoveryBoard
+	PromptVersions             map[string]string
+	HookRunner                 *skills.HookRunner
+	Cache                      *appcontext.ContextCache
+	Models                     models.ModelsConfig
+	WorkDir                    string
+	CodebasePatterns           string
+	TestCommand                string
+	WorktreeStartCommand       string
+	AgentRunnerName            string
+	MaxLlmCallsPerTask         int
+	SearchReplaceSimilarity    float64
+	ContextFeedbackBoost       float64
 	IntermediateReviewInterval int
-	// DiscoveryBoard is the shared board for this ticket (ARCH-S02).
-	// When non-nil, patterns from the board are merged with DB patterns
-	// during context-file selection so parallel tasks share discoveries.
-	DiscoveryBoard *models.DiscoveryBoard
-	// AgentRunner is an optional external agent runner. When non-nil, RunTask
-	// delegates implementation to this runner instead of using the builtin
-	// implementer → parse → apply → review loop.
-	AgentRunner agent.AgentRunner
-	// AgentRunnerName identifies the runner type ("claudecode", "copilot").
-	// Used to decide whether to inject Claude Code skills.
-	AgentRunnerName string
-	// WorktreeStartCommand is an optional shell command to run inside each new
-	// task worktree after it is created (e.g. "npm install", "go mod download").
-	// Failures are logged as warnings and do not abort worktree creation.
-	WorktreeStartCommand string
+	ContextTokenBudget         int
+	MaxQualityReviewCycles     int
+	MaxSpecReviewCycles        int
+	MaxImplementationRetries   int
+	EnableTDDVerification      bool
 }
 
 // ConsistencyReviewDB is the subset of db.Database needed by the intermediate
@@ -114,8 +90,8 @@ type PipelineTaskRunner struct {
 	qualityReviewer *QualityReviewer
 	metrics         *telemetry.Metrics
 	snap            *snapshot.Snapshot
-	config          TaskRunnerConfig
 	registry        *prompts.Registry
+	config          TaskRunnerConfig
 }
 
 // NewPipelineTaskRunner creates a task runner that wires all pipeline stages together.

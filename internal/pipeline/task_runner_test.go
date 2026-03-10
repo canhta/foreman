@@ -19,11 +19,11 @@ import (
 // --- Mocks ---
 
 type mockTaskRunnerDB struct {
+	updateErr  error
 	tasks      map[string]*models.Task
 	callCounts map[string]int
 	statuses   map[string]models.TaskStatus
 	llmCalls   []*models.LlmCallRecord
-	updateErr  error
 }
 
 func newMockTaskRunnerDB() *mockTaskRunnerDB {

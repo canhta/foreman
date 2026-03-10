@@ -602,8 +602,8 @@ func (m *mockStructuredOutputLLM) Complete(_ context.Context, req models.LlmRequ
 		}, nil
 	}
 	return &models.LlmResponse{
-		Content:    "done",
-		StopReason: models.StopReasonEndTurn,
+		Content:     "done",
+		StopReason:  models.StopReasonEndTurn,
 		TokensInput: 50, TokensOutput: 10, Model: req.Model,
 	}, nil
 }

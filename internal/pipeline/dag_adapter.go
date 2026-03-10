@@ -31,11 +31,11 @@ type DAGTaskAdapter struct {
 	cdb               ConsistencyReviewDB
 	git               git.GitProvider
 	runner            *PipelineTaskRunner
+	envFiles          map[string]string
+	config            TaskRunnerConfig
 	ticketID          string
 	ticketBranch      string
 	lastReviewedSHA   string
-	config            TaskRunnerConfig
-	envFiles          map[string]string
 	completedCount    atomic.Int64
 	lastReviewedSHAMu sync.Mutex
 }

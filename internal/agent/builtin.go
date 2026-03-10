@@ -290,7 +290,7 @@ func (r *BuiltinRunner) Run(ctx context.Context, req AgentRequest) (AgentResult,
 						}
 						return enrichResult(AgentResult{
 							Output:      resp.Content,
-							Structured:  json.RawMessage(tc.Input),
+							Structured:  tc.Input,
 							Usage:       usage,
 							CostSummary: costTracker.Summary(),
 							DiffSummary: diffTracker.Summary(),
@@ -495,7 +495,6 @@ func (r *BuiltinRunner) executeToolsFileAware(
 	for _, b := range batches {
 		g, gctx := errgroup.WithContext(ctx)
 		for _, m := range b.calls {
-			m := m
 			if req.OnProgress != nil {
 				req.OnProgress(AgentEvent{Type: AgentEventToolStart, Turn: turn + 1, ToolName: m.tc.Name})
 			}
@@ -600,7 +599,7 @@ func toolCallFingerprint(toolName string, input json.RawMessage) string {
 	h.Write([]byte(toolName))
 	h.Write([]byte("|"))
 	// Canonicalize: re-marshal to remove whitespace differences.
-	var canonical interface{}
+	var canonical any
 	if err := json.Unmarshal(input, &canonical); err == nil {
 		if b, err := json.Marshal(canonical); err == nil {
 			h.Write(b)

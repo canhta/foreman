@@ -223,16 +223,17 @@ func trimNewline(s string) string {
 func TestNativeGitProvider_ResetWorktree(t *testing.T) {
 	// Create a temp git repo
 	repoDir := t.TempDir()
-	cmd := exec.Command("git", "init", repoDir)
+	ctx := t.Context()
+	cmd := exec.CommandContext(ctx, "git", "init", repoDir)
 	require.NoError(t, cmd.Run())
 	// Configure git user for commits
-	exec.Command("git", "-C", repoDir, "config", "user.email", "test@test.com").Run()
-	exec.Command("git", "-C", repoDir, "config", "user.name", "Test").Run()
+	exec.CommandContext(ctx, "git", "-C", repoDir, "config", "user.email", "test@test.com").Run() //nolint:errcheck
+	exec.CommandContext(ctx, "git", "-C", repoDir, "config", "user.name", "Test").Run()           //nolint:errcheck
 	// Create initial commit
 	testFile := filepath.Join(repoDir, "main.go")
 	require.NoError(t, os.WriteFile(testFile, []byte("package main"), 0o644))
-	exec.Command("git", "-C", repoDir, "add", ".").Run()
-	exec.Command("git", "-C", repoDir, "commit", "-m", "init").Run()
+	exec.CommandContext(ctx, "git", "-C", repoDir, "add", ".").Run()             //nolint:errcheck
+	exec.CommandContext(ctx, "git", "-C", repoDir, "commit", "-m", "init").Run() //nolint:errcheck
 
 	g := NewNativeGitProvider()
 	// Dirty the repo

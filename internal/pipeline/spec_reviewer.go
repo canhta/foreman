@@ -16,8 +16,8 @@ type SpecReviewInput struct {
 	TaskTitle          string
 	Diff               string
 	TestOutput         string
-	AcceptanceCriteria []string
 	PromptVersion      string
+	AcceptanceCriteria []string
 }
 
 // SpecReviewRunner is the interface for spec compliance checking.

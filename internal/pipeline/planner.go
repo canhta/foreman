@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	appcontext "github.com/canhta/foreman/internal/context"
 	"github.com/canhta/foreman/internal/agent"
+	appcontext "github.com/canhta/foreman/internal/context"
 	"github.com/canhta/foreman/internal/models"
 	"github.com/canhta/foreman/internal/telemetry"
 	"github.com/google/uuid"

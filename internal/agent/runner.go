@@ -49,14 +49,14 @@ type AgentRequest struct {
 	OnProgress func(AgentEvent)
 	// Thinking configures adaptive or extended thinking for the builtin runner.
 	// ClaudeCode and Copilot runners ignore this field (thinking is model-managed).
-	Thinking        *models.ThinkingConfig
+	Thinking *models.ThinkingConfig
 	// Permissions is an optional ruleset for tool access control.
 	// When nil, no permission checks are performed (preserves backward compatibility).
-	Permissions     Ruleset
-	Prompt          string
-	SystemPrompt    string
-	WorkDir         string
-	FallbackModel   string
+	Permissions   Ruleset
+	Prompt        string
+	SystemPrompt  string
+	WorkDir       string
+	FallbackModel string
 	// Mode selects a pre-configured agent mode (e.g. "plan", "explore", "build").
 	// When set, its permissions are merged with any explicit Permissions.
 	Mode            string
@@ -103,14 +103,14 @@ type ReviewResult struct {
 
 // AgentResult holds the output of an agent task.
 type AgentResult struct {
-	Structured   json.RawMessage
 	ReviewResult *ReviewResult
 	Metadata     map[string]string
 	Output       string
+	Structured   json.RawMessage
 	FileChanges  []FileChange
-	Usage        AgentUsage
 	CostSummary  CostSummary
 	DiffSummary  DiffSummary
+	Usage        AgentUsage
 }
 
 // AgentUsage tracks resource consumption for an agent task.

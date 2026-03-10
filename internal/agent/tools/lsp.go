@@ -36,19 +36,19 @@ func LSPToolSchema() json.RawMessage {
 	}`)
 }
 
-func BuildLSPCommand(operation, filePath string, line, char int) *exec.Cmd {
+func BuildLSPCommand(ctx context.Context, operation, filePath string, line, char int) *exec.Cmd {
 	loc := fmt.Sprintf("%s:%d:%d", filePath, line, char)
 	switch operation {
 	case "goToDefinition":
-		return exec.Command("gopls", "definition", loc)
+		return exec.CommandContext(ctx, "gopls", "definition", loc)
 	case "findReferences":
-		return exec.Command("gopls", "references", loc)
+		return exec.CommandContext(ctx, "gopls", "references", loc)
 	case "hover":
-		return exec.Command("gopls", "hover", loc)
+		return exec.CommandContext(ctx, "gopls", "hover", loc)
 	case "documentSymbol":
-		return exec.Command("gopls", "symbols", filePath)
+		return exec.CommandContext(ctx, "gopls", "symbols", filePath)
 	case "workspaceSymbol":
-		return exec.Command("gopls", "workspace_symbol", filePath)
+		return exec.CommandContext(ctx, "gopls", "workspace_symbol", filePath)
 	default:
 		return nil
 	}
@@ -60,7 +60,7 @@ func ExecuteLSP(ctx context.Context, workDir, operation, filePath string, line, 
 	case "workspaceSymbol":
 		cmd = exec.CommandContext(ctx, "gopls", "workspace_symbol", query)
 	default:
-		cmd = BuildLSPCommand(operation, filePath, line, char)
+		cmd = BuildLSPCommand(ctx, operation, filePath, line, char)
 	}
 	if cmd == nil {
 		return "", fmt.Errorf("unsupported LSP operation: %s", operation)
@@ -85,9 +85,9 @@ func (t *lspTool) Execute(ctx context.Context, workDir string, input json.RawMes
 	var args struct {
 		Operation string `json:"operation"`
 		FilePath  string `json:"filePath"`
+		Query     string `json:"query"`
 		Line      int    `json:"line"`
 		Character int    `json:"character"`
-		Query     string `json:"query"`
 	}
 	if err := json.Unmarshal(input, &args); err != nil {
 		return "", fmt.Errorf("lsp: %w", err)

@@ -34,10 +34,10 @@ func (m *mockEmbedder) Embed(_ context.Context, texts []string) ([][]float32, er
 // --- Mock Database ---
 
 type mockDB struct {
+	stored            []db.EmbeddingRecord
 	upsertCalls       int
 	deleteExceptCalls int
-	stored            []db.EmbeddingRecord
-	returnEmpty       bool // if true, GetEmbeddingsByRepoSHA returns empty
+	returnEmpty       bool
 }
 
 func (m *mockDB) UpsertEmbedding(_ context.Context, e db.EmbeddingRecord) error {

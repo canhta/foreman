@@ -11,18 +11,18 @@ type CostEntry struct {
 }
 
 type CostSummary struct {
+	ByModel           map[string]float64
+	TotalCostUSD      float64
 	TotalInputTokens  int
 	TotalOutputTokens int
 	TotalCachedTokens int
-	TotalCostUSD      float64
 	LLMCalls          int
-	ByModel           map[string]float64
 }
 
 type CostTracker struct {
-	mu      sync.Mutex
 	entries []CostEntry
 	budget  float64
+	mu      sync.Mutex
 }
 
 func NewCostTracker() *CostTracker { return &CostTracker{} }

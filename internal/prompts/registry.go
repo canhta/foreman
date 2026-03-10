@@ -36,7 +36,7 @@ type Entry struct {
 	// NOTE: This field is informational only. Fragment inclusion at render time
 	// uses pongo2's {% include "fragments/name.md" %} syntax in the template body.
 	// The 'includes:' frontmatter key is NOT automatically prepended to the content.
-	Includes    []string
+	Includes []string
 }
 
 // Registry holds all loaded prompt entries indexed by kind and name.

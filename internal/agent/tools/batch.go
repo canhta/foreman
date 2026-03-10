@@ -21,9 +21,9 @@ type BatchInput struct {
 
 type BatchResult struct {
 	Tool    string `json:"tool"`
-	Success bool   `json:"success"`
 	Output  string `json:"output,omitempty"`
 	Error   string `json:"error,omitempty"`
+	Success bool   `json:"success"`
 }
 
 func ParseBatchInput(raw string) ([]BatchCall, error) {
@@ -85,7 +85,7 @@ func (t *batchTool) Schema() json.RawMessage {
 func (t *batchTool) Execute(ctx context.Context, workDir string, input json.RawMessage) (string, error) {
 	calls, err := ParseBatchInput(string(input))
 	if err != nil {
-		return "", fmt.Errorf("Batch: %w", err)
+		return "", fmt.Errorf("batch: %w", err)
 	}
 
 	executor := func(tool string, inp json.RawMessage) (string, error) {
@@ -96,7 +96,7 @@ func (t *batchTool) Execute(ctx context.Context, workDir string, input json.RawM
 
 	out, err := json.Marshal(results)
 	if err != nil {
-		return "", fmt.Errorf("Batch: failed to marshal results: %w", err)
+		return "", fmt.Errorf("batch: failed to marshal results: %w", err)
 	}
 	return string(out), nil
 }
