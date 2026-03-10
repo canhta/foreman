@@ -212,6 +212,9 @@ func BlockAnchorReplace(content, oldStr, newStr string) (string, bool) {
 			if strings.TrimSpace(contentLines[j]) != lastLine {
 				continue
 			}
+			if j-i+1 != len(oldLines) {
+				continue
+			}
 			before := strings.Join(contentLines[:i], "\n")
 			after := strings.Join(contentLines[j+1:], "\n")
 			result := before
@@ -303,6 +306,22 @@ func detectIndentOffset(contentLine, searchLine string) int {
 	return countLeadingWhitespace(contentLine) - countLeadingWhitespace(searchLine)
 }
 
+// detectIndentUnit returns the indent width in use on a line (2 or 4 for spaces, 0 for tabs/empty).
+func detectIndentUnit(line string) int {
+	count := countLeadingWhitespace(line)
+	if count == 0 || (len(line) > 0 && line[0] == '\t') {
+		return 0 // tabs handled separately
+	}
+	// Prefer 2-space if count is a multiple of 2 but not 4
+	if count%4 == 0 {
+		return 4
+	}
+	if count%2 == 0 {
+		return 2
+	}
+	return count // odd indentation — use as-is
+}
+
 func applyIndentOffset(line string, offset int) string {
 	if line == "" || offset == 0 {
 		return line
@@ -311,7 +330,11 @@ func applyIndentOffset(line string, offset int) string {
 		// Preserve existing indentation style: detect if line uses spaces or tabs
 		leading := countLeadingWhitespace(line)
 		if leading > 0 && line[0] == ' ' {
-			return strings.Repeat(" ", offset*4) + line
+			unit := detectIndentUnit(line)
+			if unit == 0 {
+				unit = 4 // fallback
+			}
+			return strings.Repeat(" ", offset*unit) + line
 		}
 		return strings.Repeat("\t", offset) + line
 	}

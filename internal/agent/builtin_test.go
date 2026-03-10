@@ -645,15 +645,11 @@ func TestBuiltinRunner_StructuredOutputToolInjected(t *testing.T) {
 	}
 
 	// Verify structured output was captured in AgentResult
-	if result.Structured == nil {
+	if len(result.Structured) == 0 {
 		t.Fatal("expected Structured to be non-nil")
 	}
-	raw, ok := result.Structured.(json.RawMessage)
-	if !ok {
-		t.Fatalf("expected Structured to be json.RawMessage, got %T", result.Structured)
-	}
 	var parsed map[string]interface{}
-	if err := json.Unmarshal(raw, &parsed); err != nil {
+	if err := json.Unmarshal(result.Structured, &parsed); err != nil {
 		t.Fatalf("failed to unmarshal structured output: %v", err)
 	}
 	if parsed["status"] != "APPROVED" {

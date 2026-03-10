@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync/atomic"
 
 	"github.com/canhta/foreman/internal/agent/mcp"
 	"github.com/canhta/foreman/internal/db"
@@ -39,8 +40,8 @@ type Registry struct {
 	todoStore       *TodoStore
 	// parentBudget and parentDepth are set by the builtin runner before each run
 	// so the subagent tool can enforce budget and depth constraints.
-	parentBudget int
-	parentDepth  int
+	parentBudget atomic.Int32
+	parentDepth  atomic.Int32
 }
 
 // NewRegistry creates a Registry. gitProvider and cmdRunner may be nil — those
@@ -94,6 +95,16 @@ func (r *Registry) Execute(ctx context.Context, workDir, name string, input json
 				}
 			}
 			out, err := r.mcpMgr.CallTool(ctx, name, input)
+			if err == nil {
+				out, truncated := TruncateOutput(out, DefaultMaxLines, DefaultMaxBytes)
+				if truncated {
+					out += "\n" + TruncateHint("")
+				}
+				if r.hooks.PostToolUse != nil {
+					r.hooks.PostToolUse(ctx, name, out, nil)
+				}
+				return out, nil
+			}
 			if r.hooks.PostToolUse != nil {
 				r.hooks.PostToolUse(ctx, name, out, err)
 			}
@@ -110,6 +121,16 @@ func (r *Registry) Execute(ctx context.Context, workDir, name string, input json
 		}
 	}
 	out, err := t.Execute(ctx, workDir, input)
+	if err == nil {
+		out, truncated := TruncateOutput(out, DefaultMaxLines, DefaultMaxBytes)
+		if truncated {
+			out += "\n" + TruncateHint("")
+		}
+		if r.hooks.PostToolUse != nil {
+			r.hooks.PostToolUse(ctx, name, out, nil)
+		}
+		return out, nil
+	}
 	if r.hooks.PostToolUse != nil {
 		r.hooks.PostToolUse(ctx, name, out, err)
 	}
@@ -183,13 +204,13 @@ func (r *Registry) GetRunFn() RunFn { return r.runFn }
 // Called by BuiltinRunner at the start of each Run() so the Subagent tool can
 // enforce budget inheritance and max-depth constraints.
 func (r *Registry) SetParentBudgetAndDepth(remaining, depth int) {
-	r.parentBudget = remaining
-	r.parentDepth = depth
+	r.parentBudget.Store(int32(remaining))
+	r.parentDepth.Store(int32(depth))
 }
 
 // GetParentBudgetAndDepth returns the stored budget and depth.
 func (r *Registry) GetParentBudgetAndDepth() (remaining, depth int) {
-	return r.parentBudget, r.parentDepth
+	return int(r.parentBudget.Load()), int(r.parentDepth.Load())
 }
 
 // All register* functions implemented in their respective files:

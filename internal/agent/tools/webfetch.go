@@ -17,14 +17,14 @@ const (
 
 // WebFetch fetches a URL and returns content in the specified format.
 // format: "text" (raw/stripped), "markdown" (HTML->markdown), "html" (raw HTML).
-func WebFetch(url, format string, timeoutSecs int) (string, error) {
+func WebFetch(ctx context.Context, url, format string, timeoutSecs int) (string, error) {
 	timeout := defaultFetchTimeout
 	if timeoutSecs > 0 {
 		timeout = time.Duration(timeoutSecs) * time.Second
 	}
 
 	client := &http.Client{Timeout: timeout}
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return "", fmt.Errorf("invalid URL: %w", err)
 	}
@@ -123,7 +123,7 @@ func (t *webFetchTool) Schema() json.RawMessage {
 		"required": ["url"]
 	}`)
 }
-func (t *webFetchTool) Execute(_ context.Context, _ string, input json.RawMessage) (string, error) {
+func (t *webFetchTool) Execute(ctx context.Context, _ string, input json.RawMessage) (string, error) {
 	var args struct {
 		URL     string `json:"url"`
 		Format  string `json:"format"`
@@ -135,5 +135,5 @@ func (t *webFetchTool) Execute(_ context.Context, _ string, input json.RawMessag
 	if args.Format == "" {
 		args.Format = "text"
 	}
-	return WebFetch(args.URL, args.Format, args.Timeout)
+	return WebFetch(ctx, args.URL, args.Format, args.Timeout)
 }

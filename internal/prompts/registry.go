@@ -32,12 +32,17 @@ type Entry struct {
 	Metadata    map[string]any
 	RawContent  string
 	Path        string
+	// Includes lists fragment names from the 'includes:' frontmatter key.
+	// NOTE: This field is informational only. Fragment inclusion at render time
+	// uses pongo2's {% include "fragments/name.md" %} syntax in the template body.
+	// The 'includes:' frontmatter key is NOT automatically prepended to the content.
 	Includes    []string
 }
 
 // Registry holds all loaded prompt entries indexed by kind and name.
 type Registry struct {
 	entries map[EntryKind]map[string]*Entry
+	tplSet  *pongo2.TemplateSet
 	baseDir string
 }
 
@@ -79,6 +84,12 @@ func Load(baseDir string) (*Registry, error) {
 	if err := r.scanFragments(fragDir); err != nil && !os.IsNotExist(err) {
 		return nil, fmt.Errorf("scan fragments: %w", err)
 	}
+
+	loader, err := pongo2.NewLocalFileSystemLoader(baseDir)
+	if err != nil {
+		return nil, fmt.Errorf("create template loader: %w", err)
+	}
+	r.tplSet = pongo2.NewSet("prompts", loader)
 
 	return r, nil
 }
@@ -247,10 +258,33 @@ func (r *Registry) ForClaude(workDir string, vars map[string]any) error {
 		}
 	}
 
+	// Aggregate tools from all agent frontmatter
+	toolSet := map[string]struct{}{}
+	for _, a := range r.List(KindAgent) {
+		if tools, ok := a.Metadata["tools"]; ok {
+			if list, ok := tools.([]any); ok {
+				for _, item := range list {
+					if s, ok := item.(string); ok {
+						toolSet[s] = struct{}{}
+					}
+				}
+			}
+		}
+	}
+	// Convert to sorted slice; fall back to defaults if no tools declared
+	var allowList []string
+	for t := range toolSet {
+		allowList = append(allowList, t)
+	}
+	sort.Strings(allowList)
+	if len(allowList) == 0 {
+		allowList = []string{"Read", "Edit", "Write", "Glob", "Grep", "Bash"}
+	}
+
 	// Write settings.json
 	settings := map[string]any{
 		"permissions": map[string]any{
-			"allow": []string{"Read", "Edit", "Write", "Glob", "Grep", "Bash"},
+			"allow": allowList,
 		},
 	}
 	settingsData, err := json.MarshalIndent(settings, "", "  ")
@@ -309,12 +343,7 @@ func (r *Registry) SkillSteps(name string) ([]SkillStep, error) {
 
 // RenderEntry renders a single entry with the given variables.
 func (r *Registry) RenderEntry(entry *Entry, vars map[string]any) (string, error) {
-	// Build a pongo2 template set rooted at baseDir so {% include %} works
-	loader, err := pongo2.NewLocalFileSystemLoader(r.baseDir)
-	if err != nil {
-		return "", fmt.Errorf("create template loader: %w", err)
-	}
-	tplSet := pongo2.NewSet("prompts", loader)
+	tplSet := r.tplSet
 
 	tpl, err := tplSet.FromString(entry.RawContent)
 	if err != nil {

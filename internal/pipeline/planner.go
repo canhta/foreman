@@ -140,17 +140,15 @@ func (p *Planner) Plan(ctx context.Context, workDir string, ticket *models.Ticke
 		if agentErr != nil {
 			return nil, fmt.Errorf("planner agent call: %w", agentErr)
 		}
-		if agentResp.Structured != nil {
+		if raw := agentResp.Structured; json.Valid(raw) {
 			// Parse from structured JSON output (REQ-PIPE-003).
-			if raw, ok := agentResp.Structured.(json.RawMessage); ok && json.Valid(raw) {
-				var pr PlannerResult
-				if jsonErr := json.Unmarshal(raw, &pr); jsonErr == nil {
-					if pr.Status == "" {
-						pr.Status = "OK"
-					}
-					result = &pr
-					log.Info().Str("ticket_id", ticket.ID).Msg("planner: used structured output path")
+			var pr PlannerResult
+			if jsonErr := json.Unmarshal(raw, &pr); jsonErr == nil {
+				if pr.Status == "" {
+					pr.Status = "OK"
 				}
+				result = &pr
+				log.Info().Str("ticket_id", ticket.ID).Msg("planner: used structured output path")
 			}
 		}
 		// If structured output wasn't usable, fall through to YAML parsing of Output.

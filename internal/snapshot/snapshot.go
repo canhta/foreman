@@ -45,6 +45,9 @@ func (s *Snapshot) Track() (string, error) {
 
 // Patch returns the list of files changed since the given hash.
 func (s *Snapshot) Patch(hash string) (*Patch, error) {
+	if err := s.ensureInit(); err != nil {
+		return nil, err
+	}
 	if err := s.add(); err != nil {
 		return nil, err
 	}
@@ -64,6 +67,9 @@ func (s *Snapshot) Patch(hash string) (*Patch, error) {
 
 // Diff returns the unified diff between current state and the given hash.
 func (s *Snapshot) Diff(hash string) (string, error) {
+	if err := s.ensureInit(); err != nil {
+		return "", err
+	}
 	if err := s.add(); err != nil {
 		return "", err
 	}
@@ -78,6 +84,9 @@ func (s *Snapshot) Diff(hash string) (string, error) {
 // Files that existed in the snapshot are restored to their snapshotted content.
 // Files that were added after the snapshot (not present in the hash) are removed.
 func (s *Snapshot) Restore(hash string) error {
+	if err := s.ensureInit(); err != nil {
+		return err
+	}
 	// Stage the current state so we can compute what was added since the snapshot.
 	if err := s.add(); err != nil {
 		return fmt.Errorf("stage before restore: %w", err)
@@ -119,6 +128,10 @@ func (s *Snapshot) Restore(hash string) error {
 }
 
 func (s *Snapshot) ensureInit() error {
+	headPath := filepath.Join(s.gitDir, "HEAD")
+	if _, err := os.Stat(headPath); err == nil {
+		return nil // already initialised
+	}
 	cmd := exec.Command("git", "init", "--bare", s.gitDir)
 	cmd.Dir = s.workDir
 	return cmd.Run()

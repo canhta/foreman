@@ -36,16 +36,13 @@ func Evaluate(permission, pattern string, rules Ruleset) Action {
 		normalizedPerm = mapped
 	}
 
-	result := ActionDeny // default
-	matched := false
+	result := ActionDeny
 	for _, rule := range rules {
 		if matchPermission(normalizedPerm, strings.ToLower(rule.Permission)) &&
 			matchPattern(pattern, rule.Pattern) {
 			result = rule.Action
-			matched = true
 		}
 	}
-	_ = matched
 	return result
 }
 

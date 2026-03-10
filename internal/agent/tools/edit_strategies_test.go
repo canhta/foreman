@@ -45,7 +45,7 @@ func TestWhitespaceNormalizedReplacer(t *testing.T) {
 
 func TestBlockAnchorReplacer(t *testing.T) {
 	content := "func foo() {\n\tline1\n\tline2\n\tline3\n\tline4\n}"
-	old := "func foo() {\n\t// ... middle ...\n}"
+	old := "func foo() {\n\tline1\n\tline2\n\tline3\n\tline4\n}"
 
 	result, ok := BlockAnchorReplace(content, old, "func bar() {\n\tnewcode\n}")
 	assert.True(t, ok)

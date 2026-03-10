@@ -124,3 +124,41 @@ func TestGlobalAndTopicHandlersBothFire(t *testing.T) {
 		t.Errorf("expected count 11 (1+10), got %d", count.Load())
 	}
 }
+
+func TestSubscribeCancel(t *testing.T) {
+	b := New()
+	var called atomic.Int32
+
+	cancel := b.Subscribe("topic", func(data any) {
+		called.Add(1)
+	})
+
+	// Cancel before publishing — handler must NOT be called.
+	cancel()
+
+	b.Publish("topic", "data")
+	b.Drain()
+
+	if called.Load() != 0 {
+		t.Errorf("expected handler not to be called after cancel, got %d calls", called.Load())
+	}
+}
+
+func TestSubscribeAllCancel(t *testing.T) {
+	b := New()
+	var called atomic.Int32
+
+	cancel := b.SubscribeAll(func(topic string, data any) {
+		called.Add(1)
+	})
+
+	// Cancel before publishing — handler must NOT be called.
+	cancel()
+
+	b.Publish("topic", "data")
+	b.Drain()
+
+	if called.Load() != 0 {
+		t.Errorf("expected global handler not to be called after cancel, got %d calls", called.Load())
+	}
+}

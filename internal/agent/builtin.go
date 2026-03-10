@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -16,6 +15,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/canhta/foreman/internal/agent/tools"
+	agentcontext "github.com/canhta/foreman/internal/context"
 	"github.com/canhta/foreman/internal/llm"
 	"github.com/canhta/foreman/internal/models"
 )
@@ -574,16 +574,15 @@ func (r *BuiltinRunner) Close() error { return nil }
 // loadForemanContext reads project context from workDir.
 // AGENTS.md is the standard cross-tool convention; .foreman/context.md is for Foreman-specific cached content.
 func loadForemanContext(workDir string) string {
-	candidates := []string{
-		filepath.Join(workDir, "AGENTS.md"),
-		filepath.Join(workDir, ".foreman", "context.md"),
-	}
-	for _, path := range candidates {
-		if content, err := os.ReadFile(path); err == nil {
-			return string(content)
+	paths := agentcontext.WalkContextFiles(workDir, workDir)
+	var parts []string
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if err == nil && len(data) > 0 {
+			parts = append(parts, string(data))
 		}
 	}
-	return ""
+	return strings.Join(parts, "\n\n")
 }
 
 // extractPath reads the "path" field from tool input JSON.

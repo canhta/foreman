@@ -103,7 +103,7 @@ type ReviewResult struct {
 
 // AgentResult holds the output of an agent task.
 type AgentResult struct {
-	Structured   interface{}
+	Structured   json.RawMessage
 	ReviewResult *ReviewResult
 	Metadata     map[string]string
 	Output       string

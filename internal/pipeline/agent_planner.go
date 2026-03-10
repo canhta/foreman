@@ -140,28 +140,13 @@ func (ap *AgentPlanner) plannerOutputSchema() json.RawMessage {
 	return data
 }
 
-func (ap *AgentPlanner) parseStructured(structured interface{}) (*PlannerResult, error) {
-	if structured == nil {
+func (ap *AgentPlanner) parseStructured(structured json.RawMessage) (*PlannerResult, error) {
+	if len(structured) == 0 {
 		return nil, fmt.Errorf("no structured output returned")
 	}
 
-	// Handle json.RawMessage and []byte directly
-	var data []byte
-	switch v := structured.(type) {
-	case json.RawMessage:
-		data = v
-	case []byte:
-		data = v
-	default:
-		var err error
-		data, err = json.Marshal(v)
-		if err != nil {
-			return nil, fmt.Errorf("marshal structured output: %w", err)
-		}
-	}
-
 	var result PlannerResult
-	if err := json.Unmarshal(data, &result); err != nil {
+	if err := json.Unmarshal(structured, &result); err != nil {
 		return nil, fmt.Errorf("unmarshal plan: %w", err)
 	}
 	return &result, nil

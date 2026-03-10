@@ -83,13 +83,6 @@ func (t *batchTool) Schema() json.RawMessage {
 	return json.RawMessage(`{"type":"object","properties":{"tool_calls":{"type":"array","description":"List of tool calls to execute in parallel","items":{"type":"object","properties":{"tool":{"type":"string","description":"Tool name"},"input":{"type":"object","description":"Tool input parameters"}},"required":["tool","input"]},"maxItems":25}},"required":["tool_calls"]}`)
 }
 func (t *batchTool) Execute(ctx context.Context, workDir string, input json.RawMessage) (string, error) {
-	var raw struct {
-		ToolCalls []BatchCall `json:"tool_calls"`
-	}
-	if err := json.Unmarshal(input, &raw); err != nil {
-		return "", fmt.Errorf("Batch: %w", err)
-	}
-
 	calls, err := ParseBatchInput(string(input))
 	if err != nil {
 		return "", fmt.Errorf("Batch: %w", err)

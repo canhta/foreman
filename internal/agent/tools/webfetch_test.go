@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -16,7 +17,7 @@ func TestWebFetch_PlainText(t *testing.T) {
 	}))
 	defer server.Close()
 
-	result, err := WebFetch(server.URL, "text", 10)
+	result, err := WebFetch(context.Background(), server.URL, "text", 10)
 	require.NoError(t, err)
 	assert.Equal(t, "Hello, World!", result)
 }
@@ -28,7 +29,7 @@ func TestWebFetch_HTML(t *testing.T) {
 	}))
 	defer server.Close()
 
-	result, err := WebFetch(server.URL, "markdown", 10)
+	result, err := WebFetch(context.Background(), server.URL, "markdown", 10)
 	require.NoError(t, err)
 	assert.Contains(t, result, "Title")
 	assert.Contains(t, result, "Content")
@@ -40,7 +41,7 @@ func TestWebFetch_SizeLimit(t *testing.T) {
 	}))
 	defer server.Close()
 
-	_, err := WebFetch(server.URL, "text", 10)
+	_, err := WebFetch(context.Background(), server.URL, "text", 10)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "too large")
 }
