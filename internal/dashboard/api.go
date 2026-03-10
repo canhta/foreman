@@ -326,9 +326,6 @@ func (a *API) handleConfigSummary(w http.ResponseWriter, r *http.Request) {
 	}
 
 	dbPath := cfg.Database.SQLite.Path
-	if cfg.Database.Driver == "postgres" {
-		dbPath = redactKey(cfg.Database.Postgres.URL)
-	}
 
 	mcpServers := make([]string, 0, len(cfg.MCP.Servers))
 	for _, s := range cfg.MCP.Servers {
