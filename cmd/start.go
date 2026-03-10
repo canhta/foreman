@@ -182,6 +182,12 @@ func newStartCmd() *cobra.Command {
 			}
 			defer database.Close()
 
+			// Warn if legacy work_dir is set — it is ignored in multi-project mode.
+			if cfg.Daemon.WorkDir != "" {
+				log.Warn().Str("work_dir", cfg.Daemon.WorkDir).
+					Msg("daemon.work_dir set in system config is ignored in multi-project mode; use 'foreman project create' to manage projects")
+			}
+
 			// 1a. Initialize ProjectManager for multi-project support.
 			homeDir, _ := os.UserHomeDir()
 			foremanDir := filepath.Join(homeDir, ".foreman")
