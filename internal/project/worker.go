@@ -22,6 +22,8 @@ const (
 
 // Worker runs an independent goroutine group for a single project.
 // It owns its own database, orchestrator, tracker, and git provider.
+//
+//nolint:govet // fieldalignment: struct field order prioritises readability over padding
 type Worker struct {
 	ID         string
 	Name       string

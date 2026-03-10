@@ -14,6 +14,8 @@ import (
 )
 
 // Manager discovers, creates, and manages project lifecycle.
+//
+//nolint:govet // fieldalignment: struct field order prioritises readability over padding
 type Manager struct {
 	baseDir   string         // e.g., ~/.foreman
 	globalCfg *models.Config // global config
