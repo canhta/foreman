@@ -133,30 +133,89 @@ func LoginWithPairingCode(ctx context.Context, sessionDB, phone string) error {
 	}
 	logf("PairPhone returned code successfully")
 
+	// Keep consuming QR channel events after the initial "code" event.
+	// The mobile app can still fail if we exit before WhatsApp emits final success.
+	qrDone := make(chan error, 1)
+	go func() {
+		for qrEvt := range qrChan {
+			logf("QR channel event received: Event=%q Code(len)=%d", qrEvt.Event, len(qrEvt.Code))
+			switch qrEvt.Event {
+			case "success":
+				select {
+				case qrDone <- nil:
+				default:
+				}
+				close(qrDone)
+				return
+			case "timeout":
+				select {
+				case qrDone <- fmt.Errorf("pairing timed out on WhatsApp side"):
+				default:
+				}
+				close(qrDone)
+				return
+			}
+		}
+		close(qrDone)
+	}()
+
 	fmt.Println()
 	fmt.Println("╔══════════════════════════════════════╗")
-	fmt.Printf( "║  PAIRING CODE:  %-20s  ║\n", code)
+	fmt.Printf("║  PAIRING CODE:  %-20s  ║\n", code)
 	fmt.Println("╚══════════════════════════════════════╝")
 	fmt.Println("Open WhatsApp → Linked Devices → Link a Device → Enter code above")
 	fmt.Println("Waiting for confirmation (up to 5 minutes)...")
 	fmt.Println()
 
-	// Two-stage completion: PairSuccess means the code was accepted by the server;
-	// Connected means the full post-pairing handshake finished.
-	select {
-	case err := <-done:
-		client.Disconnect()
-		if err != nil {
-			logf("Pairing failed: %v", err)
-			return err
+	// Success is strongest when both signals are present:
+	// 1) PairSuccess + Connected from websocket events.
+	// 2) QR channel reports final "success".
+	connectedOK := false
+	qrOK := false
+	var grace <-chan time.Time
+
+	for {
+		if connectedOK && qrOK {
+			client.Disconnect()
+			logf("Pairing completed successfully")
+			fmt.Println("WhatsApp linked successfully. Session saved.")
+			return nil
 		}
-		logf("Pairing completed successfully")
-		fmt.Println("WhatsApp linked successfully. Session saved.")
-		return nil
-	case <-ctx.Done():
-		logf("Context cancelled while waiting for pairing confirmation")
-		client.Disconnect()
-		return ctx.Err()
+
+		select {
+		case err := <-done:
+			if err != nil {
+				client.Disconnect()
+				logf("Pairing failed: %v", err)
+				return err
+			}
+			connectedOK = true
+			if grace == nil {
+				grace = time.After(10 * time.Second)
+			}
+		case qrErr, ok := <-qrDone:
+			if !ok {
+				qrDone = nil
+				continue
+			}
+			if qrErr != nil {
+				client.Disconnect()
+				logf("Pairing failed: %v", qrErr)
+				return qrErr
+			}
+			qrOK = true
+		case <-grace:
+			if connectedOK {
+				client.Disconnect()
+				logf("Pairing completed after websocket confirmation (QR success event not observed)")
+				fmt.Println("WhatsApp linked successfully. Session saved.")
+				return nil
+			}
+		case <-ctx.Done():
+			logf("Context cancelled while waiting for pairing confirmation")
+			client.Disconnect()
+			return ctx.Err()
+		}
 	}
 }
 
