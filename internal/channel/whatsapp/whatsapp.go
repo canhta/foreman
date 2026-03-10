@@ -74,11 +74,7 @@ func (w *WhatsAppChannel) Start(ctx context.Context, handler channel.InboundHand
 		return fmt.Errorf("whatsapp connect: %w", err)
 	}
 
-	w.mu.Lock()
-	w.connected = true
-	w.mu.Unlock()
-
-	w.logger.Info().Msg("WhatsApp connected")
+	w.logger.Info().Msg("WhatsApp connecting (waiting for handshake)")
 
 	// Start rate limiter cleanup
 	go w.limiter.cleanupLoop(ctx)
@@ -123,9 +119,15 @@ func (w *WhatsAppChannel) handleEvent(ctx context.Context, evt interface{}) {
 		w.logger.Warn().Msg("WhatsApp session logged out — manual re-login required")
 		go func() { _ = w.Stop() }()
 	case *events.Disconnected:
+		w.mu.Lock()
+		w.connected = false
+		w.mu.Unlock()
 		w.logger.Warn().Msg("WhatsApp disconnected")
 		go w.handleDisconnect(ctx)
 	case *events.Connected:
+		w.mu.Lock()
+		w.connected = true
+		w.mu.Unlock()
 		w.logger.Info().Msg("WhatsApp connected")
 	}
 }
