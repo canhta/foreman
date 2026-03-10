@@ -25,6 +25,8 @@ make build
 ./foreman --help
 ```
 
+For all build targets (hot reload, debug, release), see [Development — Build Targets](development.md#build-targets).
+
 ### Download a Release Binary
 
 Pre-built binaries for Linux (amd64/arm64) and macOS (amd64/arm64) are available on the [GitHub Releases page](https://github.com/canhta/foreman/releases).

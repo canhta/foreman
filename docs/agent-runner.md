@@ -50,7 +50,7 @@ type AgentEvent struct {
 
 type AgentResult struct {
     Output      string      // Final text or JSON string output
-    Structured  interface{} // Populated if OutputSchema was provided
+    Structured  json.RawMessage // Populated if OutputSchema was provided
     Usage       AgentUsage
     CostSummary CostSummary // Per-session token and USD breakdown (builtin runner)
     DiffSummary DiffSummary // File change counts: additions, deletions, files changed
@@ -294,60 +294,7 @@ If the result is ≤ 0, the call fails immediately with `"parent budget exhauste
 
 ---
 
----
-
-## Pipeline Integration
-
-When `[agent_runner] provider` is set to `claudecode` or `copilot`, the agent runner integrates into the core pipeline at two points.
-
-### Planning: AgentPlanner
-
-`AgentPlanner` (`internal/pipeline/agent_planner.go`) implements the `TicketPlanner` interface by delegating to `AgentRunner`. The agent can explore the codebase freely (using its native tools — file reads, grep, tree summaries) before generating a structured JSON plan.
-
-The planning prompt instructs the agent to:
-1. Explore the codebase to understand architecture, conventions, and relevant files
-2. Decompose the ticket into ordered, independent implementation tasks
-3. Detect codebase patterns: language, framework, test runner, style notes
-4. Return a structured plan matching an embedded JSON Schema
-
-After the agent returns, `AgentPlanner` validates the plan (task count limit, topological sort for DAG cycles), then passes it through the same `PlanValidator` and `PlanConfidenceScorer` as the builtin path.
-
-> **Note:** `AgentPlanner` requires an `AgentRunner` that populates `AgentResult.Structured` (e.g. `claudecode`, which extracts JSON from the agent's structured output). With the builtin runner, `Structured` will be nil and planning will fail. Use `claudecode` or `copilot` when relying on `AgentPlanner`.
-
-### Per-Task Implementation: RunTask Branch
-
-When `config.AgentRunner != nil` in `PipelineTaskRunner`, `RunTask` routes to `runTaskWithAgent` instead of the builtin TDD loop. This branch:
-
-1. **Injects Claude Code skills** (if `AgentRunnerName == "claudecode"`): `SkillInjector` writes TDD workflow templates into `.claude/foreman/` and deep-merges Foreman's `settings.json` into any existing `.claude/settings.json`. Files are cleaned up after the task.
-2. **Builds a prompt** via `PromptBuilder`: structured markdown with task description, acceptance criteria, file hints, codebase patterns, test/lint commands, and (on retries) the previous failure output.
-3. **Delegates to the agent**: `AgentRunner.Run` with the full prompt and working directory. The agent handles TDD, file editing, and test execution natively.
-4. **Verifies a diff**: after the agent returns, `git diff` is checked — an empty diff triggers a retry.
-5. **Stages and commits**: if the agent has not already committed, Foreman stages all changes and commits with `feat: <task title>`.
-6. **Runs non-blocking reviews**: spec and quality reviews still run on the resulting diff, but failures are logged as warnings in the PR description rather than blocking the task.
-7. **Fires post_lint hooks** and writes context feedback as normal.
-
-### Repo-Level File Reservation
-
-External agent runners modify files freely and unpredictably, so they cannot use per-file reservations. Before a ticket using an external runner begins, Foreman reserves the `__REPO_LOCK__` sentinel (`db.RepoLockSentinel`). This sentinel has bidirectional exclusivity:
-
-- A ticket holding `__REPO_LOCK__` blocks all other tickets from reserving any files.
-- Any ticket with specific file reservations blocks a new ticket from acquiring `__REPO_LOCK__`.
-
-This serializes external-runner tickets against each other and against builtin-runner tickets that overlap any files, while builtin-runner tickets with no overlapping files continue in parallel.
-
-```mermaid
-flowchart LR
-    subgraph ext["External Runner Ticket"]
-        RL["Reserves __REPO_LOCK__"]
-    end
-    subgraph builtin["Builtin Runner Tickets"]
-        F1["Reserves file_a.go, file_b.go"]
-        F2["Reserves file_c.go"]
-    end
-    RL -- "blocks" --> F1
-    RL -- "blocks" --> F2
-    F1 -- "blocks if any overlap" --> RL
-```
+When configured as the pipeline runner (provider = "claudecode" or "copilot"), the agent runner drives planning via AgentPlanner and per-task implementation via runTaskWithAgent. See [Pipeline — External Agent Path](pipeline.md#external-agent-path) for the full execution details.
 
 ---
 

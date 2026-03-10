@@ -1,8 +1,172 @@
-# Features
+# How Foreman Works
 
-Foreman is an autonomous software development daemon that turns labelled issue tracker tickets into tested, reviewed pull requests with no human involvement in the implementation loop.
+## The Big Picture
 
-## At a Glance
+Foreman is a 24/7 background daemon that turns labelled issue tracker tickets into tested, reviewed pull requests. You connect it to your issue tracker (Jira, GitHub Issues, or Linear), point it at your repository, and label a ticket `foreman-ready`. Foreman takes it from there: it reads the ticket, explores your codebase, writes a plan, implements each task with test-driven development, runs quality reviews, and opens a pull request — all without you touching the keyboard.
+
+The promise is simple: label a ticket, get a PR. Everything between those two events — planning, coding, testing, linting, reviewing — is handled by Foreman. You stay in control at the one place that matters: the code review. Every PR is a human checkpoint before any code ships.
+
+Who controls what? Foreman controls the implementation loop. You control the ticket descriptions (which become the spec), the configuration (which sets the rules), and the final merge decision.
+
+---
+
+## The Full Flow: From Ticket to PR
+
+```mermaid
+flowchart TD
+    A([Label ticket foreman-ready]) --> B[Daemon picks up ticket]
+    B --> C{Ticket clear enough?}
+    C -- No --> D[Post clarification comment\nwait for author]
+    D --> C
+    C -- Yes --> E[Planner reads ticket\nexplores codebase\nproduces task list]
+    E --> F{Plan quality OK?}
+    F -- Low confidence --> D
+    F -- OK --> G[Execute tasks in parallel\nrespecting dependencies]
+    G --> H[Per task: write tests RED\nwrite code GREEN\nlint + spec + quality review]
+    H --> I[Rebase onto main\nrun full test suite\nfinal review]
+    I --> J([Open Pull Request])
+    J --> K[MergeChecker watches PR]
+    K --> L{PR merged?}
+    L -- Yes --> M[Run post-merge hooks\nclose parent ticket if decomposed]
+    L -- Pushed to --> N[Flag as updated\nwait for re-label]
+```
+
+Each phase is described below with a concrete explanation of what happens and why.
+
+---
+
+## Phase 1: Ticket Pickup
+
+Foreman runs as a long-lived daemon. On each poll cycle (default: every 60 seconds), it queries your issue tracker for tickets labelled `foreman-ready`. When it finds one, it claims the ticket by updating its status to `in_progress` and begins work.
+
+Before doing anything else, Foreman checks whether the ticket has enough information to act on. It looks at the description length, whether acceptance criteria are present, and how specific the requirements are. If the ticket is too vague, Foreman posts a comment with a precise question, applies a `foreman-needs-info` label, and waits up to 72 hours for the author to respond. This prevents wasted LLM calls on ambiguous requirements.
+
+Foreman also checks whether any of the files the ticket will need to touch are already being modified by another active pipeline. If there is a conflict, the ticket is re-queued and tried again on the next poll cycle. This file reservation system prevents two pipelines from editing the same file simultaneously.
+
+---
+
+## Phase 2: Planning
+
+Once a ticket is picked up, the planner reads the ticket description and explores your codebase to understand what already exists. It produces an ordered task list, where each task includes: a title and description, specific acceptance criteria, the files to read and the files to modify, test assertions the implementation must satisfy, an estimated complexity (simple, medium, or complex), and optional dependencies on other tasks.
+
+After the task list is generated, a deterministic validator checks it before any code is written. It verifies that all referenced file paths exist (or are explicitly marked as new), that there are no dependency cycles, that no two tasks modify the same file without an explicit ordering, and that the estimated cost fits within your configured budget.
+
+After deterministic validation passes, a second LLM call evaluates the overall quality of the plan and returns a confidence score from 0.0 to 1.0. If the score is below the configured threshold (default: 0.6), Foreman triggers a clarification request rather than proceeding. A low-confidence plan is a sign the ticket description needs more detail, not that implementation should begin on shaky foundations.
+
+---
+
+## Phase 3: Implementation (Per Task)
+
+Tasks with no unmet dependencies start executing immediately. Tasks that depend on others wait in a ready queue and start as soon as their dependencies complete. By default, up to three tasks run in parallel, using a bounded worker pool managed by a coordinator goroutine.
+
+Each task follows a strict TDD loop:
+
+1. The agent writes failing tests first.
+2. Foreman mechanically verifies the RED phase — the tests must fail for the right reason (an assertion failure, not a compile error or missing import).
+3. The agent writes the minimal implementation to make the tests pass.
+4. Foreman verifies the GREEN phase — all new tests must pass.
+
+After tests pass, Foreman runs the repo's linter. If lint fails, the error is classified and sent back to the agent with a specific retry prompt. After lint passes, a spec reviewer LLM call checks whether the implementation actually satisfies the task's acceptance criteria. After that, a quality reviewer LLM call checks for correctness issues, security problems, and maintainability gaps.
+
+If any of these gates fail, the agent retries with targeted feedback. Before every retry, Foreman classifies the error into one of seven types (compile error, type error, lint/style, test assertion failure, test runtime error, spec violation, quality concern) and selects a retry prompt written specifically for that failure mode. A compile error gets a different prompt than a spec violation because they require fundamentally different fixes.
+
+Every task has an absolute cap of 8 LLM calls (implementer plus reviewers combined). When a task hits the cap, it fails immediately. Independent tasks continue running unaffected.
+
+---
+
+## Phase 4: PR Creation
+
+After all tasks complete, Foreman rebases the branch onto the default branch. If there are merge conflicts, it attempts to resolve them automatically using an LLM call that receives the full context of both sides plus the task descriptions. If automatic resolution fails, Foreman still opens the PR but includes a conflict warning in the description.
+
+After a successful rebase, Foreman runs the full test suite. A full-suite failure blocks PR creation unless you have configured partial PRs (see below). If tests pass, a final reviewer LLM call inspects the complete diff across all tasks — this catches cross-task issues that per-task reviews cannot see.
+
+The PR is opened as a draft by default, with configured reviewers automatically assigned. The PR body includes a task checklist so reviewers can see exactly what was implemented. If some tasks failed or were skipped, the checklist marks them clearly, and the PR contains only the completed work.
+
+After the PR is created, any configured `post_pr` skill hooks fire — for example, posting a Slack notification or generating a changelog entry.
+
+---
+
+## Phase 5: Watching the PR
+
+After PR creation, a dedicated `MergeChecker` goroutine polls the PR status at a configurable interval. When the PR is merged, any configured `post_merge` skill hooks fire — for example, triggering a deployment or cleaning up a branch. If the ticket was created from an oversized parent ticket that was decomposed into children, the parent ticket is automatically closed once all child PRs have merged.
+
+If someone pushes new commits to the branch while the PR is open, Foreman detects the change (by comparing the stored HEAD SHA against the current one) and transitions the ticket to a `pr_updated` state. The ticket requires manual re-labelling with `foreman-ready` to re-enter the pipeline. This prevents Foreman from acting on a PR that has changed since its last review.
+
+---
+
+## The Agent: Tools and Capabilities
+
+Foreman's built-in agent runner is a multi-turn tool-use loop. The agent calls tools, receives results, and decides what to do next — up to a configured turn limit. The tool registry is organized into groups, each serving a distinct purpose:
+
+- **Filesystem tools** (`Read`, `ReadRange`, `Write`, `Edit`, `MultiEdit`, `ListDir`, `Glob`, `ApplyPatch`) — read and modify files. `ReadRange` reads a slice of a large file without loading the whole thing. `ApplyPatch` applies a unified diff patch as an alternative to line-by-line edits.
+- **Code intelligence tools** (`Grep`, `GetSymbol`, `GetErrors`, `TreeSummary`) — search the codebase, look up symbol definitions, and get a structural overview of a directory tree without reading every file.
+- **Language server tools** (`LSP`) — go-to-definition, find-references, hover, and symbol search via gopls. This gives the agent the same code navigation a developer gets in an IDE.
+- **Git tools** (`GetDiff`, `GetCommitLog`) — read the current diff and recent commit history, so the agent can see what has already changed.
+- **Execution tools** (`Bash`, `RunTest`) — run shell commands and tests. An allowlist of permitted commands prevents unintended side effects.
+- **Web tools** (`WebFetch`) — fetch a URL as text, markdown, or raw HTML. Useful for reading API documentation or fetching a spec linked in a ticket.
+- **Composition tools** (`Batch`, `Subagent`, `TodoRead`, `TodoWrite`) — `Batch` runs up to 25 tool calls in parallel within a single agent turn. `Subagent` spawns a child agent for a bounded sub-task. `TodoRead` and `TodoWrite` give the agent an in-session scratchpad task list.
+
+All tool outputs are automatically truncated before being returned to the model. This keeps the context window from filling up with large file dumps.
+
+For the full tool reference with descriptions and schemas, see [Agent Runner — Built-in Tools](agent-runner.md#built-in-tools).
+
+---
+
+## Edit Strategies: How the Agent Edits Code
+
+When the agent wants to edit a file, it provides a search string (the code to replace) and a replacement string. The problem is that LLMs don't always reproduce whitespace, indentation, or blank lines exactly as they appear in the file. A single mismatched space will cause an exact-match replacement to fail.
+
+To handle this, Foreman tries up to six progressively more flexible matching strategies before giving up. When a fallback strategy is used, the tool reports which one succeeded. The result is that edits almost never fail due to minor formatting differences between what the LLM remembers and what the file actually contains.
+
+For the full strategy list, see [Agent Runner — Edit Strategy Fallback Chain](agent-runner.md#edit-strategy-fallback-chain).
+
+---
+
+## Context: What the Agent Knows
+
+Every agent call receives fully assembled context — Foreman does not accumulate memory between calls. Instead, it builds the context fresh for each call from several sources:
+
+**`AGENTS.md`** — if you place an `AGENTS.md` file at the root of your repository (or a `.foreman/context.md` for Foreman-specific content), Foreman injects it into every agent call's system prompt. This is where you put your coding conventions, test commands, naming rules, and anything else the agent should always know. You generate an initial one with `foreman context generate`, and after each merged PR, `foreman context update` incorporates new patterns the pipeline discovered.
+
+**Hierarchical context walking** — Foreman walks upward from the agent's working directory to the repo root, collecting `AGENTS.md` and `.foreman-rules.md` files at each level. Files from deeper, more specific directories take priority over files from higher up. This means you can have project-wide rules at the root and override them with directory-specific rules in a subdirectory.
+
+**Reactive context injection** — after each file-touching tool call (reading or editing a file), the builtin runner queries for progress patterns and scoped rules relevant to the accessed paths, and injects them as a context message before the next LLM turn. The agent gets relevant context exactly when it needs it, without the full context being repeated every turn.
+
+**Progress patterns** — after every few completed tasks, a lightweight consistency check runs on the cumulative diff, looking for naming conventions, error handling patterns, and import style. Any violations are stored as progress patterns and fed into subsequent tasks, so the agent learns from what has already been built in the same pipeline run.
+
+---
+
+## Permissions and Modes
+
+You can lock the agent into different permission modes depending on what you want it to do. Three built-in presets cover the common cases:
+
+| Mode | What the agent can do | Use case |
+|---|---|---|
+| `plan` | Read files, search, take notes | Exploration and planning only; no code changes |
+| `explore` | Read files, search, look up symbols | Read-only codebase investigation |
+| `build` | Everything — read, write, execute | Full implementation |
+
+For the full permission system with ruleset syntax and custom rules, see [Agent Runner — Permission System](agent-runner.md#permission-system-and-agent-modes).
+
+---
+
+## Observability
+
+**Cost tracking** — every LLM call is metered and costs aggregate per ticket, per day, and per month. You can set budget limits at each level; Foreman pauses or aborts when a limit is reached. See [Agent Runner — Cost Tracker](agent-runner.md#cost-tracker) for the per-session budget enforcement details.
+
+**Diff tracking** — after each agent session, a `DiffSummary` carries total lines added, lines deleted, and files changed. This is surfaced in logs and the dashboard so you can see the footprint of each task.
+
+**Event bus** — all significant pipeline events are published to a typed event bus and recorded to the database. Over 40 event types cover the full lifecycle, from `ticket_picked_up` through `pr_created` to `post_merge_hook_complete`. Events are viewable via the dashboard and the `foreman logs` CLI.
+
+**Progress events** — the agent emits `turn_start`, `tool_start`, `tool_end`, and `turn_end` events in real time. These feed the dashboard's live view and also drive mid-execution budget enforcement.
+
+**Dashboard** — a built-in web UI (default port 8080) shows active tickets, per-ticket task breakdowns, real-time cost, and a live event log. It exposes a REST API and a WebSocket endpoint for live updates. All endpoints require a bearer token.
+
+**Prometheus metrics** — a metrics endpoint provides counters and histograms for ticket status, LLM call counts, token usage, cost, retry counts by error type, TDD verification results, and more.
+
+---
+
+## Capabilities At a Glance
 
 | Capability | Summary |
 |---|---|
@@ -14,7 +178,7 @@ Foreman is an autonomous software development daemon that turns labelled issue t
 | **Plan confidence scoring** | LLM evaluates plan quality; low-confidence plans trigger clarification |
 | **Context window management** | Automatic compaction keeps message history within the model's context window |
 | **Self-reflection turns** | Agent pauses every N turns to assess progress; implicit stop on completion |
-| **Tool call deduplication** | Warns the agent on repeated tool calls to prevent doom loops |
+| **Tool call deduplication** | Warns the agent on repeated tool calls to prevent looping |
 | **Accurate token counting** | tiktoken-go replaces the `len/4` heuristic for precise budget control |
 | **Dynamic context budget** | Token budget scales with task complexity (low / medium / high) |
 | **Pipeline context cache** | File tree, rules, and secret scan are cached per pipeline run |
@@ -26,10 +190,10 @@ Foreman is an autonomous software development daemon that turns labelled issue t
 | **Ticket decomposition** | Oversized tickets auto-split into focused child tickets |
 | **Clarification requests** | Asks for detail on vague tickets; waits for author response |
 | **Partial PRs** | Creates a PR with completed work even when some tasks fail |
-| **Crash recovery** | Resumes from last committed task after a daemon restart (DAG-aware) |
+| **Crash recovery** | Resumes from last committed task after a daemon restart |
 | **Cost control** | Per-ticket, per-day, and per-month LLM spend limits |
-| **Per-session cost tracking** | `CostTracker` enforces per-session USD budgets; full breakdown in `AgentResult.CostSummary` |
-| **File change tracking** | `DiffSummary` in `AgentResult` carries additions, deletions, and files changed per session |
+| **Per-session cost tracking** | `CostTracker` enforces per-session USD budgets with full breakdown |
+| **File change tracking** | `DiffSummary` carries additions, deletions, and files changed per session |
 | **Secrets scanner** | Redacts secret patterns from every LLM context assembly |
 | **YAML skills engine** | Extend the pipeline at four hook points without modifying Go code |
 | **Multi-provider LLM** | Anthropic, OpenAI, OpenRouter, local models; per-role routing |
@@ -40,7 +204,7 @@ Foreman is an autonomous software development daemon that turns labelled issue t
 | **Tool output truncation** | All tool outputs auto-truncated (2000 lines / 50 KB / 2000 chars per line) |
 | **Edit strategy fallback chain** | Six progressive strategies for SEARCH/REPLACE before failing |
 | **ApplyPatch hunk validation** | Context lines validated against file before applying unified diff |
-| **Async event bus** | Typed pub/sub (`internal/bus`) for daemon-wide real-time event dispatch |
+| **Async event bus** | Typed pub/sub for daemon-wide real-time event dispatch |
 | **Unified prompt registry** | All prompts, agents, skills, and commands loaded from `prompts/` via pongo2 templates |
 | **Hierarchical context loading** | Context files walked up from working dir to repo root; deeper files take priority |
 | **Multi-directory skill discovery** | Skills scanned from `skills/` and `.foreman/skills/` at each level up to repo root |
@@ -48,577 +212,8 @@ Foreman is an autonomous software development daemon that turns labelled issue t
 | **LSP integration** | `LSP` tool exposes gopls: go-to-definition, find-references, hover, symbols |
 | **Todo list management** | `TodoRead`/`TodoWrite` give agents an in-session scratchpad task list |
 | **Web fetch** | `WebFetch` tool fetches URLs as text, markdown, or HTML (5 MB limit) |
-
----
-
-## Core Pipeline
-
-### Ticket-to-PR Automation
-Foreman monitors an issue tracker for labelled tickets, decomposes them into ordered tasks, implements each task with LLM-guided TDD, runs quality gates, and opens a pull request — all without human involvement between "ticket labelled" and "PR ready for review."
-
-### Clarification Requests
-Before planning, Foreman checks whether a ticket has sufficient detail (description length, acceptance criteria, specificity). If a ticket is too vague, Foreman comments on it with a specific question, applies a `foreman-needs-info` label, and waits. After a configurable timeout (default: 72 hours) with no response, the ticket is marked blocked. This prevents wasted LLM calls on ambiguous requirements.
-
-### Planner
-The planner decomposes a ticket into 2–20 granular tasks. Each task includes:
-- A title and description
-- Specific acceptance criteria
-- Files to read and files to modify
-- Test assertions the implementation must satisfy
-- An estimated complexity (simple / medium / complex)
-- Optional task dependencies (`depends_on` edges that drive the parallel DAG executor)
-
-### Parallel DAG Task Execution
-Tasks with no unmet dependencies execute immediately in parallel. A coordinator goroutine owns all mutable DAG state (zero mutexes); a bounded worker pool (configurable via `max_parallel_tasks`, default 3) pulls from a ready queue. When a task completes, the coordinator checks its dependents — if all dependencies are now satisfied, the dependent is pushed to the ready queue.
-
-Failure semantics:
-- A failing task triggers BFS pruning: all transitive dependents are marked `skipped`.
-- Independent branches continue executing unaffected.
-- If all tasks fail, the ticket is marked `failed` and no PR is created.
-- If some tasks succeed, Foreman creates a partial PR (when `enable_partial_pr = true`).
-
-Each task runs with an individual timeout (`task_timeout_minutes`, default 15 min) to prevent a hung task from blocking its dependents.
-
-### Plan Validation
-After planning, a deterministic validator checks the plan before any code is written:
-- All referenced file paths exist (or are explicitly marked as new)
-- No cycles in the task dependency graph
-- No two tasks modify the same file without an explicit ordering
-- Token-aware cost estimation (not a flat average) — warns if the plan will exceed 50% or 80% of the per-ticket budget
-- Task count within the configured limit
-
-### Plan Confidence Scoring
-After deterministic validation passes, a second LLM call evaluates plan quality and returns a `confidence_score` (0.0–1.0) and a list of concerns. If the score falls below `plan_confidence_threshold` (default: 0.6), Foreman triggers a clarification request rather than proceeding to implementation. The score is stored in the handoffs table under key `plan_confidence` and is visible in the dashboard.
-
-### TDD-Driven Implementation
-Each task is implemented using a strict TDD workflow:
-1. The implementer writes failing tests first
-2. Foreman mechanically verifies the RED phase — tests must fail for the right reason (assertion failure, not a compile error)
-3. The implementer writes the minimal implementation to make the tests pass
-4. Foreman verifies the GREEN phase
-
-Failure-type discrimination distinguishes assertion failures (valid RED) from compile/import errors (invalid RED), providing precise feedback for retries.
-
-### Error Classification and Typed Retry Prompts
-Before every retry, Foreman runs a deterministic error classifier over the feedback string to assign one of seven error types:
-
-| Error type | Example trigger |
-|---|---|
-| `compile_error` | Build failure, undefined symbol |
-| `type_error` | "cannot use", "does not implement" |
-| `lint_style` | gofmt diff, golangci-lint warnings |
-| `test_assertion` | Expected vs got mismatches |
-| `test_runtime` | Panic, nil pointer, build tag error |
-| `spec_violation` | Spec reviewer rejection |
-| `quality_concern` | Quality reviewer rejection |
-
-Each error type maps to a dedicated retry prompt template (e.g., `implementer_retry_compile.md.j2`). The error type is stored in `tasks.last_error_type` and reported as a Prometheus label `{error_type}` on retry metrics.
-
-### Tiered Feedback Loops
-Failures at each gate trigger targeted retries with specific error context:
-- **Lint failure** → classify error type, select typed retry prompt, retry implementer (max 2 retries)
-- **Test failure** → classify error type, select typed retry prompt, retry implementer (max 2 retries)
-- **Spec review rejection** → `spec_violation` prompt, retry implementer (max 2 cycles)
-- **Quality review rejection** → `quality_concern` prompt, retry implementer (max 1 cycle)
-
-### Spec Review
-After lint and tests pass, a spec reviewer LLM call checks whether the implementation satisfies the task's acceptance criteria. The reviewer has access to the original ticket, the task description, and the full diff.
-
-### Quality Review
-A quality reviewer LLM call checks code quality independently of spec compliance — looking for correctness issues, performance problems, security concerns, and maintainability gaps.
-
-### Final Review
-After all tasks are complete, a final reviewer inspects the full diff across the entire ticket. This catches cross-task issues that per-task reviews cannot see.
-
-### Absolute LLM Call Cap
-Every task tracks an absolute count of LLM calls (implementer + spec reviewer + quality reviewer combined). When it hits the configured cap (default: 8 calls/task), the task fails immediately. This prevents runaway retries from consuming unbounded budget.
-
-### Partial PRs
-When `enable_partial_pr = true`, if some tasks succeed and others fail or are skipped, Foreman creates a PR containing the completed work. The PR body includes a GitHub-flavoured checklist:
-
-```markdown
-## Tasks
-- [x] Add user authentication middleware
-- [x] Write auth unit tests
-- [ ] ~~Add rate limiting~~ (skipped)
-- [ ] ~~Write rate limit tests~~ (failed)
-```
-
-This is better than discarding all work when a single task hits a retry cap or a dependency fails.
-
-### Ticket Decomposition
-When enabled, Foreman automatically detects oversized tickets using deterministic heuristics (word count, scope keywords, missing acceptance criteria) and decomposes them into 3–6 focused child tickets via an LLM call. Each child is created in the issue tracker with a parent reference. The parent ticket waits in `decomposed` status until all children's PRs merge, at which point it is automatically closed.
-
-### PR Merge Lifecycle
-After a PR is created, a dedicated `MergeChecker` goroutine polls PR status at a configurable interval. When a PR is merged, `post_merge` skill hooks fire (e.g., deployment triggers). For decomposed tickets, parent completion is checked automatically — when all child PRs merge, the parent ticket is marked `done` and closed in the tracker.
-
-### PR Update Detection
-Foreman stores the PR HEAD SHA at creation time. During merge polls, if the HEAD SHA changes (indicating someone pushed to the branch), the ticket transitions to `pr_updated` and an event is emitted. The ticket requires manual re-labelling with `foreman-ready` to re-enter the pipeline. This prevents stale review decisions on revised code.
-
-### Cross-Task Consistency Review
-After every `intermediate_review_interval` completed tasks (default: 3), a lightweight LLM consistency check runs on the cumulative diff. It checks only naming conventions, error handling patterns, and import style — not spec compliance. Violations are injected as `progress_patterns` so subsequent tasks are aware. This review does not block execution.
-
-### Crash Recovery
-Task completions are checkpointed by `last_completed_task_seq` in the database. If the daemon crashes mid-pipeline, it resumes from the last committed task on the next start — no work is lost.
-
----
-
-## Quality Gates
-
-### Lint + Auto-Fix
-Foreman runs the repo's linter after each implementation. Lint errors are passed to the implementer as structured feedback. Many fixable errors are auto-corrected before escalation.
-
-### Full Test Suite Pre-PR
-After all tasks are implemented and rebased, Foreman runs the full test suite before creating the PR. A full-suite failure blocks PR creation (or creates a partial PR if configured).
-
-### Secrets Scanner
-Before any file enters an LLM context, Foreman scans for known secret patterns (API keys, private keys, tokens). Matching files are redacted or excluded. Writes from the agent are also checked for secret content patterns. This runs on every context assembly, not just at startup.
-
-### Forbidden File Patterns
-The command runner enforces a list of forbidden paths (`.env`, `.ssh`, `.aws`, `*.key`, `*.pem`) that cannot be read or written by agent operations. This is enforced at the tool layer, not just as a guideline.
-
----
-
-## Issue Tracker Integrations
-
-### Jira (Cloud and Server)
-Polls for tickets with a configurable label (`foreman-ready`). Posts status comments at each pipeline stage. Syncs ticket status through configurable status mappings. Supports clarification label flow.
-
-### GitHub Issues
-Polls for issues with a configurable label. Posts comments. Attaches PRs. Supports the full clarification flow.
-
-### Linear
-Polls for issues with a configured label. Team ID is configurable. Supports the same comment and status update flow.
-
-### Local File Tracker
-A file-based tracker for local development and testing. No external API required.
-
----
-
-## LLM Provider Support
-
-### Anthropic (Claude)
-Primary provider. Supports Claude Haiku, Sonnet, and Opus. Native structured output via `tool_choice: {type: "tool"}` pattern. Extended thinking via `thinking` parameter. Prompt caching via `cache_control: {type: "ephemeral"}` on system prompt and large context blocks — `cache_read_input_tokens` and `cache_creation_input_tokens` are tracked in `llm_calls` and reported via Prometheus. Used for all roles by default.
-
-### OpenAI (GPT-4o, o1, o3)
-Structured output via `response_format.json_schema`. Function calling / tool-use support for the builtin agent runner. Compatible with all pipeline roles.
-
-### OpenRouter
-OpenAI-compatible API that routes to any model. Inherits OpenAI tool-use support. Useful for accessing models not available directly.
-
-### Local Models (Ollama and OpenAI-compatible servers)
-Any server implementing the OpenAI Chat Completions API is supported. Tool-use degrades gracefully — if the model does not support tools, the builtin runner falls back to single-turn text responses.
-
-### Cross-Provider Fallback and Circuit Breaker
-A circuit breaker wraps each provider. After a configurable number of consecutive failures, the circuit opens and the provider is bypassed. Foreman then falls back to the configured secondary provider. If all providers are unavailable, the pipeline is paused and retried on the next poll cycle — the ticket is not failed. The circuit resets automatically after a cool-down period.
-
-### Per-Role Model Routing
-Each pipeline role (planner, implementer, spec reviewer, quality reviewer, final reviewer, clarifier) can be routed to a different model and provider. Use expensive models for critical judgment roles and cheaper models for simpler review tasks.
-
-### Extended Thinking
-Anthropic's extended thinking parameter is supported in LLM requests. This can be enabled per skill step for complex reasoning tasks. Extended thinking tokens are tracked separately in cost accounting.
-
-### Native Structured Output
-All providers support `OutputSchema` in LLM requests. Anthropic uses the `tool_choice` forced-tool mechanism. OpenAI uses `response_format.json_schema`. This allows skills and pipeline steps to request validated JSON responses.
-
-### Prompt Caching
-Anthropic prompt caching (`cache_control: {type: "ephemeral"}`) is applied to system prompt blocks and context blocks exceeding 1024 tokens. `cache_read_input_tokens` and `cache_creation_input_tokens` are tracked per call in `llm_calls` and aggregated as `foreman_anthropic_cache_savings_tokens_total` in Prometheus.
-
----
-
-## Git Integration
-
-### Multi-Host Support
-PR creation is supported for GitHub, GitLab, and Bitbucket.
-
-### Native Git CLI (Default)
-Uses the system `git` binary for all operations. Fastest and most compatible.
-
-### go-git Fallback
-A pure Go git implementation (`go-git/v5`) is used automatically when the `git` CLI is not available. Enabled via `backend = "gogit"` in config or automatically if `git` is not on `$PATH`.
-
-### Branch Management
-Foreman creates branches with a configurable prefix (`foreman/PROJ-123-add-auth`). Branches are rebased onto the default branch before PR creation.
-
-### LLM-Assisted Rebase Conflict Resolution
-When a rebase produces merge conflicts, Foreman attempts to resolve them automatically using an LLM call. The LLM receives the full file content from both the base and head, plus the task descriptions and conflict markers, for richer context. Content is truncated in reverse priority order if it exceeds `conflict_resolution_token_budget` (default: 40 000 tokens). If LLM resolution fails, Foreman creates the PR anyway with a conflict warning note.
-
-### Draft PRs
-PRs are created as drafts by default. Configurable reviewers are automatically assigned.
-
----
-
-## Execution Environments
-
-### Local Runner
-Runs commands directly on the host machine. An allowlist of permitted commands (`npm`, `go`, `cargo`, `pytest`, etc.) and a list of forbidden paths are enforced.
-
-### Docker Runner
-Runs each ticket's commands in a dedicated Docker container (one container per ticket, reused across tasks). Features:
-- **Network isolation**: `--network none` is passed by default. Set `docker.allow_network = true` to permit outbound access. `foreman doctor` warns if Docker mode is configured without reviewing the network setting.
-- CPU and memory limits
-- Automatic dep reinstall when package files change between tasks (detects `package.json`, `go.mod`, `Cargo.toml`, etc.)
-- Configurable base image per repo via `.foreman-context.md`
-
----
-
-## Concurrency and Daemon
-
-### Parallel Ticket Processing
-The daemon runs multiple pipelines concurrently (configurable, default up to 3 for SQLite, higher with PostgreSQL). A shared rate limiter (token bucket) prevents provider API overload across parallel workers.
-
-### Parallel Task Execution Within a Ticket
-Within each ticket, tasks execute in parallel respecting `depends_on` edges. The DAG executor uses a coordinator goroutine and a bounded worker pool (`max_parallel_tasks`). Tasks with no pending dependencies start immediately; completions unlock their dependents in real time.
-
-### File Reservation Layer
-Before beginning a ticket, Foreman checks whether any planned files are currently being modified by another active pipeline. Conflicting tickets are re-queued to avoid parallel edit conflicts. Reservations are released atomically when a pipeline completes or fails.
-
-### Scheduler and Prioritization
-The scheduler checks for new tickets on each poll cycle and manages pipeline slot allocation. Idle intervals (when no work is available) use a longer poll interval to reduce API calls.
-
----
-
-## Cost Control
-
-### Multi-Level Budget Enforcement
-- **Per-ticket budget**: abort and escalate when a ticket exceeds its cost limit
-- **Per-day budget**: pause all pipelines when the daily limit is reached
-- **Per-month budget**: hard stop when the monthly limit is reached
-- **Alert threshold**: configurable alert at a percentage of any budget (default: 80%)
-
-### Absolute LLM Call Cap Per Task
-Prevents a single task from consuming unbounded tokens through repeated retries. Default cap: 8 calls per task.
-
-### Real-Time Cost Tracking
-Every LLM call records input tokens, output tokens, cost, duration, and model. Costs are aggregated per ticket, per day, and per month. The `foreman cost` CLI and dashboard show current spend at all granularities.
-
-### Accurate Token Counting
-All token budget calculations use `tiktoken-go` (`github.com/pkoukk/tiktoken-go`) with the model's actual encoding (`cl100k_base` for Claude/GPT-4, `o200k_base` for o-series). The previous `len(text)/4` heuristic has been fully removed. This makes context budgets accurate to within 5% of the provider's own counts.
-
-### Token-Aware Cost Estimation at Plan Validation
-Before executing a plan, Foreman estimates the total cost using actual token budgets (via tiktoken) and model pricing. Plans projected to use 80%+ of the budget are rejected before any implementation begins.
-
-### Dynamic Context Budget by Task Complexity
-Each task's context token budget is scaled by its `estimated_complexity`:
-- `low` → `context_token_budget × 0.5`
-- `medium` → `context_token_budget × 1.0` (default)
-- `high` → `context_token_budget × 1.5`, capped at model context minus `max_output_tokens`
-
-The budget allocation is logged as a `context_assembly` event for observability.
-
-### Pipeline-Scoped Context Cache
-A `ContextCache` is created once per pipeline run and shared across all stages. It pre-computes the file tree, `.foreman-rules.md` content, and secret scan patterns at pipeline start. The cache is invalidated only after git operations (commit, checkout, rebase). This eliminates redundant I/O and reduces context assembly time by 80%+ for warm runs.
-
-### Configurable Per-Model Pricing
-Model pricing (input/output per 1M tokens) is configurable in `foreman.toml` so cost estimates stay accurate as provider pricing changes.
-
----
-
-## Observability
-
-### Structured Logging
-All log output uses `zerolog` for structured JSON logging with contextual fields (ticket ID, task ID, role, model, step, trace ID). Supports `json` and `pretty` formats. Log level is configurable (`trace`, `debug`, `info`, `warn`, `error`).
-
-### Request-Level Tracing
-Each pipeline run is assigned a `TraceID` that propagates through all LLM calls, events, and database records. This enables end-to-end correlation of all activity for a single ticket in structured log queries.
-
-### LLM Prompt and Response Storage
-Full prompts and responses are stored in a `llm_call_details` table linked by `llm_calls.id`. This provides complete auditability for debugging unexpected model behaviour.
-
-### Prompt Version Hashing
-At startup, Foreman computes a SHA-256 hash of every `.md.j2` template and stores it as a `prompt_snapshot` row. Each `llm_calls` record captures the `prompt_version` active at call time. A `GET /api/prompts/versions` endpoint exposes a diff between the current hashes and the stored snapshots.
-
-### Prometheus Metrics
-A Prometheus-compatible metrics endpoint is available on the dashboard server. Metrics include:
-- Ticket and task counters by status
-- LLM call counters, token usage, cost, and duration histograms — all labelled by role and model
-- DAG execution metrics: `foreman_dag_tasks_completed_total`, `foreman_dag_tasks_failed_total`, `foreman_dag_tasks_skipped_total`, `foreman_dag_execution_duration_seconds`
-- Test run results
-- Retry counts by role and error type (`foreman_retry_triggered_total{stage, error_type}`)
-- Rate limit hits by provider
-- TDD verification results
-- Partial PR counts
-- Clarification request counts
-- Secrets detection counts
-- Hook and skill execution counts
-- Anthropic cache savings (`foreman_anthropic_cache_savings_tokens_total`)
-- Context cache hit ratio
-- MCP tool calls by server, tool, and status (`foreman_mcp_tool_calls_total{server, tool, status}`)
-
-### Event Log
-Every significant pipeline event is recorded to the database events table with type, severity, ticket/task context, and a details blob. Events are viewable via the dashboard and the `foreman logs` CLI.
-
-### Pipeline Event Types
-Over 40 event types covering the full lifecycle: `ticket_picked_up`, `task_tdd_verify_pass`, `task_spec_review_fail`, `rebase_conflict_resolved`, `pr_created`, `cost_alert`, `secrets_detected`, `rate_limit_hit`, `pipeline_resumed_after_crash`, and more.
-
----
-
-## Dashboard
-
-### Web UI
-A built-in HTTP server (default port 8080) serves a single-page dashboard showing:
-- Active, completed, and failed tickets
-- Per-ticket task breakdown with status indicators
-- Real-time cost tracking
-- Live event log
-
-### REST API
-JSON endpoints for all dashboard data: ticket list, ticket detail, task list, cost summary, and events. See [Dashboard](dashboard.md) for the full API reference.
-
-### WebSocket Live Updates
-The dashboard subscribes to a WebSocket endpoint for real-time pipeline status updates — no polling required.
-
-### Bearer Token Authentication
-All dashboard endpoints require a bearer token. Tokens are generated with `foreman token generate`, stored as SHA-256 hashes, and can be revoked via the API.
-
----
-
-## YAML Skill Engine
-
-### Extensible Pipeline Hooks
-Four hook points allow custom steps to be injected into the pipeline without modifying core code:
-- `post_lint` — after lint passes, before spec review (e.g., security scanning)
-- `pre_pr` — before PR creation (e.g., changelog generation)
-- `post_pr` — after PR is created (e.g., Slack notification)
-- `post_merge` — after PR is merged (e.g., deployment triggers, cleanup)
-
-### Skill Step Types
-Skills are composed of typed steps:
-- `llm_call` — call any configured LLM provider with a custom prompt
-- `run_command` — execute a shell command in the repo
-- `file_write` — write a file (e.g., CHANGELOG.md)
-- `git_diff` — expose the current diff as a variable
-- `agentsdk` — delegate to the configured AgentRunner
-- `subskill` — compose another skill as a step
-
-### Structured Output in Skills
-`agentsdk` steps support `output_format` (json/diff/checklist), `output_schema` (JSON Schema for validated structure), and `fallback_model`.
-
-### Built-in Skills
-Foreman ships three built-in skill files:
-- `feature-dev.yml` — default feature development workflow
-- `bug-fix.yml` — bug fixing workflow with regression test emphasis
-- `refactor.yml` — refactoring workflow with behaviour-preservation focus
-
-### Community Skills
-A `skills/community/` directory accepts community-contributed skill files. Community skills are submitted via PR.
-
-### Multi-Directory Skill Discovery
-
-`DiscoverSkillPaths` (`internal/skills/discovery.go`) walks upward from the current working directory to the repo root, checking both `skills/` and `.foreman/skills/` at each level. Accepts `.yml`, `.yaml`, and `.md` files. Duplicate paths are deduplicated. This means per-project, per-workspace, and global skills are all discovered automatically.
-
----
-
-## Agent Runner
-
-### Pluggable AgentRunner Interface
-The `AgentRunner` interface serves two roles: it drives core pipeline planning and implementation when an external provider is configured, and it handles `agentsdk` skill steps in all configurations.
-
-- **builtin** (default) — a multi-turn tool-use loop over `LlmProvider` with 14 built-in tools, parallel execution, and reactive context injection; used for skill steps only (pipeline uses direct LLM calls)
-- **claudecode** — delegates to the `claude` CLI binary (Claude Code); when selected, drives both planning (`AgentPlanner`) and per-task implementation (`runTaskWithAgent`)
-- **copilot** — delegates to the GitHub Copilot CLI via JSON-RPC; same pipeline integration as claudecode
-
-When `provider = "claudecode"` or `"copilot"`, the external runner replaces the builtin TDD implementation loop end-to-end. The agent handles codebase exploration, test writing, and implementation using its native tools. Foreman verifies the resulting diff, commits if needed, and runs non-blocking spec/quality reviews.
-
-### Builtin Runner — Built-in Tools
-The builtin runner provides a typed tool registry covering seven categories:
-- **Filesystem**: `Read`, `ReadRange`, `Write`, `Edit`, `MultiEdit`, `ListDir`, `Glob`, `ApplyPatch`
-- **Code intelligence**: `Grep`, `GetSymbol`, `GetErrors`, `TreeSummary`
-- **Language server**: `LSP` (go-to-definition, find-references, hover, symbols via gopls)
-- **Git**: `GetDiff`, `GetCommitLog`
-- **Execution**: `Bash`, `RunTest`
-- **Web**: `WebFetch` (fetch URL as text, markdown, or raw HTML; 5 MB limit)
-- **Agent composition**: `Subagent`, `Batch`, `TodoRead`, `TodoWrite`, `ListMCPTools`, `ReadMCPResource`
-
-`ReadRange(file, start_line, end_line)` reads a slice of a file without consuming the full token budget for large files. `ApplyPatch(file, patch)` applies a unified diff format patch as an alternative to `Edit` for multi-hunk edits. `Batch` executes up to 25 tool calls in parallel within a single agent turn. All tool outputs are automatically truncated (2000 lines / 50 KB / 2000 chars per line) before being returned to the model.
-
-### File-Aware Parallel Tool Execution
-Before executing tool calls in parallel, the runner groups them by the file paths appearing in their arguments. Tool calls operating on disjoint file sets execute in parallel; calls sharing any file path execute sequentially in the order returned by the LLM. Non-filesystem tools are always parallel. This prevents edit-edit conflicts on the same file while preserving parallel speed for independent operations.
-
-### Context Window Management
-After each agent turn, the runner measures the total token count of the message history. At 70% of the model's context window, old tool outputs are truncated to 200-character summaries. At 85%, the runner generates a structured summary (Goal → Accomplished → Remaining → Relevant Files) and replaces all messages older than the last 3 turns with it. This keeps sessions alive through long tasks without hitting context limits.
-
-### Self-Reflection Turns
-Every N turns (configurable via `reflection_interval`, default: 5), the runner injects a structured reflection prompt asking the agent to summarise what it has accomplished, which files it has changed, and what remains. If the reply signals task completion (`TASK_COMPLETE`), the agent loop exits early. Reflection turns are logged as a distinct `reflection` turn type in `llm_calls`.
-
-### Tool Call Deduplication
-The runner maintains an in-memory fingerprint map keyed by `(tool_name, canonical_args_hash)`. When the same fingerprint appears ≥ 2 times in a session, a warning message is injected before the next LLM turn advising the agent to use the result it already has or explain what is different this time. This detects and interrupts doom loops without hard-blocking execution.
-
-### Agent Progress Events
-`AgentRequest` accepts an optional `OnProgress func(AgentEvent)` callback. The builtin runner emits `turn_start`, `tool_start`, `tool_end`, and `turn_end` events with token counts and cost. The orchestrator wires these to the `EventEmitter` for dashboard live updates and to the cost controller for mid-execution budget enforcement.
-
-### Subagent Budget Inheritance and Depth Enforcement
-When a `Subagent` tool call is made, the subagent's `MaxTurns` is set to `min(subagent_max_turns_default, parent.RemainingTurns − currentTurn)`. If the computed value is ≤ 0, the call fails immediately with `"parent budget exhausted"`. A global `MaxAgentDepth` (default: 3) prevents infinite subagent recursion.
-
-### Per-Model Router for Agent Tasks
-The builtin runner can be configured with a dedicated model for all agent (skill) tasks via `[agent_runner.builtin] model = "..."`. When set, this model is used instead of falling through to the implementer model, allowing cheap models for exploration tasks and expensive models for core pipeline coding.
-
-### Reactive Context Injection
-After each file-touching tool call (Read, ReadRange, Edit, Write, GetDiff), the builtin runner queries the database for progress patterns and scoped rules relevant to the accessed paths, then injects them as a context message before the next LLM turn. This eliminates stale context issues without reinserting the full context on every turn.
-
-### Two-Layer Context System
-1. **Pre-assembly** (all three runners): the skills engine always reads `AGENTS.md` or `.foreman/context.md`, adds path-scoped rules and ticket metadata, and prepends it to `AgentRequest.SystemPrompt`.
-2. **Reactive injection** (builtin only): progress patterns and directory-specific rules are injected mid-turn based on which files the model has touched.
-
-### Permission System and Agent Modes
-
-The builtin runner enforces tool permissions via a rule-based system (`internal/agent/permission.go`). Each `Rule` maps a permission category (e.g., `"edit"`, `"bash"`, `"subagent"`) and an optional pattern to an `Allow` or `Deny` action. Rules are evaluated last-wins, defaulting to `Deny`.
-
-Three built-in mode presets are available via `AgentRequest.Mode`:
-
-| Mode | Allowed | Denied | Max turns |
-|---|---|---|---|
-| `plan` | read, glob, grep, todo | edit, bash, subagent | 20 |
-| `explore` | read, glob, grep, getsymbol | edit, bash, subagent | 10 |
-| `build` | all tools | none | 15 |
-
-Custom rulesets can be passed via `AgentRequest.Permissions`.
-
-### Per-Session Cost Tracking and Budget Enforcement
-
-`CostTracker` (`internal/agent/cost_tracker.go`) accumulates token usage and USD cost per LLM call within a session. `SetBudget(usd float64)` caps per-session spend; `BudgetExceeded()` stops the agent loop when the limit is breached. The full breakdown is returned as `AgentResult.CostSummary`.
-
-### File Change Diff Tracker
-
-`DiffTracker` (`internal/agent/diff_tracker.go`) records per-file change counts (created, modified, deleted) as tools run. At session end, `AgentResult.DiffSummary` carries total additions, deletions, and file count — surfaced in logs and the dashboard.
-
-### Sub-Task Tracking (Subagent Resumption)
-
-`TaskManager` (`internal/agent/task_manager.go`) maintains named sub-tasks within a session, tracking them through `pending → running → completed/failed`. The `Subagent` tool accepts an optional `task_id` to prefix output for correlation. Tasks are assigned sequential IDs (`task-1`, `task-2`, …).
-
-### Edit Strategy Fallback Chain
-
-`Edit` and `MultiEdit` apply up to six progressively looser strategies before failing (`internal/agent/tools/edit_strategies.go`):
-1. SimpleReplace (exact match)
-2. LineTrimmedReplace (per-line whitespace trim)
-3. BlockAnchorReplace (first + last line anchor)
-4. WhitespaceNormalizedReplace (collapse whitespace runs)
-5. IndentFlexibleReplace (adjust indentation level)
-6. Levenshtein fuzzy match (>80% similarity; files ≤500 lines only)
-
-When a fallback is used, the tool returns `"OK (strategy: <name>)"`.
-
-### ApplyPatch Hunk Validation
-
-Before applying a unified diff patch, all context lines in each hunk are validated against the actual file. Invalid patches fail with a clear error rather than leaving partial state.
-
-### Path Guards and Security
-All tool operations that access files enforce:
-- Path traversal prevention (no `../../` escapes)
-- Relative-path-only enforcement
-- Secrets pattern blocking on writes (`.env`, `*.key`, private key content patterns)
-
-### MCP Support (stdio transport)
-Foreman's builtin agent runner supports MCP servers via stdio subprocess transport. Configured servers are spawned at agent startup; tools are discovered via `tools/list` and registered in the tool registry with normalized names (`mcp_{server}_{tool}`). The `Manager` routes `tools/call` requests to the correct server by matching the name prefix.
-
-Restart policy (`always` / `never` / `on-failure`) with configurable `max_restarts` and `restart_delay_secs` provides graceful degradation — if a server exhausts its restart budget, its tools are marked unavailable and the agent continues with built-in tools only.
-
-For Anthropic API-side MCP, set `URL` and `AuthToken` in `MCPServerConfig` — Anthropic's infrastructure handles the connection without a local subprocess.
-
-### MCP Resources
-The `StdioClient` supports `resources/list` and `resources/read`. The `Manager` exposes `ReadResource(ctx, serverName, uri string) (string, error)`, and an agent tool `ReadMCPResource(server, uri string)` exposes this to the LLM. Resource content is subject to secrets scanning. Maximum response size is configurable via `mcp_resource_max_bytes` (default: 512 KB).
-
-### MCP Health Monitoring
-Each `StdioClient` sends periodic `ping` requests (interval configurable via `health_check_interval_secs`, default: 30 s). If a ping does not respond within 5 s, the server is marked `unhealthy`. After 3 consecutive failures, the configured `restart_policy` is applied. Server health status is exposed on the dashboard REST API and WebSocket feed.
-
-### `ListMCPTools` Agent Tool
-A read-only `ListMCPTools` tool is available to the agent inside a session. It returns all registered MCP tools from the in-memory registry: `{normalized_name, original_name, server_name, description}`. This gives the LLM runtime visibility into which MCP tools are available without requiring a call to an external server.
-
----
-
-## Miscellaneous Features
-
-### Async Event Bus
-
-`internal/bus/` provides a typed pub/sub event bus used across the daemon for real-time coordination:
-
-- `Bus.Subscribe(topic, handler) func()` — subscribe to a topic; returns a cancel function for clean teardown.
-- `Bus.SubscribeAll(handler) func()` — global handler for all topics; also returns a cancel function.
-- `Bus.Publish(topic, data)` — dispatches to handler goroutines asynchronously.
-- `Bus.Drain()` — waits for all in-flight handlers to complete (used during daemon shutdown).
-
-### Hierarchical Context Loading
-
-`WalkContextFiles(startDir, workDir string) []string` (`internal/context/walk_context_files.go`) walks upward from the agent's working directory to the repo root, collecting `AGENTS.md`, `.foreman-rules.md`, and `.foreman/context.md` files at each level. Files from deeper (more specific) directories are returned first, so project-level rules override workspace-level rules.
-
-### `foreman context generate`
-Generates an `AGENTS.md` file by scanning the repository and making a single LLM call. The LLM receives a tiered file selection (go.mod/package.json, CI configs, entry points, key package files) assembled within a configurable token budget (`context_generate_max_tokens`, default 32 000 tokens).
-
-The generated file is optimised for autonomous agents — precise naming conventions, exact test commands, explicit anti-patterns, and file organisation rules. Use `--offline` for a static, LLM-free scan.
-
-```bash
-foreman context generate              # LLM-powered (default)
-foreman context generate --offline    # Static analysis only
-foreman context generate --dry-run    # Print to stdout without writing
-foreman context generate --force      # Overwrite existing AGENTS.md
-```
-
-### `foreman context update`
-Post-merge learning loop. Reads structured observations appended to `.foreman/observations.jsonl` by the pipeline after each successful PR merge (naming corrections, test patterns, discovered conventions) and issues a single LLM call to update `AGENTS.md` with the new knowledge. A cursor embedded in the file footer (`<!--foreman:last-update:...-->`) enables resumable reads.
-
-### `foreman init`
-Interactively generates a `foreman.toml` for a new project. With `--analyze`, it inspects the target repository to suggest appropriate configuration (detected language, test commands, lint commands).
-
-### `foreman doctor`
-Pre-flight check that validates config syntax, tests all API credentials, verifies database write access, and checks git connectivity.
-
-### Unified Prompt Registry
-
-All prompts, agent definitions, skills, and commands are loaded from the `prompts/` directory at startup (`internal/prompts/`). Supported kinds: `role`, `agent`, `skill`, `command`, `fragment`. Templates are pongo2 (Jinja2-compatible) and rendered with `registry.Render(kind, name, vars)`. The pongo2 template set is cached on the registry so it is not re-created per call.
-
-For the Claude Code runner, `registry.ForClaude(workDir, vars)` writes the `.claude/` directory structure; tool permissions declared in AGENT.md frontmatter (`tools:`) are aggregated automatically.
-
-### Pongo2 Prompt Templates
-All LLM system prompts are Jinja2-compatible templates (`*.md.j2`) rendered with `pongo2`. Variables include ticket details, task context, code diffs, accumulated feedback, and previous attempt results.
-
-### Fuzzy Search/Replace
-When the LLM returns SEARCH/REPLACE blocks for code edits, Foreman uses fuzzy matching to handle minor whitespace or formatting differences between the LLM's memory of the file and the actual content. The similarity threshold is configurable (default: 0.92).
-
-### Dependency Change Detection
-After each task commit, Foreman diffs package/dependency manifest files (`go.mod`, `package.json`, `Cargo.toml`, `requirements.txt`, etc.). If they changed, the appropriate install command is run before the next task begins to avoid broken builds.
-
----
-
-## Messaging Channel (WhatsApp)
-
-### Bidirectional WhatsApp Integration
-Foreman can connect to WhatsApp via the WhatsApp Web multi-device protocol (whatsmeow). Once linked, Foreman accepts commands and free-text ticket descriptions via DM, and sends proactive notifications at key pipeline stages (ticket picked up, clarification needed, implementation started, PR created, failure).
-
-### Command Routing
-Messages starting with `/status`, `/pause`, `/resume`, or `/cost` are routed to the daemon's command handler. Responses are sent back as WhatsApp replies.
-
-### LLM-Based Message Classification
-Non-command messages from allowed senders are classified by the configured LLM into `new_ticket`, `clarification_reply`, or `unknown`. New tickets are created in the database; clarification replies are attached to the relevant active ticket.
-
-### Allowlist and Pairing
-Two DM policies control who can interact:
-- **Allowlist mode**: Only pre-configured phone numbers (E.164 format) can send messages. Unknown senders are silently dropped.
-- **Pairing mode**: Unknown senders receive a time-limited pairing code (valid 10 minutes). An operator approves the code via `foreman pairing approve <CODE>`, which permanently adds the sender to the config file's allowlist.
-
-### Rate Limiting
-Per-sender rate limiting (5 messages per 60-second window) prevents abuse. Excess messages are silently dropped.
-
-### Proactive Notifications
-The orchestrator sends WhatsApp notifications to a ticket's `channel_sender_id` at five pipeline events: planning started, clarification needed, implementation started, PR created, and failure.
-
-### Session Management
-WhatsApp sessions are stored in a local SQLite database (default `~/.foreman/whatsapp.db`). The `foreman channel login` command handles initial device linking via pairing code or QR scan. Sessions persist across daemon restarts.
-
----
-
-## Known Limitations and Pending Work (Wave 4)
-
-> These items are planned improvements not yet shipped. Everything described above is implemented.
-
-- **SemanticSearch tool** — embedding-based semantic code search (`REQ-TOOLS-003`) requires the embedding index store (`REQ-INFRA-002`) which is a Wave 4 item.
-- **GetTypeDefinition tool** — cross-file type resolution using `go/types` or tree-sitter (`REQ-TOOLS-004`) is Wave 4.
-- **MCP HTTP/SSE transport** — only stdio subprocess transport is implemented. HTTP+SSE client is Wave 4 (`REQ-MCP-003`).
-- **LLM-assisted decomposition check** — secondary LLM check when heuristics don't trigger (`REQ-PIPE-004`) is Wave 4.
-- **Structured error classification metrics** — `foreman_task_failures_total{error_type, runner}` and related counters (`REQ-OBS-003`) are Wave 4.
-- **Distributed locking** — cross-process file reservation coordination for multi-instance deployments (`BUG-M15`) is Wave 4.
-- **GitLab and Bitbucket PR creation** — defined in the interface but GitHub is the primary tested backend.
-- **go-git fallback** — implements the `GitProvider` interface but may have gaps for complex rebase scenarios.
-- **Community skills** — `skills/community/` is defined but the contribution review process is not yet documented.
+| **MCP support** | MCP servers via stdio transport; tools discovered and registered automatically |
+| **WhatsApp integration** | Bidirectional command and notification channel via WhatsApp Web protocol |
 
 ---
 
@@ -628,3 +223,4 @@ WhatsApp sessions are stored in a local SQLite database (default `~/.foreman/wha
 - [Configuration](configuration.md) — tune every feature with `foreman.toml`
 - [Skills](skills.md) — extend the pipeline with YAML hook steps
 - [Integrations](integrations.md) — issue tracker and LLM provider setup
+- [Agent Runner](agent-runner.md) — builtin runner, Claude Code, and Copilot integrations

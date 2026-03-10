@@ -208,41 +208,7 @@ dlv connect 127.0.0.1:2345
 }
 ```
 
-## Package Structure
-
-```
-main.go              Entry point, cobra root command
-cmd/                 CLI commands (run, start, stop, status, ps, cost, dashboard, token, logs)
-internal/
-  agent/             AgentRunner interface + builtin, claudecode, copilot implementations;
-                     permission.go (Ruleset, Evaluate); modes.go (PlanMode, ExploreMode, BuildMode);
-                     cost_tracker.go; task_manager.go; diff_tracker.go
-  agent/tools/       Typed tool registry (Read, ReadRange, Write, Edit, MultiEdit, ApplyPatch, ListDir, Glob,
-                     Grep, GetSymbol, GetErrors, TreeSummary, GetDiff, GetCommitLog, Bash, RunTest,
-                     Subagent, Batch, LSP, TodoRead, TodoWrite, WebFetch, ListMCPTools, ReadMCPResource);
-                     truncation.go; edit_strategies.go
-  agent/mcp/         MCP manager, stdio client, and health monitoring
-  bus/               Typed async pub/sub event bus (Subscribe, SubscribeAll, Publish, Drain)
-  config/            TOML/Viper config loading + validation
-  context/           Context assembler, file selector, token budget, secrets scanner;
-                     walk_context_files.go (hierarchical context file discovery)
-  daemon/            Scheduler, clarification gate, file reservations, crash recovery
-  dashboard/         HTTP server, REST API handlers, WebSocket, auth
-  db/                Database interface, SQLite + PostgreSQL backends
-  git/               Git interface + native CLI implementation
-  llm/               LlmProvider interface + Anthropic, OpenAI, OpenRouter, local implementations
-  models/            Domain models: Ticket, Task, LlmCall, events, pipeline states
-  pipeline/          State machine orchestrator + all stage implementations
-  prompts/           Unified prompt registry: roles, agents, skills, commands, fragments;
-                     registry.Render(kind, name, vars); registry.ForClaude(workDir, vars)
-  runner/            CommandRunner interface + local and Docker implementations
-  skills/            YAML skill engine, step executor, hook dispatcher; discovery.go (multi-dir skill scan)
-  snapshot/          Repository snapshot (Patch, Diff, Restore); ensureInit is idempotent
-  telemetry/         Cost controller, Prometheus metrics, structured events
-  tracker/           IssueTracker interface + GitHub, Jira, Linear, local_file implementations
-prompts/             Pongo2 (.j2) prompt templates, agent definitions, skill templates, commands
-skills/              Built-in and community YAML skill files
-```
+For a complete package breakdown, see [Architecture](architecture.md#package-structure).
 
 ## Coding Conventions
 

@@ -4,6 +4,20 @@ Foreman is an autonomous software development daemon that turns issue tracker ti
 
 It connects to your existing issue tracker (Jira, GitHub Issues, Linear), plans and implements each ticket with LLM-guided TDD, runs quality gates, and opens a pull request — all as a 24/7 background daemon. You stay in control: every PR is a human review checkpoint before any code ships.
 
+## How does it work?
+
+1. **Label a ticket** `foreman-ready` in your issue tracker (Jira, GitHub Issues, or Linear)
+2. **Foreman picks it up** on the next poll cycle (default: every 60 seconds)
+3. **Planning** — Foreman reads the ticket, explores your codebase, and produces an ordered task plan with file lists and acceptance criteria
+4. **Implementation** — each task is implemented with TDD: tests first (red), then implementation (green), then reviewed
+5. **Pull Request** — after all tasks pass review, Foreman opens a PR and notifies you
+
+You control the code review. Foreman controls the implementation loop.
+
+For the full details, see [How Foreman Works](features.md).
+
+---
+
 ## Documentation Index
 
 | Document | Description |
