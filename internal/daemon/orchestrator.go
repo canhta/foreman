@@ -407,6 +407,17 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 					returnErr = fmt.Errorf("update status to clarification_needed: %w", err)
 					return returnErr
 				}
+				chatMsg := &models.ChatMessage{
+					ID:          fmt.Sprintf("chat-%s-%d", ticket.ID, time.Now().UnixNano()),
+					TicketID:    ticket.ID,
+					Sender:      "system",
+					MessageType: "clarification",
+					Content:     "Foreman needs clarification before proceeding. Please provide more detail or clearer acceptance criteria.",
+					CreatedAt:   time.Now(),
+				}
+				if err := o.db.CreateChatMessage(ctx, chatMsg); err != nil {
+					log.Warn().Err(err).Msg("failed to create clarification chat message")
+				}
 				if o.config.ClarificationLabel != "" {
 					if err := o.tracker.AddLabel(ctx, ticket.ExternalID, o.config.ClarificationLabel); err != nil {
 						log.Warn().Err(err).Msg("failed to add clarification label")
