@@ -18,6 +18,7 @@ type RouterDB interface {
 	FindActiveClarification(ctx context.Context, senderID string) (*models.Ticket, error)
 	UpdateTicketStatus(ctx context.Context, id string, status models.TicketStatus) error
 	AppendTicketDescription(ctx context.Context, id, text string) error
+	CreateChatMessage(ctx context.Context, msg *models.ChatMessage) error
 }
 
 // ChannelRouter implements InboundHandler and routes messages to the right action.
@@ -131,6 +132,19 @@ func (r *ChannelRouter) handleClarificationReply(ctx context.Context, msg Inboun
 		r.logger.Error().Err(err).Str("ticket", ticket.ID).Msg("failed to append clarification reply")
 		return err
 	}
+
+	chatMsg := &models.ChatMessage{
+		ID:          fmt.Sprintf("chat-%s-%d", ticket.ID, time.Now().UnixNano()),
+		TicketID:    ticket.ID,
+		Sender:      "user",
+		MessageType: "reply",
+		Content:     msg.Body,
+		CreatedAt:   time.Now(),
+	}
+	if err := r.db.CreateChatMessage(ctx, chatMsg); err != nil {
+		r.logger.Warn().Err(err).Str("ticket", ticket.ID).Msg("failed to write clarification reply chat message")
+	}
+
 	if err := r.db.UpdateTicketStatus(ctx, ticket.ID, models.TicketStatusQueued); err != nil {
 		r.logger.Error().Err(err).Str("ticket", ticket.ID).Msg("failed to requeue after clarification")
 		return err

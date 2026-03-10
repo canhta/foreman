@@ -77,6 +77,10 @@ func (m *mockRouterDB) AppendTicketDescription(_ context.Context, id, text strin
 	return nil
 }
 
+func (m *mockRouterDB) CreateChatMessage(_ context.Context, _ *models.ChatMessage) error {
+	return nil
+}
+
 type mockCommands struct {
 	statusReply string
 }

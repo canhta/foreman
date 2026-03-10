@@ -162,6 +162,9 @@ type OrchestratorConfig struct {
 	// task worktree after it is created (e.g. "npm install", "go mod download").
 	// Failures are logged as warnings and do not abort worktree creation.
 	WorktreeStartCommand string
+	// DashboardURL is the base URL for the web dashboard (e.g. "http://localhost:4242").
+	// When set, notification messages include a direct link to the ticket.
+	DashboardURL string
 }
 
 // Orchestrator coordinates the full ticket-to-PR lifecycle.
@@ -427,7 +430,11 @@ func (o *Orchestrator) ProcessTicket(ctx context.Context, ticket models.Ticket) 
 					"Foreman needs more detail to proceed. Please add a clearer description or acceptance criteria."); err != nil {
 					log.Warn().Err(err).Msg("failed to add clarification comment")
 				}
-				o.notify(ctx, ticket, fmt.Sprintf("Question about ticket #%s: needs more detail to proceed.", ticket.ID))
+				clarificationMsg := fmt.Sprintf("Question about ticket #%s: needs more detail to proceed.", ticket.ID)
+				if o.config.DashboardURL != "" {
+					clarificationMsg += fmt.Sprintf("\nView ticket: %s", o.config.DashboardURL)
+				}
+				o.notify(ctx, ticket, clarificationMsg)
 				// Not an error — will be retried after clarification.
 				returnErr = nil
 				return nil
