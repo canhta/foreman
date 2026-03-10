@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { TicketSummary } from '../types';
   import { PR_STATUSES } from '../types';
+  import { IconCircleFilled, IconExternalLink } from '@tabler/icons-svelte';
 
   interface Props {
     ticket: TicketSummary;
@@ -57,7 +58,7 @@
       <span class="status-chip status-chip-active leading-none">PR</span>
     {:else if isActive}
       <span class="status-chip status-chip-active leading-none">
-        <span class="animate-pulse-slow">●</span>
+        <span class="animate-pulse-slow flex items-center"><IconCircleFilled size={10} stroke={1.5} /></span>
         Active
       </span>
     {/if}
@@ -87,7 +88,7 @@
         <span class="tabular-nums">${ticket.CostUSD.toFixed(2)}</span>
       {/if}
       {#if hasPR}
-        <span class="text-[var(--color-accent)]">↗ PR open</span>
+        <span class="text-[var(--color-accent)] flex items-center gap-1"><IconExternalLink size={12} stroke={1.5} /> PR open</span>
       {/if}
     </div>
   {/if}
