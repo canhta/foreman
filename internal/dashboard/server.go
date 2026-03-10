@@ -14,6 +14,7 @@ import (
 	"github.com/canhta/foreman/internal/command"
 	"github.com/canhta/foreman/internal/db"
 	"github.com/canhta/foreman/internal/models"
+	"github.com/canhta/foreman/internal/project"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/rs/zerolog/log"
@@ -170,6 +171,30 @@ func NewServer(db DashboardDB, emitter EventSubscriber, statusProvider DaemonSta
 	mux.Handle("/api/commands", auth(http.HandlerFunc(api.handleListCommands)))
 	mux.Handle("/api/commands/", auth(http.HandlerFunc(api.handleRenderCommand)))
 
+	// Multi-project API routes
+	mux.Handle("/api/projects", auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			api.handleListProjects(w, r)
+		case http.MethodPost:
+			api.handleCreateProject(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	})))
+	mux.Handle("/api/projects/", auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Path
+		switch {
+		case strings.HasSuffix(path, "/tickets"):
+			api.handleProjectTickets(w, r)
+		case r.Method == http.MethodDelete && !strings.Contains(strings.TrimPrefix(path, "/api/projects/"), "/"):
+			api.handleDeleteProject(w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	})))
+	mux.Handle("/api/overview", auth(http.HandlerFunc(api.handleOverview)))
+
 	// Metrics endpoint
 	if reg != nil {
 		mux.Handle("/api/metrics", auth(promhttp.HandlerFor(reg, promhttp.HandlerOpts{})))
@@ -234,6 +259,20 @@ func (s *Server) SetConfigProvider(p ConfigProvider) {
 // SetCommandRegistry wires a command registry for the commands endpoints.
 func (s *Server) SetCommandRegistry(r *command.Registry) {
 	s.api.SetCommandRegistry(r)
+}
+
+// ProjectRegistry provides access to project workers for the multi-project API.
+type ProjectRegistry interface {
+	ListProjects() ([]project.IndexEntry, error)
+	GetWorker(id string) (*project.Worker, bool)
+	GetProject(id string) (*project.ProjectConfig, string, error)
+	CreateProject(cfg *project.ProjectConfig) (string, error)
+	DeleteProject(id string) error
+}
+
+// SetProjectRegistry wires the project manager for project-scoped API endpoints.
+func (s *Server) SetProjectRegistry(r ProjectRegistry) {
+	s.api.SetProjectRegistry(r)
 }
 
 // Handler returns the HTTP handler, useful for testing with httptest.NewServer.

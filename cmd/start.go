@@ -20,11 +20,13 @@ import (
 	"github.com/canhta/foreman/internal/channel/whatsapp"
 	"github.com/canhta/foreman/internal/daemon"
 	"github.com/canhta/foreman/internal/dashboard"
+	"github.com/canhta/foreman/internal/db"
 	"github.com/canhta/foreman/internal/envloader"
 	"github.com/canhta/foreman/internal/git"
 	"github.com/canhta/foreman/internal/llm"
 	"github.com/canhta/foreman/internal/models"
 	"github.com/canhta/foreman/internal/pipeline"
+	"github.com/canhta/foreman/internal/project"
 	"github.com/canhta/foreman/internal/prompts"
 	"github.com/canhta/foreman/internal/runner"
 	"github.com/canhta/foreman/internal/skills"
@@ -179,6 +181,11 @@ func newStartCmd() *cobra.Command {
 				return err
 			}
 			defer database.Close()
+
+			// 1a. Initialize ProjectManager for multi-project support.
+			homeDir, _ := os.UserHomeDir()
+			foremanDir := filepath.Join(homeDir, ".foreman")
+			projManager := project.NewManager(foremanDir, cfg)
 
 			// 1b. Seed dashboard auth token from config (idempotent).
 			if cfg.Dashboard.AuthToken != "" {
@@ -464,6 +471,7 @@ func newStartCmd() *cobra.Command {
 				srv.SetDaemonController(d)
 				srv.SetTrackerSyncer(d)
 				srv.SetPromptSnapshotQuerier(database)
+				srv.SetProjectRegistry(projManager)
 				go func() {
 					if err := srv.Start(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 						log.Error().Err(err).Msg("dashboard server error")
@@ -475,6 +483,41 @@ func newStartCmd() *cobra.Command {
 					defer cancel()
 					_ = srv.Shutdown(shutCtx)
 				}()
+			}
+
+			// 11b. Start project workers for discovered projects.
+			{
+				entries, discErr := projManager.DiscoverProjects()
+				if discErr != nil {
+					log.Warn().Err(discErr).Msg("failed to discover projects; skipping multi-project workers")
+				} else {
+					for _, entry := range entries {
+						projCfg, projDir, loadErr := projManager.GetProject(entry.ID)
+						if loadErr != nil {
+							log.Error().Err(loadErr).Str("project", entry.Name).Msg("failed to load project config; skipping")
+							continue
+						}
+						pd, projDB, setupErr := setupProjectWorker(ctx, cfg, projDir, projCfg, promptRegistry, appMetrics)
+						if setupErr != nil {
+							log.Error().Err(setupErr).Str("project", entry.Name).Msg("failed to setup project worker; skipping")
+							continue
+						}
+						mergedCfg := project.MergeConfigs(cfg, projCfg, projDir)
+						w := &project.Worker{
+							ID:         entry.ID,
+							Name:       entry.Name,
+							Dir:        projDir,
+							Config:     mergedCfg,
+							ProjConfig: projCfg,
+							Database:   projDB,
+						}
+						projManager.RegisterWorker(entry.ID, w)
+						log.Info().Str("project", entry.Name).Str("id", entry.ID).Msg("starting project worker")
+						go func(worker *project.Worker, d *daemon.Daemon) {
+							d.Start(ctx)
+						}(w, pd)
+					}
+				}
 			}
 
 			// 12. Start daemon (blocks until ctx cancelled).
@@ -663,4 +706,164 @@ func buildMCPManager(ctx context.Context, cfg *models.Config) *mcp.Manager {
 
 func init() {
 	rootCmd.AddCommand(newStartCmd())
+}
+
+// setupProjectWorker builds a daemon and database for a single project.
+// It mirrors the single-project setup in newStartCmd but accepts a merged config.
+func setupProjectWorker(
+	ctx context.Context,
+	globalCfg *models.Config,
+	projDir string,
+	projCfg *project.ProjectConfig,
+	promptRegistry *prompts.Registry,
+	appMetrics *telemetry.Metrics,
+) (*daemon.Daemon, db.Database, error) {
+	mergedCfg := project.MergeConfigs(globalCfg, projCfg, projDir)
+
+	// Open per-project database.
+	database, err := db.NewSQLiteDB(project.ProjectDBPath(projDir))
+	if err != nil {
+		return nil, nil, fmt.Errorf("open project db: %w", err)
+	}
+
+	// LLM provider (reuse global API keys via merged config).
+	baseProv, err := llm.NewProviderFromConfig(mergedCfg.LLM.DefaultProvider, mergedCfg.LLM)
+	if err != nil {
+		database.Close()
+		return nil, nil, fmt.Errorf("project LLM provider: %w", err)
+	}
+	llmProv := llm.LlmProvider(llm.NewCircuitBreakerProvider(baseProv, llm.DefaultCircuitBreakerConfig()))
+	costCtrl := telemetry.NewCostController(mergedCfg.Cost)
+	llmProv = llm.NewRecordingProvider(llmProv, database, costCtrl)
+
+	// Tracker and git provider.
+	tr, err := buildTracker(mergedCfg)
+	if err != nil {
+		database.Close()
+		return nil, nil, fmt.Errorf("project tracker: %w", err)
+	}
+	gitProv := buildGitProvider(mergedCfg)
+	repoReady := gitProv.EnsureRepo(ctx, mergedCfg.Daemon.WorkDir) == nil
+
+	// PR creator/checker.
+	prCreator := buildPRCreator(mergedCfg)
+	prChecker := buildPRChecker(mergedCfg)
+
+	// Command runner.
+	cmdRunner := buildCommandRunner(mergedCfg)
+
+	// Scheduler.
+	scheduler := daemon.NewScheduler(database)
+
+	// Agent runner (if configured).
+	agentRunnerName := mergedCfg.AgentRunner.Provider
+	var pipelineAgentRunner agent.AgentRunner
+	if agentRunnerName != "" && agentRunnerName != "builtin" {
+		pipelineAgentRunner, err = agent.NewAgentRunner(
+			mergedCfg.AgentRunner, cmdRunner, llmProv, mergedCfg.Models.Implementer,
+			database, mergedCfg.LLM, nil, appMetrics,
+		)
+		if err != nil {
+			database.Close()
+			return nil, nil, fmt.Errorf("project agent runner: %w", err)
+		}
+		if ccr, ok := pipelineAgentRunner.(*agent.ClaudeCodeRunner); ok {
+			ccr.WithRegistry(promptRegistry)
+		}
+	}
+
+	// Planner.
+	var ticketPlanner daemon.TicketPlanner
+	if pipelineAgentRunner != nil {
+		ap := pipeline.NewAgentPlanner(pipelineAgentRunner, &mergedCfg.Limits)
+		ticketPlanner = &agentPlannerAdapter{planner: ap}
+	} else {
+		planner := pipeline.NewPlannerWithModel(llmProv, &mergedCfg.Limits, mergedCfg.Models.Planner).
+			WithConfidenceScoring(mergedCfg.Limits.PlanConfidenceThreshold).
+			WithHandoffStore(database).
+			WithMetrics(appMetrics)
+		ticketPlanner = &plannerAdapter{planner: planner}
+	}
+	pipelineObj := pipeline.NewPipeline(pipeline.PipelineConfig{
+		EnableClarification: mergedCfg.Limits.EnableClarification,
+	})
+
+	orch := daemon.NewOrchestrator(
+		database,
+		tr,
+		gitProv,
+		prCreator,
+		costCtrl,
+		scheduler,
+		ticketPlanner,
+		&clarityAdapter{pipeline: pipelineObj},
+		&taskRunnerFactory{
+			llm:             llmProv,
+			db:              database,
+			gitProv:         gitProv,
+			cmdRunner:       cmdRunner,
+			metrics:         appMetrics,
+			agentRunner:     pipelineAgentRunner,
+			agentRunnerName: agentRunnerName,
+			registry:        promptRegistry,
+		},
+		log.Logger,
+		daemon.OrchestratorConfig{
+			Models:                     mergedCfg.Models,
+			WorkDir:                    mergedCfg.Daemon.WorkDir,
+			DefaultBranch:              mergedCfg.Git.DefaultBranch,
+			BranchPrefix:               mergedCfg.Git.BranchPrefix,
+			TestCommand:                "",
+			ClarificationLabel:         mergedCfg.Tracker.ClarificationLabel,
+			PRReviewers:                mergedCfg.Git.PRReviewers,
+			MaxParallelTasks:           mergedCfg.Daemon.MaxParallelTasks,
+			TaskTimeoutMinutes:         mergedCfg.Daemon.TaskTimeoutMinutes,
+			MaxLlmCallsPerTask:         mergedCfg.Cost.MaxLlmCallsPerTask,
+			MaxImplementRetries:        mergedCfg.Limits.MaxImplementationRetries,
+			MaxSpecReviewCycles:        mergedCfg.Limits.MaxSpecReviewCycles,
+			MaxQualityReviewCycles:     mergedCfg.Limits.MaxQualityReviewCycles,
+			ContextTokenBudget:         mergedCfg.Limits.ContextTokenBudget,
+			ContextFeedbackBoost:       mergedCfg.Context.ContextFeedbackBoost,
+			PRDraft:                    mergedCfg.Git.PRDraft,
+			RebaseBeforePR:             mergedCfg.Git.RebaseBeforePR,
+			AutoPush:                   mergedCfg.Git.AutoPush,
+			EnablePartialPR:            mergedCfg.Limits.EnablePartialPR,
+			EnableTDDVerification:      mergedCfg.Limits.EnableTDDVerification,
+			EnableClarification:        mergedCfg.Limits.EnableClarification,
+			IntermediateReviewInterval: mergedCfg.Limits.IntermediateReviewInterval,
+			EnvFiles:                   mergedCfg.Daemon.EnvFiles,
+			WorktreeStartCommand:       mergedCfg.Git.Worktree.StartCommand,
+		},
+	)
+
+	// Wire event emitter.
+	emitter := telemetry.NewEventEmitter(database)
+	if appMetrics != nil {
+		emitter.SetDroppedCounter(appMetrics.EventsDroppedTotal)
+	}
+	orch.SetEventEmitter(emitter)
+
+	// Build daemon.
+	d := daemon.NewDaemon(daemon.DaemonConfig{
+		RunnerMode:                mergedCfg.Runner.Mode,
+		PollIntervalSecs:          mergedCfg.Daemon.PollIntervalSecs,
+		IdlePollIntervalSecs:      mergedCfg.Daemon.IdlePollIntervalSecs,
+		MaxParallelTickets:        mergedCfg.Daemon.MaxParallelTickets,
+		MaxParallelTasks:          mergedCfg.Daemon.MaxParallelTasks,
+		TaskTimeoutMinutes:        mergedCfg.Daemon.TaskTimeoutMinutes,
+		MergeCheckIntervalSecs:    mergedCfg.Daemon.MergeCheckIntervalSecs,
+		ClarificationTimeoutHours: mergedCfg.Tracker.ClarificationTimeoutHours,
+		ClarificationLabel:        mergedCfg.Tracker.ClarificationLabel,
+		LockTTLSeconds:            mergedCfg.Daemon.LockTTLSeconds,
+	})
+	d.SetDB(database)
+	d.SetTracker(tr)
+	d.SetOrchestrator(orch)
+	d.SetScheduler(scheduler)
+	d.SetRepoReady(repoReady)
+	if prChecker != nil {
+		d.SetPRChecker(prChecker)
+	}
+
+	return d, database, nil
 }
