@@ -28,11 +28,14 @@
     project: true, git: true, tracker: true, models: false, limits: false, danger: false
   });
 
+  let configError = $state('');
+
   async function loadConfig() {
+    configError = '';
     try {
       config = await fetchJSON(`/api/projects/${params.pid}`);
-    } catch (e) {
-      console.error('loadConfig', e);
+    } catch (e: any) {
+      configError = e.message ?? 'Failed to load settings';
     }
   }
 
@@ -73,7 +76,11 @@
         body: JSON.stringify(body),
       });
       const data = await res.json();
-      toasts.add(data.ok ? `${type} connection OK` : `${type}: ${data.error}`, data.ok ? 'success' : 'error');
+      if (!res.ok) {
+        toasts.add(`${type}: ${data.error ?? res.statusText}`, 'error');
+      } else {
+        toasts.add(data.ok ? `${type} connection OK` : `${type}: ${data.error}`, data.ok ? 'success' : 'error');
+      }
     } catch (e: any) {
       toasts.add(`Test failed: ${e.message}`, 'error');
     } finally {
@@ -83,8 +90,12 @@
   }
 
   async function deleteProject() {
-    await globalState.deleteProject(params.pid);
-    push('/');
+    try {
+      await globalState.deleteProject(params.pid);
+      push('/');
+    } catch (e: any) {
+      toasts.add(`Delete failed: ${e.message}`, 'error');
+    }
   }
 
   function toggleSection(key: string) {
@@ -97,6 +108,13 @@
 {/if}
 
 <div class="p-6 w-full max-w-4xl pb-20">
+  {#if configError}
+    <div class="mb-4 border-l-4 border-l-[var(--color-danger)] bg-[var(--color-danger-bg)] px-4 py-3 text-xs text-[var(--color-danger)]">
+      {configError}
+      <button onclick={loadConfig} class="ml-3 underline hover:no-underline">Retry</button>
+    </div>
+  {/if}
+
   <!-- Section: Project -->
   <div class="border border-[var(--color-border)] mb-4 animate-fade-in">
     <button onclick={() => toggleSection('project')}

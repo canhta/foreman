@@ -19,14 +19,17 @@
     const taskMap = new Map(tasks.map(t => [t.ID, t]));
     const ranks = new Map<string, number>();
 
-    function getRank(id: string): number {
+    function getRank(id: string, visiting = new Set<string>()): number {
       if (ranks.has(id)) return ranks.get(id)!;
+      if (visiting.has(id)) return 0; // cycle — break it
       const task = taskMap.get(id);
       if (!task || !task.DependsOn?.length) {
         ranks.set(id, 0);
         return 0;
       }
-      const maxDep = Math.max(...task.DependsOn.map(d => getRank(d)));
+      visiting.add(id);
+      const maxDep = Math.max(...task.DependsOn.map(d => getRank(d, visiting)));
+      visiting.delete(id);
       const rank = maxDep + 1;
       ranks.set(id, rank);
       return rank;

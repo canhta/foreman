@@ -3,11 +3,11 @@
   import { location } from 'svelte-spa-router';
   import { globalState } from '../state/global.svelte';
 
-  let collapsed = $state(localStorage.getItem('sidebar_collapsed') === 'true');
+  let collapsed = $state((() => { try { return localStorage.getItem('sidebar_collapsed') === 'true'; } catch { return false; } })());
 
   function toggle() {
     collapsed = !collapsed;
-    localStorage.setItem('sidebar_collapsed', String(collapsed));
+    try { localStorage.setItem('sidebar_collapsed', String(collapsed)); } catch {}
   }
 
   function statusIndicator(status: string): string {

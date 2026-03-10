@@ -58,6 +58,7 @@ export interface TicketSummary {
   UpdatedAt: string;
   CreatedAt: string;
   StartedAt: string | null;
+  CompletedAt: string | null;
   tasks_total: number;
   tasks_done: number;
 }

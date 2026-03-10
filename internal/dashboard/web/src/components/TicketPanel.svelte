@@ -1,11 +1,13 @@
 <script lang="ts">
   import { projectState } from '../state/project.svelte';
-  import { formatRelative, formatCost, severityIcon, linkifyParts } from '../format';
+  import { formatRelative, formatCost } from '../format';
   import { PR_STATUSES } from '../types';
   import TaskCard from './TaskCard.svelte';
   import ConfirmDialog from './ConfirmDialog.svelte';
+  import ActivityStream from './ActivityStream.svelte';
+  import CostBreakdown from './CostBreakdown.svelte';
 
-  type Tab = 'tasks' | 'events' | 'chat';
+  type Tab = 'tasks' | 'events' | 'chat' | 'cost';
   let activeTab = $state<Tab>('tasks');
   let showDeleteConfirm = $state(false);
   let chatInput = $state('');
@@ -25,13 +27,6 @@
     return 'status-chip status-chip-active';
   }
 
-  function severityColor(sev: string): string {
-    if (sev === 'success') return 'text-[var(--color-success)]';
-    if (sev === 'error')   return 'text-[var(--color-danger)]';
-    if (sev === 'warning') return 'text-[var(--color-warning)]';
-    return 'text-[var(--color-muted-bright)]';
-  }
-
   async function sendChat() {
     if (!ticket || !chatInput.trim()) return;
     sendingChat = true;
@@ -45,13 +40,28 @@
 
   async function handleDelete() {
     if (!ticket) return;
-    await projectState.deleteTicket(ticket.ID);
-    showDeleteConfirm = false;
+    try {
+      await projectState.deleteTicket(ticket.ID);
+    } finally {
+      showDeleteConfirm = false;
+    }
+  }
+
+  let retrying = $state(false);
+  async function handleRetry() {
+    if (!ticket) return;
+    retrying = true;
+    try {
+      await projectState.retryTicket(ticket.ID);
+    } finally {
+      retrying = false;
+    }
   }
 
   const taskCount   = $derived(projectState.ticketTasks.length);
   const eventCount  = $derived(projectState.ticketEvents.length);
   const chatCount   = $derived(projectState.chatMessages.length);
+  const costCount   = $derived(projectState.ticketLlmCalls.length);
   const doneTasks   = $derived(projectState.ticketTasks.filter(t => t.Status === 'done').length);
   const totalTasks  = $derived(projectState.ticketTasks.length);
   const progressPct = $derived(totalTasks > 0 ? (doneTasks / totalTasks) * 100 : 0);
@@ -112,7 +122,7 @@
           <span class="text-[var(--color-muted)]">Cost</span>
           <span class="text-[var(--color-text)] ml-1 tabular-nums">{formatCost(ticket.CostUSD ?? 0)}</span>
         </span>
-        {#if hasPR && ticket.PRURL}
+        {#if hasPR && ticket.PRURL && ticket.PRNumber > 0}
           <a href={ticket.PRURL} target="_blank" rel="noopener"
              class="text-[var(--color-accent)] hover:opacity-80 transition-opacity uppercase tracking-wider">
             PR #{ticket.PRNumber} ↗
@@ -128,8 +138,8 @@
 
     <!-- Tabs -->
     <div class="flex border-b border-[var(--color-border)] shrink-0 bg-[var(--color-surface)]">
-      {#each (['tasks', 'events', 'chat'] as Tab[]) as tab}
-        {@const count = tab === 'tasks' ? taskCount : tab === 'events' ? eventCount : chatCount}
+      {#each (['tasks', 'events', 'chat', 'cost'] as Tab[]) as tab}
+        {@const count = tab === 'tasks' ? taskCount : tab === 'events' ? eventCount : tab === 'chat' ? chatCount : costCount}
         <button
           onclick={() => activeTab = tab}
           class="flex-1 px-3 py-2.5 text-[10px] font-bold tracking-[0.15em] uppercase border-b-2 transition-colors"
@@ -202,37 +212,11 @@
         </div>
 
       {:else if activeTab === 'events'}
-        <div class="divide-y divide-[var(--color-border)]">
-          {#each projectState.ticketEvents as evt (evt.ID)}
-            <div class="px-4 py-2.5 flex gap-3 items-start hover:bg-[var(--color-surface-hover)] transition-colors">
-              <span class="shrink-0 text-xs {severityColor(evt.Severity)} mt-0.5 leading-none w-3 text-center">
-                {severityIcon(evt.Severity)}
-              </span>
-              <div class="min-w-0 flex-1">
-                <div class="text-xs text-[var(--color-text)] leading-snug">
-                  {#each linkifyParts(evt.Message || evt.EventType) as part}
-                    {#if part.type === 'url'}
-                      <a href={part.content} target="_blank" rel="noopener"
-                         class="text-[var(--color-accent)] hover:opacity-80 break-all">{part.content}</a>
-                    {:else}
-                      {part.content}
-                    {/if}
-                  {/each}
-                </div>
-                {#if evt.Details}
-                  <div class="text-[10px] text-[var(--color-muted)] mt-0.5 truncate" title={evt.Details}>
-                    {evt.Details}
-                  </div>
-                {/if}
-              </div>
-              <span class="shrink-0 text-[10px] text-[var(--color-muted)] whitespace-nowrap">
-                {formatRelative(evt.CreatedAt)}
-              </span>
-            </div>
-          {/each}
-          {#if projectState.ticketEvents.length === 0}
-            <div class="text-center text-[var(--color-muted)] text-xs py-10">No events yet</div>
-          {/if}
+        <ActivityStream events={projectState.ticketEvents} tasks={projectState.ticketTasks} />
+
+      {:else if activeTab === 'cost'}
+        <div class="p-4">
+          <CostBreakdown ticket={projectState.ticketDetail} llmCalls={projectState.ticketLlmCalls} />
         </div>
 
       {:else if activeTab === 'chat'}
@@ -296,9 +280,10 @@
     <div class="border-t border-[var(--color-border)] px-4 py-3 flex items-center gap-2 shrink-0 bg-[var(--color-surface)]">
       {#if ['failed', 'blocked', 'partial'].includes(ticket.Status)}
         <button
-          onclick={() => projectState.retryTicket(ticket.ID)}
-          class="text-[10px] px-3 py-1.5 bg-[var(--color-accent)] text-[var(--color-bg)] font-bold tracking-widest uppercase hover:opacity-90 transition-opacity"
-        >↺ Retry</button>
+          onclick={handleRetry}
+          disabled={retrying}
+          class="text-[10px] px-3 py-1.5 bg-[var(--color-accent)] text-[var(--color-bg)] font-bold tracking-widest uppercase hover:opacity-90 transition-opacity disabled:opacity-50"
+        >{retrying ? '…' : '↺ Retry'}</button>
       {/if}
       <button
         onclick={() => showDeleteConfirm = true}

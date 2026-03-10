@@ -217,8 +217,8 @@
 
 <ConfirmDialog
   open={confirmOpen}
-  title="Retry Task"
-  message="Re-run this task through the pipeline again?"
+  title="Retry Ticket"
+  message="Re-run the entire ticket through the pipeline again? (All tasks will be retried.)"
   confirmLabel="↺ Retry"
   confirmClass="bg-warning text-bg hover:opacity-90"
   onconfirm={() => { projectState.retryTicket(task.TicketID); confirmOpen = false; }}

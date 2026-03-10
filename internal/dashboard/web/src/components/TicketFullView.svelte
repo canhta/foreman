@@ -4,6 +4,7 @@
   import { PR_STATUSES } from '../types';
   import TaskCard from './TaskCard.svelte';
   import ChatInterface from './ChatInterface.svelte';
+  import DagView from './DagView.svelte';
 
   const ticket = $derived(projectState.ticketDetail);
   const hasPR = $derived(ticket ? PR_STATUSES.includes(ticket.Status) : false);
@@ -53,7 +54,7 @@
       </span>
       <div class="ml-auto flex items-center gap-4 text-[10px] text-[var(--color-muted)]">
         <span>Cost: <span class="text-[var(--color-text)]">{formatCost(ticket.CostUSD ?? 0)}</span></span>
-        {#if hasPR && ticket.PRURL}
+        {#if hasPR && ticket.PRURL && ticket.PRNumber > 0}
           <a href={ticket.PRURL} target="_blank" rel="noopener"
              class="status-chip status-chip-active hover:underline">↗ PR #{ticket.PRNumber}</a>
         {/if}
@@ -95,6 +96,9 @@
         {/if}
 
         <div class="text-xs tracking-[0.15em] uppercase font-bold text-[var(--color-muted-bright)] mb-3">Tasks</div>
+        <div class="mb-4">
+          <DagView tasks={projectState.ticketTasks} />
+        </div>
         <div class="space-y-2 mb-6">
           {#each projectState.ticketTasks as task (task.ID)}
             <TaskCard {task} events={projectState.ticketEvents} llmCalls={projectState.ticketLlmCalls} />

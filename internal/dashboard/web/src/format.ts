@@ -1,6 +1,6 @@
-export function formatSender(jid: string): string {
-  if (!jid) return '';
-  return jid.replace(/@s\.whatsapp\.net$/, '');
+export function formatSender(id: string): string {
+  if (!id) return '';
+  return id;
 }
 
 export function formatTime(ts: string | null): string {
@@ -27,7 +27,8 @@ export function formatRelative(ts: string | null): string {
   return `${Math.floor(months / 12)}y ago`;
 }
 
-export function formatCost(usd: number): string {
+export function formatCost(usd: number | null | undefined): string {
+  if (usd == null) return '$0.00';
   return `$${usd.toFixed(2)}`;
 }
 
