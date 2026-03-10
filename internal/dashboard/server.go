@@ -192,11 +192,101 @@ func NewServer(db DashboardDB, emitter EventSubscriber, statusProvider DaemonSta
 	})))
 	mux.Handle("/api/projects/", auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
+		// Determine if this is a project-only path (no sub-resource) or a nested one.
+		// Strip /api/projects/ prefix and check remaining segments.
+		rest := strings.TrimPrefix(path, "/api/projects/")
+		parts := strings.SplitN(rest, "/", 3)
+		// parts[0] = pid, parts[1] = sub-resource (optional), parts[2] = id or further (optional)
+
 		switch {
-		case strings.HasSuffix(path, "/tickets"):
-			api.handleProjectTickets(w, r)
-		case r.Method == http.MethodDelete && !strings.Contains(strings.TrimPrefix(path, "/api/projects/"), "/"):
+		// DELETE /api/projects/{pid}
+		case r.Method == http.MethodDelete && len(parts) == 1:
 			api.handleDeleteProject(w, r)
+		// GET /api/projects/{pid}
+		case r.Method == http.MethodGet && len(parts) == 1:
+			api.handleGetProject(w, r)
+		// PUT /api/projects/{pid}
+		case r.Method == http.MethodPut && len(parts) == 1:
+			api.handleUpdateProject(w, r)
+		// GET /api/projects/{pid}/tickets
+		case len(parts) >= 2 && parts[1] == "tickets" && len(parts) == 2:
+			api.handleProjectTickets(w, r)
+		// /api/projects/{pid}/tickets/{id}/...
+		case len(parts) >= 2 && parts[1] == "tickets" && len(parts) == 3:
+			ticketRest := parts[2] // "{id}" or "{id}/tasks" etc.
+			ticketParts := strings.SplitN(ticketRest, "/", 2)
+			if len(ticketParts) == 1 {
+				// GET /api/projects/{pid}/tickets/{id}
+				api.handleProjectTicketDetail(w, r)
+			} else {
+				switch ticketParts[1] {
+				case "tasks":
+					api.handleProjectTasks(w, r)
+				case "llm-calls":
+					api.handleProjectLlmCalls(w, r)
+				case "events":
+					api.handleProjectEvents(w, r)
+				case "chat":
+					if r.Method == http.MethodGet {
+						api.handleProjectGetChat(w, r)
+					} else if r.Method == http.MethodPost {
+						api.handleProjectPostChat(w, r)
+					} else {
+						http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+					}
+				case "retry":
+					api.handleRetryTicket(w, r)
+				default:
+					http.NotFound(w, r)
+				}
+			}
+		// GET /api/projects/{pid}/cost/daily/{date}
+		case len(parts) >= 2 && parts[1] == "cost":
+			costRest := ""
+			if len(parts) == 3 {
+				costRest = parts[2]
+			}
+			costParts := strings.SplitN(costRest, "/", 2)
+			switch {
+			case costRest == "" || costParts[0] == "breakdown":
+				// GET /api/projects/{pid}/cost/breakdown — return today + month summary
+				projDB, err := api.projectDB(r)
+				if err != nil {
+					writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+					return
+				}
+				date := time.Now().Format("2006-01-02")
+				yearMonth := time.Now().Format("2006-01")
+				daily, _ := projDB.GetDailyCost(r.Context(), date)
+				monthly, _ := projDB.GetMonthlyCost(r.Context(), yearMonth)
+				writeJSON(w, http.StatusOK, map[string]interface{}{
+					"daily_usd":   daily,
+					"monthly_usd": monthly,
+					"date":        date,
+					"month":       yearMonth,
+				})
+			case costParts[0] == "daily" && len(costParts) == 2:
+				api.handleProjectDailyCost(w, r)
+			case costParts[0] == "monthly" && len(costParts) == 2:
+				api.handleProjectMonthlyCost(w, r)
+			default:
+				http.NotFound(w, r)
+			}
+		// POST /api/projects/{pid}/sync
+		case len(parts) == 2 && parts[1] == "sync" && r.Method == http.MethodPost:
+			api.handleProjectSync(w, r)
+		// POST /api/projects/{pid}/pause
+		case len(parts) == 2 && parts[1] == "pause" && r.Method == http.MethodPost:
+			api.handleProjectPause(w, r)
+		// POST /api/projects/{pid}/resume
+		case len(parts) == 2 && parts[1] == "resume" && r.Method == http.MethodPost:
+			api.handleProjectResume(w, r)
+		// GET /api/projects/{pid}/health
+		case len(parts) == 2 && parts[1] == "health":
+			api.handleProjectHealth(w, r)
+		// GET /api/projects/{pid}/dashboard
+		case len(parts) == 2 && parts[1] == "dashboard":
+			api.handleProjectDashboard(w, r)
 		default:
 			http.NotFound(w, r)
 		}

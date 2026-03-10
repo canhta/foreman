@@ -426,6 +426,15 @@ func newStartCmd() *cobra.Command {
 			emitter.SetDroppedCounter(appMetrics.EventsDroppedTotal)
 			orch.SetEventEmitter(emitter)
 
+			// 9c-2. Global event emitter fans in events from all project emitters for /ws/global.
+			globalEmitter := telemetry.NewGlobalEventEmitter()
+
+			// 9c-3. Global cost controller aggregates costs across all projects.
+			globalCostCtrl := project.NewGlobalCostController(
+				cfg.Cost.MaxCostPerDayUSD,
+				cfg.Cost.MaxCostPerMonthUSD,
+			)
+
 			// 9d. Build skill hook runner (best-effort — non-fatal if skills dir missing).
 			// Skills are loaded from "./skills" in the working directory, and also
 			// from the prompt registry (skills/ subdirectory) when available.
@@ -481,6 +490,7 @@ func newStartCmd() *cobra.Command {
 				srv.SetTrackerSyncer(d)
 				srv.SetPromptSnapshotQuerier(database)
 				srv.SetProjectRegistry(projManager)
+				srv.SetGlobalEmitter(globalEmitter)
 				go func() {
 					if err := srv.Start(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 						log.Error().Err(err).Msg("dashboard server error")
@@ -506,11 +516,22 @@ func newStartCmd() *cobra.Command {
 							log.Error().Err(loadErr).Str("project", entry.Name).Msg("failed to load project config; skipping")
 							continue
 						}
-						pd, projDB, setupErr := setupProjectWorker(ctx, cfg, projDir, projCfg, promptRegistry, appMetrics)
+						pd, projDB, projEmitter, setupErr := setupProjectWorker(ctx, cfg, projDir, projCfg, promptRegistry, appMetrics)
 						if setupErr != nil {
 							log.Error().Err(setupErr).Str("project", entry.Name).Msg("failed to setup project worker; skipping")
 							continue
 						}
+
+						// Seed global cost controller from this project's DB.
+						today := time.Now().Format("2006-01-02")
+						yearMonth := time.Now().Format("2006-01")
+						dailyCost, _ := projDB.GetDailyCost(context.Background(), today)
+						monthlyCost, _ := projDB.GetMonthlyCost(context.Background(), yearMonth)
+						globalCostCtrl.SeedFromDB(entry.ID, dailyCost, monthlyCost)
+
+						// Forward per-project events to the global emitter for /ws/global subscribers.
+						forwardEvents(ctx, projEmitter, globalEmitter)
+
 						mergedCfg := project.MergeConfigs(cfg, projCfg, projDir)
 						w := &project.Worker{
 							ID:         entry.ID,
@@ -719,6 +740,7 @@ func init() {
 
 // setupProjectWorker builds a daemon and database for a single project.
 // It mirrors the single-project setup in newStartCmd but accepts a merged config.
+// Returns the daemon, project database, and the per-project event emitter.
 func setupProjectWorker(
 	ctx context.Context,
 	globalCfg *models.Config,
@@ -726,20 +748,20 @@ func setupProjectWorker(
 	projCfg *project.ProjectConfig,
 	promptRegistry *prompts.Registry,
 	appMetrics *telemetry.Metrics,
-) (*daemon.Daemon, db.Database, error) {
+) (*daemon.Daemon, db.Database, *telemetry.EventEmitter, error) {
 	mergedCfg := project.MergeConfigs(globalCfg, projCfg, projDir)
 
 	// Open per-project database.
 	database, err := db.NewSQLiteDB(project.ProjectDBPath(projDir))
 	if err != nil {
-		return nil, nil, fmt.Errorf("open project db: %w", err)
+		return nil, nil, nil, fmt.Errorf("open project db: %w", err)
 	}
 
 	// LLM provider (reuse global API keys via merged config).
 	baseProv, err := llm.NewProviderFromConfig(mergedCfg.LLM.DefaultProvider, mergedCfg.LLM)
 	if err != nil {
 		database.Close()
-		return nil, nil, fmt.Errorf("project LLM provider: %w", err)
+		return nil, nil, nil, fmt.Errorf("project LLM provider: %w", err)
 	}
 	llmProv := llm.LlmProvider(llm.NewCircuitBreakerProvider(baseProv, llm.DefaultCircuitBreakerConfig()))
 	costCtrl := telemetry.NewCostController(mergedCfg.Cost)
@@ -749,7 +771,7 @@ func setupProjectWorker(
 	tr, err := buildTracker(mergedCfg)
 	if err != nil {
 		database.Close()
-		return nil, nil, fmt.Errorf("project tracker: %w", err)
+		return nil, nil, nil, fmt.Errorf("project tracker: %w", err)
 	}
 	gitProv := buildGitProvider(mergedCfg)
 	repoReady := gitProv.EnsureRepo(ctx, mergedCfg.Daemon.WorkDir) == nil
@@ -774,7 +796,7 @@ func setupProjectWorker(
 		)
 		if err != nil {
 			database.Close()
-			return nil, nil, fmt.Errorf("project agent runner: %w", err)
+			return nil, nil, nil, fmt.Errorf("project agent runner: %w", err)
 		}
 		if ccr, ok := pipelineAgentRunner.(*agent.ClaudeCodeRunner); ok {
 			ccr.WithRegistry(promptRegistry)
@@ -874,5 +896,30 @@ func setupProjectWorker(
 		d.SetPRChecker(prChecker)
 	}
 
-	return d, database, nil
+	return d, database, emitter, nil
+}
+
+// forwardEvents subscribes to src and forwards all events to dst until ctx is cancelled.
+// The forwarding goroutine exits cleanly when ctx is done.
+func forwardEvents(ctx context.Context, src interface {
+	Subscribe() chan *models.EventRecord
+	Unsubscribe(ch chan *models.EventRecord)
+}, dst interface {
+	Forward(event *models.EventRecord)
+}) {
+	ch := src.Subscribe()
+	go func() {
+		defer src.Unsubscribe(ch)
+		for {
+			select {
+			case evt, ok := <-ch:
+				if !ok {
+					return
+				}
+				dst.Forward(evt)
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
 }

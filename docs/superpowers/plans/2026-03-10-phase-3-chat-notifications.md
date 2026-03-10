@@ -125,7 +125,12 @@ Create `src/components/ChatInterface.svelte`:
     {/if}
 
     {#each messages as msg (msg.id)}
-      <div class="text-xs">
+      <div class="text-xs animate-fade-in p-2 -mx-2 border-l-2 transition-colors"
+           class:border-transparent={msg.message_type === 'info' || msg.message_type === 'reply'}
+           class:border-[var(--color-warning)]={msg.message_type === 'clarification' || msg.message_type === 'action_request'}
+           class:border-[var(--color-danger)]={msg.message_type === 'error'}
+           class:bg-[var(--color-warning-bg)]={msg.message_type === 'clarification' || msg.message_type === 'action_request'}
+           class:bg-[var(--color-danger-bg)]={msg.message_type === 'error'}>
         <div class="flex items-center gap-2 mb-0.5">
           <span class={`text-[10px] tracking-widest font-bold ${senderColor(msg.sender)}`}>
             {senderLabel(msg.sender)}
@@ -171,14 +176,15 @@ Create `src/components/ChatInterface.svelte`:
   <!-- Input -->
   <div class="border-t border-[var(--color-border)] p-3">
     <div class="flex gap-2">
-      <input
-        type="text"
+      <textarea
         bind:value={input}
         onkeydown={handleKeydown}
         {disabled}
+        rows="1"
         placeholder={disabled ? 'Chat disabled' : 'Type a reply...'}
-        class="flex-1 bg-[var(--color-surface)] border border-[var(--color-border)] px-3 py-2 text-xs text-[var(--color-text)] placeholder-[var(--color-muted)] focus:border-[var(--color-accent)] focus:outline-none disabled:opacity-50"
-      />
+        class="flex-1 bg-[var(--color-surface)] border border-[var(--color-border)] px-3 py-2 text-xs text-[var(--color-text)] placeholder-[var(--color-muted)] focus:border-[var(--color-accent)] focus:outline-none disabled:opacity-50 resize-none min-h-[36px] max-h-24"
+        oninput={(e) => { e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }}
+      ></textarea>
       <button
         onclick={send}
         {disabled}
@@ -229,7 +235,7 @@ Create `src/components/TicketFullView.svelte`:
 
 {#if projectState.ticketDetail}
   {@const ticket = projectState.ticketDetail}
-  <div class="h-full flex flex-col">
+  <div class="h-full flex flex-col animate-fade-in">
     <!-- Header bar -->
     <div class="flex items-center justify-between px-6 py-3 border-b border-[var(--color-border)]">
       <div class="flex items-center gap-3">
@@ -314,7 +320,7 @@ In `src/pages/ProjectBoard.svelte`, replace the placeholder full-page section:
 
 ```svelte
 {#if projectState.panelExpanded && projectState.selectedTicketId}
-  <div class="fixed inset-0 z-50 bg-[var(--color-bg)]">
+  <div class="fixed inset-0 z-50 bg-[var(--color-bg)] animate-[zoom-in_0.15s_ease-out]">
     <TicketFullView />
   </div>
 {/if}

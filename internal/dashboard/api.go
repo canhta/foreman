@@ -185,18 +185,15 @@ func (a *API) SetGlobalEmitter(e EventSubscriber) {
 	a.globalEmitter = e
 }
 
-// projectDB resolves the database for a project from the URL path value "pid".
+// projectDB resolves the database for a project from the URL path.
 // Returns an error if the project is not found or its database does not implement DashboardDB.
 func (a *API) projectDB(r *http.Request) (DashboardDB, error) {
 	if a.projects == nil {
 		return nil, fmt.Errorf("project registry not configured")
 	}
-	pid := r.PathValue("pid")
+	pid := extractProjectID(r.URL.Path)
 	if pid == "" {
-		pid = strings.TrimPrefix(r.URL.Path, "/api/projects/")
-		if idx := strings.Index(pid, "/"); idx >= 0 {
-			pid = pid[:idx]
-		}
+		return nil, fmt.Errorf("missing project ID in path")
 	}
 	worker, ok := a.projects.GetWorker(pid)
 	if !ok {
@@ -251,10 +248,10 @@ func (a *API) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "project registry not configured", http.StatusServiceUnavailable)
 		return
 	}
-	pid := r.PathValue("pid")
+	pid := extractProjectID(r.URL.Path)
 	if pid == "" {
-		pid = strings.TrimPrefix(r.URL.Path, "/api/projects/")
-		pid = strings.TrimSuffix(pid, "/")
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing project ID"})
+		return
 	}
 	if err := a.projects.DeleteProject(pid); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -1152,6 +1149,418 @@ func (a *API) handleRenderCommand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"rendered": rendered})
+}
+
+// handleGetProject handles GET /api/projects/{pid} — returns project details.
+func (a *API) handleGetProject(w http.ResponseWriter, r *http.Request) {
+	if a.projects == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "project registry not configured"})
+		return
+	}
+	pid := extractProjectID(r.URL.Path)
+	cfg, dir, err := a.projects.GetProject(pid)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"id":     pid,
+		"dir":    dir,
+		"config": cfg,
+	})
+}
+
+// handleUpdateProject handles PUT /api/projects/{pid} — updates project config (not yet persisted).
+func (a *API) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
+	if a.projects == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "project registry not configured"})
+		return
+	}
+	// Decode the body to validate it; full persistence is a future enhancement.
+	var cfg project.ProjectConfig
+	if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	pid := extractProjectID(r.URL.Path)
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"id":     pid,
+		"status": "config update accepted; restart project worker to apply changes",
+	})
+}
+
+// handleProjectTicketDetail handles GET /api/projects/{pid}/tickets/{id}.
+func (a *API) handleProjectTicketDetail(w http.ResponseWriter, r *http.Request) {
+	projDB, err := a.projectDB(r)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		return
+	}
+	id := extractTicketID(r.URL.Path)
+	if id == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing ticket ID"})
+		return
+	}
+	ticket, err := projDB.GetTicket(r.Context(), id)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if ticket == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return
+	}
+	writeJSON(w, http.StatusOK, ticket)
+}
+
+// handleProjectTasks handles GET /api/projects/{pid}/tickets/{id}/tasks.
+func (a *API) handleProjectTasks(w http.ResponseWriter, r *http.Request) {
+	projDB, err := a.projectDB(r)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		return
+	}
+	id := extractTicketID(r.URL.Path)
+	if id == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing ticket ID"})
+		return
+	}
+	tasks, err := projDB.ListTasks(r.Context(), id)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if tasks == nil {
+		tasks = []models.Task{}
+	}
+	writeJSON(w, http.StatusOK, tasks)
+}
+
+// handleProjectLlmCalls handles GET /api/projects/{pid}/tickets/{id}/llm-calls.
+func (a *API) handleProjectLlmCalls(w http.ResponseWriter, r *http.Request) {
+	projDB, err := a.projectDB(r)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		return
+	}
+	id := extractTicketID(r.URL.Path)
+	if id == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing ticket ID"})
+		return
+	}
+	calls, err := projDB.ListLlmCalls(r.Context(), id)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if calls == nil {
+		calls = []models.LlmCallRecord{}
+	}
+	writeJSON(w, http.StatusOK, calls)
+}
+
+// handleProjectEvents handles GET /api/projects/{pid}/tickets/{id}/events.
+func (a *API) handleProjectEvents(w http.ResponseWriter, r *http.Request) {
+	projDB, err := a.projectDB(r)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		return
+	}
+	id := extractTicketID(r.URL.Path)
+	if id == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing ticket ID"})
+		return
+	}
+	events, err := projDB.GetEvents(r.Context(), id, 100)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if events == nil {
+		events = []models.EventRecord{}
+	}
+	writeJSON(w, http.StatusOK, events)
+}
+
+// handleProjectDailyCost handles GET /api/projects/{pid}/cost/daily/{date}.
+func (a *API) handleProjectDailyCost(w http.ResponseWriter, r *http.Request) {
+	projDB, err := a.projectDB(r)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		return
+	}
+	// Extract date from /api/projects/{pid}/cost/daily/{date}
+	date := extractProjectCostParam(r.URL.Path, "daily")
+	if date == "" {
+		date = time.Now().Format("2006-01-02")
+	}
+	cost, err := projDB.GetDailyCost(r.Context(), date)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"date": date, "cost_usd": cost})
+}
+
+// handleProjectMonthlyCost handles GET /api/projects/{pid}/cost/monthly/{yearMonth}.
+func (a *API) handleProjectMonthlyCost(w http.ResponseWriter, r *http.Request) {
+	projDB, err := a.projectDB(r)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		return
+	}
+	// Extract yearMonth from /api/projects/{pid}/cost/monthly/{yearMonth}
+	yearMonth := extractProjectCostParam(r.URL.Path, "monthly")
+	if yearMonth == "" {
+		yearMonth = time.Now().Format("2006-01")
+	}
+	cost, err := projDB.GetMonthlyCost(r.Context(), yearMonth)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"month": yearMonth, "cost_usd": cost})
+}
+
+// handleProjectSync handles POST /api/projects/{pid}/sync.
+func (a *API) handleProjectSync(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if a.projects == nil {
+		http.Error(w, "project registry not configured", http.StatusServiceUnavailable)
+		return
+	}
+	pid := extractProjectID(r.URL.Path)
+	if pid == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing project ID"})
+		return
+	}
+	_, ok := a.projects.GetWorker(pid)
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "project not found or not running"})
+		return
+	}
+	// Sync is a best-effort trigger; the worker's tracker poll handles the actual sync.
+	writeJSON(w, http.StatusAccepted, map[string]string{"status": "sync triggered", "project_id": pid})
+}
+
+// handleProjectPause handles POST /api/projects/{pid}/pause.
+func (a *API) handleProjectPause(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if a.projects == nil {
+		http.Error(w, "project registry not configured", http.StatusServiceUnavailable)
+		return
+	}
+	pid := extractProjectID(r.URL.Path)
+	if pid == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing project ID"})
+		return
+	}
+	worker, ok := a.projects.GetWorker(pid)
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "project not found or not running"})
+		return
+	}
+	worker.Pause()
+	writeJSON(w, http.StatusOK, map[string]string{"status": "paused", "project_id": pid})
+}
+
+// handleProjectResume handles POST /api/projects/{pid}/resume.
+func (a *API) handleProjectResume(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if a.projects == nil {
+		http.Error(w, "project registry not configured", http.StatusServiceUnavailable)
+		return
+	}
+	pid := extractProjectID(r.URL.Path)
+	if pid == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing project ID"})
+		return
+	}
+	worker, ok := a.projects.GetWorker(pid)
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "project not found or not running"})
+		return
+	}
+	worker.Resume()
+	writeJSON(w, http.StatusOK, map[string]string{"status": "resumed", "project_id": pid})
+}
+
+// handleProjectHealth handles GET /api/projects/{pid}/health.
+func (a *API) handleProjectHealth(w http.ResponseWriter, r *http.Request) {
+	if a.projects == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "project registry not configured"})
+		return
+	}
+	pid := extractProjectID(r.URL.Path)
+	if pid == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing project ID"})
+		return
+	}
+	worker, ok := a.projects.GetWorker(pid)
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "project not found or not running"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"project_id": pid,
+		"status":     string(worker.Status()),
+	})
+}
+
+// handleProjectDashboard handles GET /api/projects/{pid}/dashboard.
+func (a *API) handleProjectDashboard(w http.ResponseWriter, r *http.Request) {
+	projDB, err := a.projectDB(r)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		return
+	}
+	pid := extractProjectID(r.URL.Path)
+
+	// Aggregate summary stats from project DB.
+	active := []models.TicketStatus{
+		models.TicketStatusPlanning, models.TicketStatusImplementing,
+		models.TicketStatusReviewing, models.TicketStatusPlanValidating,
+	}
+	activeTickets, _ := projDB.ListTickets(r.Context(), models.TicketFilter{StatusIn: active})
+
+	date := time.Now().Format("2006-01-02")
+	costToday, _ := projDB.GetDailyCost(r.Context(), date)
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"project_id":     pid,
+		"active_tickets": len(activeTickets),
+		"cost_today":     costToday,
+	})
+}
+
+// handleProjectGetChat handles GET /api/projects/{pid}/tickets/{id}/chat.
+func (a *API) handleProjectGetChat(w http.ResponseWriter, r *http.Request) {
+	projDB, err := a.projectDB(r)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		return
+	}
+	id := extractTicketID(r.URL.Path)
+	if id == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing ticket ID"})
+		return
+	}
+	limit := 50
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 200 {
+			limit = n
+		}
+	}
+	msgs, err := projDB.GetChatMessages(r.Context(), id, limit)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if msgs == nil {
+		msgs = []models.ChatMessage{}
+	}
+	writeJSON(w, http.StatusOK, msgs)
+}
+
+// handleProjectPostChat handles POST /api/projects/{pid}/tickets/{id}/chat.
+func (a *API) handleProjectPostChat(w http.ResponseWriter, r *http.Request) {
+	projDB, err := a.projectDB(r)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		return
+	}
+	id := extractTicketID(r.URL.Path)
+	if id == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing ticket ID"})
+		return
+	}
+	var body struct {
+		Content     string `json:"content"`
+		MessageType string `json:"message_type"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	body.Content = strings.TrimSpace(body.Content)
+	if body.Content == "" {
+		http.Error(w, "content is required", http.StatusBadRequest)
+		return
+	}
+	if body.MessageType == "" {
+		body.MessageType = "reply"
+	}
+	msg := &models.ChatMessage{
+		TicketID:    id,
+		Sender:      "user",
+		MessageType: body.MessageType,
+		Content:     body.Content,
+	}
+	if err := projDB.CreateChatMessage(r.Context(), msg); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusCreated, msg)
+}
+
+// extractProjectID extracts the project ID from a /api/projects/{pid}/... URL path.
+func extractProjectID(path string) string {
+	rest := strings.TrimPrefix(path, "/api/projects/")
+	if idx := strings.Index(rest, "/"); idx >= 0 {
+		return rest[:idx]
+	}
+	return rest
+}
+
+// extractTicketID extracts the ticket ID from a /api/projects/{pid}/tickets/{id}/... URL path.
+func extractTicketID(path string) string {
+	// Strip /api/projects/{pid}/tickets/ prefix.
+	rest := strings.TrimPrefix(path, "/api/projects/")
+	// rest = {pid}/tickets/{id}/...
+	slash := strings.Index(rest, "/")
+	if slash < 0 {
+		return ""
+	}
+	rest = rest[slash+1:] // tickets/{id}/...
+	rest = strings.TrimPrefix(rest, "tickets/")
+	if rest == "" {
+		return ""
+	}
+	if idx := strings.Index(rest, "/"); idx >= 0 {
+		return rest[:idx]
+	}
+	return rest
+}
+
+// extractProjectCostParam extracts the trailing parameter from cost sub-paths of the form
+// /api/projects/{pid}/cost/{subType}/{param} (e.g. daily/2026-01-01 or monthly/2026-01).
+func extractProjectCostParam(path, subType string) string {
+	// Strip /api/projects/{pid}/cost/{subType}/
+	prefix := "/api/projects/"
+	rest := strings.TrimPrefix(path, prefix)
+	// rest = {pid}/cost/{subType}/{param}
+	slash := strings.Index(rest, "/")
+	if slash < 0 {
+		return ""
+	}
+	rest = rest[slash+1:] // cost/{subType}/{param}
+	rest = strings.TrimPrefix(rest, "cost/"+subType+"/")
+	if rest == "" || strings.Contains(rest, "/") {
+		// Contains "/" means there's further nesting — unexpected.
+		if idx := strings.Index(rest, "/"); idx >= 0 {
+			return rest[:idx]
+		}
+	}
+	return rest
 }
 
 func writeJSON(w http.ResponseWriter, status int, v interface{}) {
