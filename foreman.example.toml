@@ -4,7 +4,7 @@
 [daemon]
 poll_interval_secs        = 60
 idle_poll_interval_secs   = 300
-max_parallel_tickets      = 3       # Max 3 for SQLite; use PostgreSQL for more
+max_parallel_tickets      = 3       # Concurrent pipeline limit (max 3)
 max_parallel_tasks        = 3       # Concurrent tasks per ticket (DAG executor)
 task_timeout_minutes      = 15      # Per-task timeout in minutes
 merge_check_interval_secs = 300     # How often to poll PR merge status

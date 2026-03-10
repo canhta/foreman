@@ -21,7 +21,7 @@ Environment variables can be interpolated using `${VAR_NAME}` syntax anywhere in
 | `[secrets]` | Secrets scanner patterns and always-excluded files |
 | `[rate_limit]` | LLM request rate limiting and backoff |
 | `[runner]` | Local or Docker command runner |
-| `[database]` | SQLite or PostgreSQL connection |
+| `[database]` | SQLite connection |
 | `[agent_runner]` | Agent runner type (builtin / claudecode / copilot) |
 | `[mcp]` | MCP server connections (stdio transport) |
 | `[channel]` | Messaging channel (WhatsApp) for inbound tickets and notifications |
@@ -35,8 +35,7 @@ Environment variables can be interpolated using `${VAR_NAME}` syntax anywhere in
 [daemon]
 poll_interval_secs      = 60    # How often to check for new tickets (seconds)
 idle_poll_interval_secs = 300   # Longer interval when no work is queued
-max_parallel_tickets    = 3     # Concurrent pipeline limit
-                                # Max 3 for SQLite; use PostgreSQL for more
+max_parallel_tickets    = 3     # Concurrent pipeline limit (max 3)
 max_parallel_tasks      = 3     # Concurrent tasks per ticket (DAG executor worker pool)
 task_timeout_minutes       = 15    # Per-task timeout in minutes
 merge_check_interval_secs  = 300   # How often to poll PR merge status (seconds)

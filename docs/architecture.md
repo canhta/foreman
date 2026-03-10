@@ -23,7 +23,7 @@ flowchart TD
             PC["..."]
         end
 
-        DB[("SQLite / PostgreSQL<br/>tickets · tasks · llm_calls<br/>handoffs · reservations · events")]
+        DB[("SQLite<br/>tickets · tasks · llm_calls<br/>handoffs · reservations · events")]
         DASH["Dashboard<br/>HTTP · REST · WebSocket · Auth"]
 
         D -- spawn --> pipelines
@@ -68,7 +68,7 @@ internal/
 │   └── whatsapp/   WhatsApp implementation via whatsmeow (Web multi-device protocol)
 ├── config/         TOML config loading, validation, env-var substitution, round-trip TOML editing
 ├── daemon/         Event loop, scheduler, DAG executor (coordinator/worker-pool), merge checker, file reservations, crash recovery, channel command handler
-├── db/             Database interface + SQLite and PostgreSQL implementations; RepoLockSentinel (__REPO_LOCK__) for repo-level file reservation
+├── db/             Database interface + SQLite implementation; RepoLockSentinel (__REPO_LOCK__) for repo-level file reservation
 ├── pipeline/       State machine orchestrator — all pipeline stages; error_classifier.go, plan_confidence.go,
 │                   agent_planner.go (AgentPlanner — codebase-aware planning via AgentRunner),
 │                   prompt_builder.go (PromptBuilder — structured prompts for external runners),
@@ -298,7 +298,7 @@ flowchart TD
 ### SQLite Serialized Writer
 When using SQLite, all writes go through a single writer goroutine via a buffered channel. This prevents `SQLITE_BUSY` errors under concurrent load. Non-critical writes (events, metrics) are batched and flushed on a configurable interval. Reads go directly to the SQLite connection (WAL mode allows concurrent reads alongside a single writer).
 
-**SQLite concurrency limit:** `max_parallel_tickets` is capped at 3 when using SQLite. Use PostgreSQL for higher concurrency.
+**SQLite concurrency limit:** `max_parallel_tickets` is capped at 3.
 
 ### File Reservations
 File reservations are stored in the database, not in memory. Before a pipeline begins, it inserts reservation rows for all files it plans to modify. If any row already exists (another pipeline has reserved the file), the ticket is re-queued. Reservations are released in a single transaction when the pipeline finishes.
