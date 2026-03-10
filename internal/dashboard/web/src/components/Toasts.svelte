@@ -1,7 +1,7 @@
 <script lang="ts">
   import { toasts } from '../state/toasts.svelte';
   import { projectState } from '../state/project.svelte';
-  import { severityIcon } from '../format';
+  import { IconCheck, IconX, IconAlertTriangle, IconCircleFilled } from '@tabler/icons-svelte';
 </script>
 
 {#if toasts.toasts.length > 0}
@@ -11,8 +11,11 @@
         {toast.severity === 'error' ? 'border-l-4 border-l-[var(--color-danger)]' : toast.severity === 'warning' ? 'border-l-4 border-l-[var(--color-warning)]' : toast.severity === 'info' ? 'border-l-4 border-l-[var(--color-accent)]' : 'border-l-4 border-l-[var(--color-success)]'}">
         <!-- Icon block -->
         <div class="w-10 flex items-center justify-center shrink-0 {toast.severity === 'error' ? 'bg-[var(--color-danger-bg)]' : toast.severity === 'warning' ? 'bg-[var(--color-warning-bg)]' : toast.severity === 'info' ? 'bg-[var(--color-surface-hover)]' : 'bg-[var(--color-success-bg)]'}">
-          <span class="text-sm {toast.severity === 'error' ? 'text-[var(--color-danger)]' : toast.severity === 'warning' ? 'text-[var(--color-warning)]' : toast.severity === 'info' ? 'text-[var(--color-accent)]' : 'text-[var(--color-success)]'}">
-            {severityIcon(toast.severity)}
+          <span class="{toast.severity === 'error' ? 'text-[var(--color-danger)]' : toast.severity === 'warning' ? 'text-[var(--color-warning)]' : toast.severity === 'info' ? 'text-[var(--color-accent)]' : 'text-[var(--color-success)]'}">
+            {#if toast.severity === 'success'}<IconCheck size={16} stroke={1.5} />
+            {:else if toast.severity === 'error'}<IconX size={16} stroke={1.5} />
+            {:else if toast.severity === 'warning'}<IconAlertTriangle size={16} stroke={1.5} />
+            {:else}<IconCircleFilled size={16} stroke={1.5} />{/if}
           </span>
         </div>
 
