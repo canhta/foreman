@@ -54,6 +54,8 @@ type DashboardDB interface {
 	UpdateTaskContextStats(ctx context.Context, taskID string, stats TaskContextStats) error
 	GetLlmCallAggregates(ctx context.Context, since time.Time) (byRunner []db.RunnerAggregate, byModel []db.ModelAggregate, byRole []db.RoleAggregate, err error)
 	GetRecentLlmCalls(ctx context.Context, limit int) ([]db.RecentLlmCall, error)
+	CreateChatMessage(ctx context.Context, msg *models.ChatMessage) error
+	GetChatMessages(ctx context.Context, ticketID string, limit int) ([]models.ChatMessage, error)
 }
 
 // EventSubscriber is the subset of EventEmitter needed for WebSocket.
@@ -1018,6 +1020,76 @@ func (a *API) handleActivityBreakdown(w http.ResponseWriter, r *http.Request) {
 func (a *API) handleClaudeCodeUsage(w http.ResponseWriter, _ *http.Request) {
 	usage := parseClaudeCodeUsageCached()
 	writeJSON(w, http.StatusOK, usage)
+}
+
+// handleGetChat handles GET /api/tickets/{id}/chat
+// Returns the chat messages for a ticket in ascending order (oldest first).
+func (a *API) handleGetChat(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	id := extractPathParam(r.URL.Path, "/api/tickets/")
+	if id == "" {
+		http.Error(w, "missing ticket id", http.StatusBadRequest)
+		return
+	}
+	limit := 50
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= 200 {
+			limit = n
+		}
+	}
+	msgs, err := a.db.GetChatMessages(r.Context(), id, limit)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if msgs == nil {
+		msgs = []models.ChatMessage{}
+	}
+	writeJSON(w, http.StatusOK, msgs)
+}
+
+// handlePostChat handles POST /api/tickets/{id}/chat
+// Appends a user message to the chat for a ticket.
+func (a *API) handlePostChat(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	id := extractPathParam(r.URL.Path, "/api/tickets/")
+	if id == "" {
+		http.Error(w, "missing ticket id", http.StatusBadRequest)
+		return
+	}
+	var body struct {
+		Content     string `json:"content"`
+		MessageType string `json:"message_type"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	body.Content = strings.TrimSpace(body.Content)
+	if body.Content == "" {
+		http.Error(w, "content is required", http.StatusBadRequest)
+		return
+	}
+	if body.MessageType == "" {
+		body.MessageType = "reply"
+	}
+	msg := &models.ChatMessage{
+		TicketID:    id,
+		Sender:      "user",
+		MessageType: body.MessageType,
+		Content:     body.Content,
+	}
+	if err := a.db.CreateChatMessage(r.Context(), msg); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusCreated, msg)
 }
 
 // commandListItem is the JSON representation of a command in the list response.

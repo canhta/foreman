@@ -133,6 +133,14 @@ func NewServer(db DashboardDB, emitter EventSubscriber, statusProvider DaemonSta
 			api.handleRetryTicket(w, r)
 		case strings.HasSuffix(path, "/reply"):
 			api.handleReplyToTicket(w, r)
+		case strings.HasSuffix(path, "/chat"):
+			if r.Method == http.MethodGet {
+				api.handleGetChat(w, r)
+			} else if r.Method == http.MethodPost {
+				api.handlePostChat(w, r)
+			} else {
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			}
 		default:
 			if r.Method == http.MethodDelete {
 				api.handleDeleteTicket(w, r)
