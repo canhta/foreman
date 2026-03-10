@@ -3,9 +3,12 @@
   import { formatRelative, formatCost, severityIcon, linkifyParts } from '../format';
   import { PR_STATUSES } from '../types';
   import TaskCard from './TaskCard.svelte';
+  import ChatInterface from './ChatInterface.svelte';
 
   const ticket = $derived(projectState.ticketDetail);
   const hasPR = $derived(ticket ? PR_STATUSES.includes(ticket.Status) : false);
+
+  let eventsExpanded = $state(false);
 
   function statusLabel(status: string): string {
     return status.replace(/_/g, ' ').toUpperCase();
@@ -54,7 +57,7 @@
 
     <!-- Two-column content -->
     <div class="flex flex-1 overflow-hidden">
-      <!-- Left: ticket info + tasks -->
+      <!-- Left: ticket info + tasks + events accordion -->
       <div class="flex-1 overflow-y-auto p-6 border-r border-[var(--color-border)]">
         <h1 class="text-sm font-bold mb-4 leading-snug">{ticket.Title}</h1>
 
@@ -87,7 +90,7 @@
         {/if}
 
         <div class="text-[10px] tracking-widest text-[var(--color-muted)] uppercase mb-3">Tasks</div>
-        <div class="space-y-2">
+        <div class="space-y-2 mb-6">
           {#each projectState.ticketTasks as task (task.ID)}
             <TaskCard {task} events={projectState.ticketEvents} llmCalls={projectState.ticketLlmCalls} />
           {/each}
@@ -95,39 +98,60 @@
             <div class="text-center text-[var(--color-muted)] text-xs py-8">No tasks yet</div>
           {/if}
         </div>
+
+        <!-- Events accordion -->
+        <div class="border border-[var(--color-border)]">
+          <button
+            class="w-full px-4 py-3 flex items-center justify-between hover:bg-[var(--color-surface-hover)] transition-colors"
+            onclick={() => eventsExpanded = !eventsExpanded}
+          >
+            <span class="text-[10px] tracking-widest text-[var(--color-muted)] uppercase">
+              Events {projectState.ticketEvents.length > 0 ? `(${projectState.ticketEvents.length})` : ''}
+            </span>
+            <span class="text-[10px] text-[var(--color-muted)]">{eventsExpanded ? '▲' : '▼'}</span>
+          </button>
+          {#if eventsExpanded}
+            <div class="divide-y divide-[var(--color-border)] border-t border-[var(--color-border)]">
+              {#each projectState.ticketEvents as evt (evt.ID)}
+                <div class="px-4 py-2.5 flex gap-2 items-start hover:bg-[var(--color-surface-hover)]">
+                  <span class="shrink-0 text-xs {severityColor(evt.Severity)} mt-0.5">
+                    {severityIcon(evt.Severity)}
+                  </span>
+                  <div class="min-w-0 flex-1">
+                    <div class="text-xs text-[var(--color-text)] leading-snug">
+                      {#each linkifyParts(evt.Message || evt.EventType) as part}
+                        {#if part.type === 'url'}
+                          <a href={part.content} target="_blank" rel="noopener"
+                             class="text-[var(--color-accent)] hover:underline break-all">{part.content}</a>
+                        {:else}
+                          {part.content}
+                        {/if}
+                      {/each}
+                    </div>
+                    <div class="text-[10px] text-[var(--color-muted)] mt-0.5">
+                      {formatRelative(evt.CreatedAt)}
+                    </div>
+                  </div>
+                </div>
+              {/each}
+              {#if projectState.ticketEvents.length === 0}
+                <div class="text-center text-[var(--color-muted)] text-xs py-8">No events</div>
+              {/if}
+            </div>
+          {/if}
+        </div>
       </div>
 
-      <!-- Right: event log -->
-      <div class="w-80 shrink-0 overflow-y-auto">
-        <div class="px-4 py-3 border-b border-[var(--color-border)]">
-          <span class="text-[10px] tracking-widest text-[var(--color-muted)] uppercase">Events</span>
+      <!-- Right: chat interface -->
+      <div class="w-80 shrink-0 flex flex-col overflow-hidden">
+        <div class="px-4 py-3 border-b border-[var(--color-border)] shrink-0">
+          <span class="text-[10px] tracking-widest text-[var(--color-muted)] uppercase">Chat</span>
         </div>
-        <div class="divide-y divide-[var(--color-border)]">
-          {#each projectState.ticketEvents as evt (evt.ID)}
-            <div class="px-4 py-2.5 flex gap-2 items-start hover:bg-[var(--color-surface-hover)]">
-              <span class="shrink-0 text-xs {severityColor(evt.Severity)} mt-0.5">
-                {severityIcon(evt.Severity)}
-              </span>
-              <div class="min-w-0 flex-1">
-                <div class="text-xs text-[var(--color-text)] leading-snug">
-                  {#each linkifyParts(evt.Message || evt.EventType) as part}
-                    {#if part.type === 'url'}
-                      <a href={part.content} target="_blank" rel="noopener"
-                         class="text-[var(--color-accent)] hover:underline break-all">{part.content}</a>
-                    {:else}
-                      {part.content}
-                    {/if}
-                  {/each}
-                </div>
-                <div class="text-[10px] text-[var(--color-muted)] mt-0.5">
-                  {formatRelative(evt.CreatedAt)}
-                </div>
-              </div>
-            </div>
-          {/each}
-          {#if projectState.ticketEvents.length === 0}
-            <div class="text-center text-[var(--color-muted)] text-xs py-8">No events</div>
-          {/if}
+        <div class="flex-1 overflow-hidden">
+          <ChatInterface
+            messages={projectState.chatMessages}
+            onSend={(content) => projectState.sendChatMessage(ticket.ID, content)}
+          />
         </div>
       </div>
     </div>
