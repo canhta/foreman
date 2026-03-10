@@ -6,6 +6,7 @@
   import ConfirmDialog from './ConfirmDialog.svelte';
   import ActivityStream from './ActivityStream.svelte';
   import CostBreakdown from './CostBreakdown.svelte';
+  import { IconX, IconRefresh, IconExternalLink } from '@tabler/icons-svelte';
 
   type Tab = 'tasks' | 'events' | 'chat' | 'cost';
   let activeTab = $state<Tab>('tasks');
@@ -89,13 +90,13 @@
                    px-2 py-1.5 border border-[var(--color-border)] hover:border-[var(--color-border-strong)]
                    transition-colors leading-none"
             title="Expand to full view"
-          >⤢</button>
+          ><IconExternalLink size={14} stroke={1.5} /></button>
           <button
             onclick={() => projectState.deselectTicket()}
             class="text-[var(--color-muted)] hover:text-[var(--color-text)]
                    px-2 py-1.5 border border-[var(--color-border)] hover:border-[var(--color-border-strong)]
                    transition-colors text-sm leading-none"
-          >✕</button>
+          ><IconX size={16} stroke={1.5} /></button>
         </div>
       </div>
 
@@ -124,8 +125,8 @@
         </span>
         {#if hasPR && ticket.PRURL && ticket.PRNumber > 0}
           <a href={ticket.PRURL} target="_blank" rel="noopener"
-             class="text-[var(--color-accent)] hover:opacity-80 transition-opacity uppercase tracking-wider">
-            PR #{ticket.PRNumber} ↗
+             class="text-[var(--color-accent)] hover:opacity-80 transition-opacity uppercase tracking-wider flex items-center gap-1">
+            PR #{ticket.PRNumber} <IconExternalLink size={12} stroke={1.5} />
           </a>
         {/if}
         {#if ticket.ChannelSenderID}
@@ -283,7 +284,7 @@
           onclick={handleRetry}
           disabled={retrying}
           class="text-[10px] px-3 py-1.5 bg-[var(--color-accent)] text-[var(--color-bg)] font-bold tracking-widest uppercase hover:opacity-90 transition-opacity disabled:opacity-50"
-        >{retrying ? '…' : '↺ Retry'}</button>
+        >{#if retrying}…{:else}<span class="flex items-center gap-1"><IconRefresh size={14} stroke={1.5} /> Retry</span>{/if}</button>
       {/if}
       <button
         onclick={() => showDeleteConfirm = true}
