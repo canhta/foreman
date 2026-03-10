@@ -208,6 +208,6 @@
   message="Re-run this task through the pipeline again?"
   confirmLabel="↺ RETRY"
   confirmClass="bg-warning text-bg hover:bg-text"
-  onconfirm={() => { projectState.retryTicket(task.ID); confirmOpen = false; }}
+  onconfirm={() => { projectState.retryTicket(task.TicketID); confirmOpen = false; }}
   oncancel={() => { confirmOpen = false; }}
 />

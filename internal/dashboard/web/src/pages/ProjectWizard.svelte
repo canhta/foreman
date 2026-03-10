@@ -2,6 +2,7 @@
   import { globalState } from '../state/global.svelte';
   import { getToken } from '../api';
   import { toasts } from '../state/toasts.svelte';
+  import { push } from 'svelte-spa-router';
 
   // Step state
   let step = $state(1);
@@ -102,7 +103,7 @@
       };
       const id = await globalState.createProject(config);
       toasts.add(`Project "${name}" created`, 'success');
-      window.location.hash = `/projects/${id}/board`;
+      push(`/projects/${id}/board`);
     } catch (e: any) {
       createError = e.message ?? 'Failed to create project';
     } finally {
@@ -390,7 +391,7 @@
         </button>
       {:else}
         <button
-          onclick={() => { window.location.hash = '/'; }}
+          onclick={() => push('/')}
           class="px-4 py-2 text-[10px] tracking-widest text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"
         >
           Cancel

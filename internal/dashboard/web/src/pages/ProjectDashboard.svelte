@@ -64,22 +64,32 @@
   <!-- 7-day cost trend -->
   <div class="border border-[var(--color-border)] p-4 mb-8">
     <div class="text-[10px] tracking-widest text-[var(--color-muted)] uppercase mb-4">7-Day Cost Trend</div>
-    <div class="flex items-end gap-1 h-32">
-      {#each projectState.weekDays as day, i}
-        <div class="flex-1 flex flex-col items-center gap-1">
-          <div class="w-full relative" style="height: {(day.cost_usd / maxDayCost) * 100}%">
-            <div class="absolute inset-0 bg-[var(--color-accent)] opacity-80
-                        animate-fade-in" style="animation-delay: {i * 60}ms"></div>
+    {#if projectState.weekDays.length === 0}
+      <div class="flex items-center justify-center h-32 text-xs text-[var(--color-muted)]">No cost data yet</div>
+    {:else}
+      <div class="flex items-end gap-1 h-36">
+        {#each projectState.weekDays as day, i}
+          {@const pct = Math.max((day.cost_usd / maxDayCost) * 100, day.cost_usd > 0 ? 4 : 1)}
+          <div class="flex-1 flex flex-col items-center gap-1 group" title="${day.cost_usd.toFixed(4)}">
+            <div class="w-full flex flex-col justify-end" style="height: 112px">
+              <div class="w-full bg-[var(--color-accent)] opacity-80 group-hover:opacity-100 transition-opacity
+                          animate-fade-in relative"
+                   style="height: {pct}%; animation-delay: {i * 60}ms; min-height: 2px">
+                {#if day.cost_usd > 0}
+                  <div class="absolute -top-4 left-0 right-0 text-center text-[9px] text-[var(--color-muted)]
+                              opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                    ${day.cost_usd.toFixed(2)}
+                  </div>
+                {/if}
+              </div>
+            </div>
+            <span class="text-[9px] text-[var(--color-muted)]">
+              {new Date(day.date + 'T12:00:00').toLocaleDateString('en', { weekday: 'short' })}
+            </span>
           </div>
-          <span class="text-[9px] text-[var(--color-muted)]">
-            {new Date(day.date).toLocaleDateString('en', { weekday: 'short' })}
-          </span>
-        </div>
-      {/each}
-      {#if projectState.weekDays.length === 0}
-        <div class="flex-1 text-center text-xs text-[var(--color-muted)] py-8">No cost data yet</div>
-      {/if}
-    </div>
+        {/each}
+      </div>
+    {/if}
   </div>
 
   <!-- Ticket throughput -->

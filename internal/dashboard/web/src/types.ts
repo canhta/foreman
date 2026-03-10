@@ -208,3 +208,23 @@ export interface ChatMessage {
   metadata?: string;
   created_at: string;
 }
+
+export interface ProjectConfig {
+  name: string;
+  description: string;
+  git_clone_url: string;
+  git_default_branch: string;
+  git_token: string;
+  git_provider: string;
+  tracker_provider: string;
+  tracker_token: string;
+  tracker_project_key: string;
+  tracker_labels: string;
+  tracker_url: string;
+  agent_runner: string;
+  model_planner: string;
+  model_implementer: string;
+  max_parallel_tickets: number;
+  max_tasks_per_ticket: number;
+  max_cost_per_ticket: number;
+}

@@ -92,6 +92,10 @@ class ProjectState {
     this.panelExpanded = true;
   }
 
+  collapsePanel() {
+    this.panelExpanded = false;
+  }
+
   deselectTicket() {
     this.selectedTicketId = null;
     this.ticketDetail = null;

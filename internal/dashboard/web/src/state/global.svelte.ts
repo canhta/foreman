@@ -69,9 +69,12 @@ class GlobalState {
     this.ws.onmessage = (ev) => {
       try {
         const event = JSON.parse(ev.data);
-        // Route to project-specific handlers or global overview refresh
         if (event.severity === 'warning' || event.severity === 'error') {
           toasts.add(event.message, event.severity, event.ticket_id);
+        }
+        if (['ticket_status_changed', 'project_status_changed', 'task_done', 'task_failed'].includes(event.event_type)) {
+          this.loadProjects();
+          this.loadOverview();
         }
       } catch {}
     };

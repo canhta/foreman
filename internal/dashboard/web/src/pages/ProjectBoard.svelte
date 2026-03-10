@@ -4,6 +4,7 @@
   import ProjectTabs from '../components/ProjectTabs.svelte';
   import TicketCard from '../components/TicketCard.svelte';
   import TicketPanel from '../components/TicketPanel.svelte';
+  import TicketFullView from '../components/TicketFullView.svelte';
   import type { TicketSummary } from '../types';
 
   let { params }: { params: { pid: string } } = $props();
@@ -35,13 +36,13 @@
   <ProjectTabs projectId={params.pid} projectName={project.name} />
 {/if}
 
-<div class={project ? 'flex h-[calc(100vh-3rem)]' : 'flex h-screen'}>
+<div class="flex relative {project ? 'h-[calc(100vh-3rem)]' : 'h-screen'}">
   <!-- Board columns -->
-  <div class="flex-1 overflow-x-auto">
+  <div class="flex-1 overflow-x-auto" class:invisible={projectState.panelExpanded}>
     <div class="flex min-w-max h-full">
       {#each columns as col}
         {@const tickets = ticketsForColumn(col.statuses)}
-        <div class="w-56 border-r border-[var(--color-border)] flex flex-col">
+        <div class="w-60 border-r border-[var(--color-border)] flex flex-col">
           <div class="px-3 py-2 border-b border-[var(--color-border)] flex items-center gap-2">
             <span class="text-[10px] tracking-widest text-[var(--color-muted)] uppercase">{col.label}</span>
             {#if tickets.length > 0}
@@ -56,6 +57,9 @@
                 <TicketCard {ticket} onclick={() => projectState.loadTicketDetail(ticket.ID)} />
               </div>
             {/each}
+            {#if tickets.length === 0}
+              <div class="text-center text-[var(--color-muted)] text-[10px] py-4">—</div>
+            {/if}
           </div>
         </div>
       {/each}
@@ -64,14 +68,13 @@
 
   <!-- Side panel -->
   {#if projectState.selectedTicketId && !projectState.panelExpanded}
-    <div class="w-[40%] min-w-96 border-l border-[var(--color-border)] overflow-y-auto
-                animate-[slide-in-right_0.2s_ease-out]">
+    <div class="w-[38%] min-w-96 border-l border-[var(--color-border)] overflow-y-auto shrink-0">
       <TicketPanel />
     </div>
   {/if}
-</div>
 
-{#if projectState.panelExpanded && projectState.selectedTicketId}
-  <!-- Full page ticket view overlays the board -->
-  <!-- Implemented in Phase 3 with chat interface -->
-{/if}
+  <!-- Full-page overlay -->
+  {#if projectState.panelExpanded && projectState.selectedTicketId}
+    <TicketFullView />
+  {/if}
+</div>
