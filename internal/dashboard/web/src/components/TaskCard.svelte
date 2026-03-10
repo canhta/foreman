@@ -1,7 +1,11 @@
 <script lang="ts">
   import type { Task, EventRecord, LlmCallRecord } from '../types';
   import { projectState } from '../state/project.svelte';
-  import { taskIcon, formatCost, formatRelative, runnerBadgeCls, shortModel } from '../format';
+  import { formatCost, formatRelative, runnerBadgeCls, shortModel } from '../format';
+  import {
+    IconCheck, IconX, IconSettings2, IconCircleOff, IconCircle,
+    IconRefresh, IconPlayerPlay, IconChevronUp, IconChevronDown
+  } from '@tabler/icons-svelte';
   import ConfirmDialog from './ConfirmDialog.svelte';
 
   let { task, events = [], llmCalls = [] }: { task: Task; events?: EventRecord[]; llmCalls?: LlmCallRecord[] } = $props();
@@ -74,13 +78,17 @@
     aria-expanded={expanded}
   >
     <!-- Icon -->
-    <span class="text-xs shrink-0 w-4 text-center leading-none"
+    <span class="shrink-0 w-4 flex items-center justify-center"
           class:text-[var(--color-accent)]={isActive}
           class:animate-pulse={isActive}
           class:text-[var(--color-success)]={isDone}
           class:text-[var(--color-danger)]={isFailed}
           class:text-[var(--color-muted-bright)]={!isActive && !isDone && !isFailed}>
-      {taskIcon(task.Status)}
+      {#if isDone}<IconCheck size={14} stroke={1.5} />
+      {:else if isFailed}<IconX size={14} stroke={1.5} />
+      {:else if isActive}<IconSettings2 size={14} stroke={1.5} />
+      {:else if task.Status === 'skipped'}<IconCircleOff size={14} stroke={1.5} />
+      {:else}<IconCircle size={14} stroke={1.5} />{/if}
     </span>
 
     <!-- Title -->
@@ -103,17 +111,19 @@
                border border-[var(--color-danger)]/40 px-1.5 py-0.5
                hover:bg-[var(--color-danger-bg)] transition-colors shrink-0 leading-none"
         onclick={handleRetry}
-      >↺</button>
+      ><IconRefresh size={14} stroke={1.5} /></button>
     {/if}
 
     <!-- Expand chevron -->
-    <span class="text-[var(--color-muted)] text-[10px] shrink-0 leading-none">{expanded ? '▲' : '▼'}</span>
+    <span class="text-[var(--color-muted)] shrink-0 flex items-center">
+      {#if expanded}<IconChevronUp size={14} stroke={1.5} />{:else}<IconChevronDown size={14} stroke={1.5} />{/if}
+    </span>
   </div>
 
   <!-- Live activity banner (shown even when collapsed if active) -->
   {#if isActive && liveProgress}
     <div class="px-3 py-2 border-t border-[var(--color-border)] bg-[var(--color-accent-bg)] flex items-center gap-3 flex-wrap">
-      <span class="text-[var(--color-accent)] text-xs animate-pulse leading-none">►</span>
+      <span class="text-[var(--color-accent)] animate-pulse flex items-center"><IconPlayerPlay size={14} stroke={1.5} /></span>
       <span class="text-xs font-bold text-[var(--color-accent)]">
         Turn {liveProgress.turn}/{liveProgress.maxTurns}
       </span>
@@ -185,10 +195,10 @@
           <div class="space-y-1">
             {#each task.AcceptanceCriteria as criterion}
               <div class="flex items-start gap-2">
-                <span class="shrink-0 text-[10px] leading-none mt-0.5"
+                <span class="shrink-0 flex items-center mt-0.5"
                       class:text-[var(--color-success)]={isDone}
                       class:text-[var(--color-muted)]={!isDone}>
-                  {isDone ? '✓' : '○'}
+                  {#if isDone}<IconCheck size={12} stroke={1.5} />{:else}<IconCircle size={12} stroke={1.5} />{/if}
                 </span>
                 <span class="text-[10px] text-[var(--color-muted-bright)] leading-snug">{criterion}</span>
               </div>
@@ -219,7 +229,7 @@
   open={confirmOpen}
   title="Retry Ticket"
   message="Re-run the entire ticket through the pipeline again? (All tasks will be retried.)"
-  confirmLabel="↺ Retry"
+  confirmLabel="Retry"
   confirmClass="bg-warning text-bg hover:opacity-90"
   onconfirm={() => { projectState.retryTicket(task.TicketID); confirmOpen = false; }}
   oncancel={() => { confirmOpen = false; }}
