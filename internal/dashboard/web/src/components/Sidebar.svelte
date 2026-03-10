@@ -82,10 +82,10 @@
         {#if isActive(`/projects/${project.id}`)}
           <div class="absolute left-0 top-1 bottom-1 w-0.5 bg-[var(--color-accent)]"></div>
         {/if}
-        <span class={statusColor(project.status)}>{statusIndicator(project.status)}</span>
+        <span class={statusColor(project.status ?? 'stopped')}>{statusIndicator(project.status ?? 'stopped')}</span>
         {#if !collapsed}
           <span class="truncate">{project.name}</span>
-          {#if project.needsInput > 0}
+          {#if (project.needsInput ?? 0) > 0}
             <span class="ml-auto text-[10px] bg-[var(--color-warning-bg)] text-[var(--color-warning)] px-1.5">
               {project.needsInput}
             </span>
