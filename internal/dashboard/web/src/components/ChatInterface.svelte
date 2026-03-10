@@ -39,13 +39,21 @@
     return '';
   }
 
+  function messageTypeChipClass(type: ChatMessage['message_type']): string {
+    if (type === 'clarification' || type === 'action_request') return 'status-chip status-chip-warn';
+    if (type === 'error') return 'status-chip status-chip-failed';
+    return '';
+  }
+
   function messageContainerClass(msg: ChatMessage): string {
-    if (msg.sender === 'user') return 'bg-[var(--color-accent-bg)]';
+    if (msg.sender === 'user') {
+      return 'border-l-[3px] border-l-[var(--color-success)] bg-[var(--color-accent-bg)]';
+    }
     if (msg.message_type === 'clarification' || msg.message_type === 'action_request') {
-      return 'border-l-2 border-l-[var(--color-warning)] bg-[var(--color-warning-bg,rgba(255,184,0,0.05))]';
+      return 'border-l-[3px] border-l-[var(--color-warning)] bg-[var(--color-warning-bg,rgba(255,184,0,0.05))]';
     }
     if (msg.message_type === 'error') {
-      return 'border-l-2 border-l-[var(--color-danger)] bg-[var(--color-danger-bg,rgba(255,50,50,0.05))]';
+      return 'border-l-[3px] border-l-[var(--color-danger)] bg-[var(--color-danger-bg,rgba(255,50,50,0.05))]';
     }
     return '';
   }
@@ -102,27 +110,19 @@
     aria-label="Chat messages"
   >
     {#if messages.length === 0}
-      <div class="px-4 py-8 text-center">
-        <div class="text-[var(--color-muted)] text-xs">
-          No messages yet. Agent communication will appear here.
-        </div>
+      <div class="border border-dashed border-[var(--color-border)] py-8 px-4 text-center text-[var(--color-muted)] text-xs m-4">
+        No messages yet. Agent communication will appear here.
       </div>
     {:else}
       {#each messages as msg (msg.id)}
         <div class="px-4 py-3 {messageContainerClass(msg)}">
           <!-- Header row: sender + type indicator + timestamp -->
           <div class="flex items-center gap-2 mb-1 flex-wrap">
-            <span class="text-[10px] font-bold tracking-wider uppercase {senderColor(msg.sender)}">
+            <span class="text-xs font-bold tracking-wider uppercase {senderColor(msg.sender)}">
               {senderLabel(msg.sender)}
             </span>
             {#if messageTypeLabel(msg.message_type)}
-              <span
-                class="text-[10px] font-bold tracking-wider px-1.5 py-0.5"
-                class:text-[var(--color-warning)]={msg.message_type === 'clarification' || msg.message_type === 'action_request'}
-                class:bg-[var(--color-warning-bg)]={msg.message_type === 'clarification' || msg.message_type === 'action_request'}
-                class:text-[var(--color-danger)]={msg.message_type === 'error'}
-                class:bg-[var(--color-danger-bg)]={msg.message_type === 'error'}
-              >
+              <span class={messageTypeChipClass(msg.message_type)}>
                 {messageTypeLabel(msg.message_type)}
               </span>
             {/if}
@@ -132,7 +132,7 @@
           </div>
 
           <!-- Message content -->
-          <div class="text-xs text-[var(--color-text)] whitespace-pre-wrap leading-relaxed">
+          <div class="text-xs text-[var(--color-text)] whitespace-pre-wrap leading-relaxed mt-1.5">
             {msg.content}
           </div>
 
@@ -145,7 +145,7 @@
                   <button
                     onclick={() => onSend(option)}
                     {disabled}
-                    class="px-3 py-1 text-[10px] font-bold tracking-wider border border-[var(--color-warning)]
+                    class="px-3 py-1 text-xs font-bold tracking-wider border border-[var(--color-warning)]
                            text-[var(--color-warning)] hover:bg-[var(--color-warning)] hover:text-[var(--color-bg)]
                            transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   >
@@ -175,12 +175,12 @@
                text-[var(--color-text)] placeholder:text-[var(--color-muted)] focus:border-[var(--color-accent)]
                focus:outline-none resize-none overflow-y-auto disabled:opacity-40 disabled:cursor-not-allowed
                leading-relaxed"
-        style="min-height: 2rem;"
+        style="min-height: 2.5rem;"
       ></textarea>
       <button
         onclick={handleSend}
         disabled={disabled || !inputValue.trim()}
-        class="px-4 py-2 bg-[var(--color-accent)] text-[var(--color-bg)] text-[10px] font-bold
+        class="px-4 h-9 bg-[var(--color-accent)] text-[var(--color-bg)] text-[10px] font-bold
                tracking-widest hover:opacity-90 transition-opacity disabled:opacity-40
                disabled:cursor-not-allowed shrink-0"
       >

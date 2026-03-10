@@ -19,18 +19,20 @@
 </script>
 
 <div class="border-b border-[var(--color-border)] px-6 flex items-center gap-0">
-  <span class="text-xs font-bold tracking-[0.2em] text-[var(--color-text)] py-3 pr-6 border-r border-[var(--color-border)] mr-4">{projectName.toUpperCase()}</span>
+  <span class="text-xs font-bold tracking-[0.2em] text-[var(--color-text)] py-3.5 pr-6 border-r border-[var(--color-border)] mr-4">{projectName.toUpperCase()}</span>
   <div class="flex gap-1">
     {#each tabs as tab}
       <a
         href="/projects/{projectId}/{tab.path}"
         use:link
-        class="px-3 py-3 text-[10px] tracking-widest uppercase border-b-2 transition-colors"
+        class="px-4 py-3.5 text-xs tracking-widest uppercase border-b-2 transition-colors"
         class:border-[var(--color-accent)]={isActive(tab.path)}
         class:text-[var(--color-accent)]={isActive(tab.path)}
+        class:font-bold={isActive(tab.path)}
         class:border-transparent={!isActive(tab.path)}
         class:text-[var(--color-muted)]={!isActive(tab.path)}
         class:hover:text-[var(--color-text)]={!isActive(tab.path)}
+        class:hover:bg-[var(--color-surface-hover)]={!isActive(tab.path)}
       >
         {tab.label}
       </a>

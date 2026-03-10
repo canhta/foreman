@@ -18,17 +18,30 @@
   });
 
   const columns = [
-    { label: 'Queued', statuses: ['queued', 'clarification_needed', 'decomposed'] },
-    { label: 'Planning', statuses: ['planning', 'plan_validating', 'decomposing'] },
-    { label: 'In Progress', statuses: ['implementing'] },
-    { label: 'In Review', statuses: ['reviewing'] },
-    { label: 'Awaiting Merge', statuses: ['pr_created', 'pr_updated', 'awaiting_merge'] },
-    { label: 'Done', statuses: ['done', 'merged'] },
-    { label: 'Failed', statuses: ['failed', 'blocked', 'partial'] },
+    { label: 'Queued',         statuses: ['queued', 'clarification_needed', 'decomposed'], accent: 'border-t-[var(--color-border-strong)]' },
+    { label: 'Planning',       statuses: ['planning', 'plan_validating', 'decomposing'],   accent: 'border-t-[var(--color-accent-dim)]' },
+    { label: 'In Progress',    statuses: ['implementing'],                                  accent: 'border-t-[var(--color-accent)]' },
+    { label: 'In Review',      statuses: ['reviewing'],                                     accent: 'border-t-[var(--color-info)]' },
+    { label: 'Awaiting Merge', statuses: ['pr_created', 'pr_updated', 'awaiting_merge'],   accent: 'border-t-[var(--color-warning)]' },
+    { label: 'Done',           statuses: ['done', 'merged'],                                accent: 'border-t-[var(--color-success)]' },
+    { label: 'Failed',         statuses: ['failed', 'blocked', 'partial'],                  accent: 'border-t-[var(--color-danger)]' },
   ] as const;
 
   function ticketsForColumn(statuses: readonly string[]): TicketSummary[] {
     return projectState.tickets.filter(t => statuses.includes(t.Status));
+  }
+
+  // Dot color per column accent
+  function columnDotColor(label: string): string {
+    switch (label) {
+      case 'In Progress':    return 'text-[var(--color-accent)]';
+      case 'In Review':      return 'text-[var(--color-info)]';
+      case 'Awaiting Merge': return 'text-[var(--color-warning)]';
+      case 'Done':           return 'text-[var(--color-success)]';
+      case 'Failed':         return 'text-[var(--color-danger)]';
+      case 'Planning':       return 'text-[var(--color-accent-dim)]';
+      default:               return 'text-[var(--color-muted)]';
+    }
   }
 </script>
 
@@ -42,23 +55,38 @@
     <div class="flex min-w-max h-full">
       {#each columns as col}
         {@const tickets = ticketsForColumn(col.statuses)}
-        <div class="w-60 border-r border-[var(--color-border)] flex flex-col">
-          <div class="px-3 py-2 border-b border-[var(--color-border)] flex items-center gap-2">
-            <span class="text-[10px] tracking-widest text-[var(--color-muted)] uppercase">{col.label}</span>
-            {#if tickets.length > 0}
-              <span class="text-[10px] text-[var(--color-bg)] bg-[var(--color-muted)] px-1.5 min-w-[1.25rem] text-center">
+        {@const hasTickets = tickets.length > 0}
+        <div class="w-[252px] border-r border-[var(--color-border)] flex flex-col">
+          <!-- Column header -->
+          <div class="px-3 py-3 border-b border-[var(--color-border)] border-t-2 {col.accent}
+                      flex items-center justify-between shrink-0">
+            <div class="flex items-center gap-2">
+              <span class="text-[10px] font-bold tracking-[0.15em] uppercase
+                           {hasTickets ? columnDotColor(col.label) : 'text-[var(--color-muted)]'}">
+                {col.label}
+              </span>
+            </div>
+            {#if hasTickets}
+              <span class="text-[10px] font-bold text-[var(--color-bg)] bg-[var(--color-muted-bright)]
+                           px-1.5 py-0.5 min-w-[1.4rem] text-center leading-none tabular-nums">
                 {tickets.length}
               </span>
             {/if}
           </div>
+
+          <!-- Cards -->
           <div class="flex-1 overflow-y-auto p-2 space-y-2 board-column">
             {#each tickets as ticket, i (ticket.ID)}
-              <div style="animation-delay: {i * 30}ms" class="animate-fade-in opacity-0 [animation-fill-mode:forwards]">
+              <div style="animation-delay: {i * 25}ms"
+                   class="animate-[fade-in_0.18s_ease-out] opacity-0 [animation-fill-mode:forwards]">
                 <TicketCard {ticket} onclick={() => projectState.loadTicketDetail(ticket.ID)} />
               </div>
             {/each}
-            {#if tickets.length === 0}
-              <div class="text-center text-[var(--color-muted)] text-[10px] py-4">—</div>
+
+            {#if !hasTickets}
+              <div class="text-center py-8 px-3">
+                <div class="text-[10px] text-[var(--color-muted)] tracking-wider">—</div>
+              </div>
             {/if}
           </div>
         </div>

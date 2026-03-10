@@ -45,17 +45,17 @@
   }
 
   function severityLeft(severity: string): string {
-    if (severity === 'error') return 'border-l-4 border-l-danger bg-danger-bg';
-    if (severity === 'success') return 'border-l-4 border-l-success';
-    if (severity === 'warning') return 'border-l-4 border-l-warning bg-warning-bg';
-    return 'border-l-4 border-l-border';
+    if (severity === 'error') return 'border-l-4 border-l-[var(--color-danger)] bg-[var(--color-danger-bg)]';
+    if (severity === 'success') return 'border-l-4 border-l-[var(--color-success)]';
+    if (severity === 'warning') return 'border-l-4 border-l-[var(--color-warning)] bg-[var(--color-warning-bg)]';
+    return 'border-l-4 border-l-[var(--color-border)]';
   }
 
   function severityTextCls(severity: string): string {
-    if (severity === 'error') return 'text-danger';
-    if (severity === 'success') return 'text-success';
-    if (severity === 'warning') return 'text-warning';
-    return 'text-muted-bright';
+    if (severity === 'error') return 'text-[var(--color-danger)]';
+    if (severity === 'success') return 'text-[var(--color-success)]';
+    if (severity === 'warning') return 'text-[var(--color-warning)]';
+    return 'text-[var(--color-muted-bright)]';
   }
 </script>
 
@@ -67,7 +67,7 @@
   aria-label="Activity stream"
 >
   {#each events as evt (evt.ID)}
-    <div class="px-3 py-2.5 border-b border-border {severityLeft(evt.Severity)} {evt.isNew ? 'animate-fade-in' : ''}">
+    <div class="px-3 py-3 border-b border-[var(--color-border)] {severityLeft(evt.Severity)} {evt.isNew ? 'animate-fade-in' : ''}">
       <div class="flex items-start gap-2">
         <!-- Icon -->
         <span class="text-xs shrink-0 mt-0.5 w-3 text-center {severityTextCls(evt.Severity)}">
@@ -77,22 +77,22 @@
         <div class="flex-1 min-w-0">
           <!-- Header row -->
           <div class="flex items-center gap-2">
-            <span class="text-xs font-bold text-text tracking-wide">{eventLabel(evt)}</span>
-            <span class="text-[10px] text-muted ml-auto shrink-0">{formatRelative(evt.CreatedAt)}</span>
+            <span class="text-xs font-bold text-[var(--color-text)] tracking-wide">{eventLabel(evt)}</span>
+            <span class="text-[10px] text-[var(--color-muted)] ml-auto shrink-0">{formatRelative(evt.CreatedAt)}</span>
           </div>
 
           <!-- Task reference -->
           {#if evt.TaskID && taskTitle(evt.TaskID)}
-            <div class="text-[10px] text-muted-bright mt-0.5">{taskTitle(evt.TaskID)}</div>
+            <div class="text-[10px] text-[var(--color-muted-bright)] mt-0.5">{taskTitle(evt.TaskID)}</div>
           {/if}
 
           <!-- Message -->
           {#if evt.Message}
-            <div class="text-[10px] text-text/70 mt-0.5 break-words">
+            <div class="text-[10px] text-[var(--color-text)]/70 mt-0.5 break-words">
               {#each linkifyParts(evt.Message) as part}
                 {#if part.type === 'url'}
                   <a href={part.content} target="_blank" rel="noopener noreferrer"
-                    class="text-accent hover:underline break-all">{part.content}</a>
+                    class="text-[var(--color-accent)] hover:underline break-all">{part.content}</a>
                 {:else}
                   {part.content}
                 {/if}
@@ -105,10 +105,10 @@
             {@const details = expandDetails(evt.Details)}
             {#if details}
               <details class="mt-1">
-                <summary class="text-[10px] text-muted cursor-pointer hover:text-accent transition-colors select-none">
+                <summary class="text-[10px] text-[var(--color-muted)] cursor-pointer hover:text-[var(--color-accent)] transition-colors select-none">
                   raw detail ▸
                 </summary>
-                <pre class="text-[10px] text-muted mt-1 overflow-x-auto bg-bg p-2 border border-border">{JSON.stringify(details, null, 2)}</pre>
+                <pre class="font-mono text-[10px] text-[var(--color-muted)] mt-1 overflow-x-auto bg-[var(--color-bg)] p-2 border border-[var(--color-border)] whitespace-pre-wrap break-all">{JSON.stringify(details, null, 2)}</pre>
               </details>
             {/if}
           {/if}
@@ -118,8 +118,8 @@
   {/each}
 
   {#if events.length === 0}
-    <div class="px-3 py-8 text-center">
-      <div class="text-muted text-xs tracking-wider">NO ACTIVITY YET</div>
+    <div class="border border-dashed border-[var(--color-border)] mx-3 my-6 py-8 text-center text-[var(--color-muted)] text-xs tracking-[0.15em] uppercase">
+      No activity yet
     </div>
   {/if}
 </div>

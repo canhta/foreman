@@ -93,14 +93,32 @@ func (a *API) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	ch := a.emitter.Subscribe()
 	defer a.emitter.Unsubscribe(ch)
 
-	for evt := range ch {
-		enriched := a.enrichEvent(r.Context(), evt)
-		data, err := json.Marshal(enriched)
-		if err != nil {
-			continue
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				return
+			}
 		}
-		if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
-			break
+	}()
+
+	for {
+		select {
+		case <-done:
+			return
+		case evt, ok := <-ch:
+			if !ok {
+				return
+			}
+			enriched := a.enrichEvent(r.Context(), evt)
+			data, err := json.Marshal(enriched)
+			if err != nil {
+				continue
+			}
+			if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
+				return
+			}
 		}
 	}
 }
@@ -178,14 +196,32 @@ func (a *API) handleGlobalWebSocket(w http.ResponseWriter, r *http.Request) {
 	ch := emitter.Subscribe()
 	defer emitter.Unsubscribe(ch)
 
-	for evt := range ch {
-		enriched := a.enrichEvent(r.Context(), evt)
-		data, err := json.Marshal(enriched)
-		if err != nil {
-			continue
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				return
+			}
 		}
-		if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
-			break
+	}()
+
+	for {
+		select {
+		case <-done:
+			return
+		case evt, ok := <-ch:
+			if !ok {
+				return
+			}
+			enriched := a.enrichEvent(r.Context(), evt)
+			data, err := json.Marshal(enriched)
+			if err != nil {
+				continue
+			}
+			if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
+				return
+			}
 		}
 	}
 }
@@ -246,18 +282,36 @@ func (a *API) handleProjectWebSocket(w http.ResponseWriter, r *http.Request) {
 	ch := globalEmitter.Subscribe()
 	defer globalEmitter.Unsubscribe(ch)
 
-	for evt := range ch {
-		// Filter to only events for this project.
-		if evt.ProjectID != "" && evt.ProjectID != pid {
-			continue
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			if _, _, err := conn.ReadMessage(); err != nil {
+				return
+			}
 		}
-		enriched := a.enrichEvent(r.Context(), evt)
-		data, err := json.Marshal(enriched)
-		if err != nil {
-			continue
-		}
-		if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
-			break
+	}()
+
+	for {
+		select {
+		case <-done:
+			return
+		case evt, ok := <-ch:
+			if !ok {
+				return
+			}
+			// Filter to only events for this project.
+			if evt.ProjectID != "" && evt.ProjectID != pid {
+				continue
+			}
+			enriched := a.enrichEvent(r.Context(), evt)
+			data, err := json.Marshal(enriched)
+			if err != nil {
+				continue
+			}
+			if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
+				return
+			}
 		}
 	}
 }

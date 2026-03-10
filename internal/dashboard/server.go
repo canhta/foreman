@@ -271,7 +271,6 @@ func NewServer(db DashboardDB, emitter EventSubscriber, statusProvider DaemonSta
 			}
 		// GET /api/projects/{pid}/cost/daily/{date} (singular, legacy)
 		case len(parts) >= 2 && parts[1] == "cost":
-		case len(parts) >= 2 && parts[1] == "cost":
 			costRest := ""
 			if len(parts) == 3 {
 				costRest = parts[2]

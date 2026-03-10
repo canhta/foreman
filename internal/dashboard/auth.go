@@ -36,7 +36,11 @@ func authMiddleware(db AuthValidator) func(http.Handler) http.Handler {
 			}
 			hash := hashToken(token)
 			valid, err := db.ValidateAuthToken(r.Context(), hash)
-			if err != nil || !valid {
+			if err != nil {
+				http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
+				return
+			}
+			if !valid {
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
 			}

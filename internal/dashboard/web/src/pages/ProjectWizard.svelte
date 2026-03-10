@@ -119,13 +119,17 @@
   <h1 class="text-sm font-bold tracking-[0.3em] text-[var(--color-accent)] mb-6">NEW PROJECT</h1>
 
   <!-- Step indicator -->
-  <div class="flex items-center gap-0 mb-8">
+  <div class="flex items-center gap-0 mb-4">
     {#each stepLabels as label, i}
       {@const n = i + 1}
       <div class="flex items-center">
         <div class="flex items-center gap-2">
           <div
-            class="w-6 h-6 flex items-center justify-center text-[10px] font-bold border transition-colors"
+            class="flex items-center justify-center text-[10px] font-bold border transition-colors"
+            class:w-7={step === n}
+            class:h-7={step === n}
+            class:w-6={step !== n}
+            class:h-6={step !== n}
             class:bg-[var(--color-accent)]={step === n}
             class:text-[var(--color-bg)]={step === n}
             class:border-[var(--color-accent)]={step === n}
@@ -137,15 +141,28 @@
           </div>
           <span class="text-[10px] tracking-wider hidden sm:inline"
                 class:text-[var(--color-accent)]={step === n}
+                class:font-bold={step === n}
                 class:text-[var(--color-muted)]={step !== n}>
             {label}
           </span>
         </div>
         {#if i < stepLabels.length - 1}
-          <div class="w-6 h-px mx-2 bg-[var(--color-border)]"></div>
+          <div
+            class="w-8 h-px mx-2"
+            class:bg-[var(--color-success)]={step > n + 1}
+            class:bg-[var(--color-border)]={step <= n + 1}
+          ></div>
         {/if}
       </div>
     {/each}
+  </div>
+
+  <!-- Step progress bar -->
+  <div class="flex items-center gap-3 mb-6">
+    <div class="progress-track flex-1">
+      <div class="progress-fill" style="width: {(step / totalSteps) * 100}%"></div>
+    </div>
+    <span class="text-[10px] text-[var(--color-muted)] tracking-widest shrink-0">STEP {step} OF {totalSteps}</span>
   </div>
 
   <!-- Step content -->
@@ -212,7 +229,7 @@
             class="mt-1 w-full bg-[var(--color-surface)] border border-[var(--color-border)] px-3 py-2 text-xs text-[var(--color-text)] focus:border-[var(--color-accent)] focus:outline-none"
           />
         </label>
-        <div class="flex items-center gap-3">
+        <div class="flex flex-wrap items-center gap-3">
           <button
             onclick={testGitConnection}
             disabled={testingGit || !gitCloneUrl.trim()}
@@ -221,7 +238,7 @@
             {testingGit ? 'TESTING...' : 'TEST CONNECTION'}
           </button>
           {#if gitTestResult}
-            <span class="text-[10px]" class:text-[var(--color-success)]={gitTestResult.ok} class:text-[var(--color-danger)]={!gitTestResult.ok}>
+            <span class="status-chip" class:status-chip-done={gitTestResult.ok} class:status-chip-failed={!gitTestResult.ok}>
               {gitTestResult.message}
             </span>
           {/if}
@@ -287,7 +304,7 @@
               class="mt-1 w-full bg-[var(--color-surface)] border border-[var(--color-border)] px-3 py-2 text-xs text-[var(--color-text)] focus:border-[var(--color-accent)] focus:outline-none"
             />
           </label>
-          <div class="flex items-center gap-3">
+          <div class="flex flex-wrap items-center gap-3">
             <button
               onclick={testTrackerConnection}
               disabled={testingTracker || !trackerProjectKey.trim()}
@@ -296,7 +313,7 @@
               {testingTracker ? 'TESTING...' : 'TEST CONNECTION'}
             </button>
             {#if trackerTestResult}
-              <span class="text-[10px]" class:text-[var(--color-success)]={trackerTestResult.ok} class:text-[var(--color-danger)]={!trackerTestResult.ok}>
+              <span class="status-chip" class:status-chip-done={trackerTestResult.ok} class:status-chip-failed={!trackerTestResult.ok}>
                 {trackerTestResult.message}
               </span>
             {/if}
@@ -341,42 +358,47 @@
       <h2 class="text-xs font-bold tracking-widest text-[var(--color-text)] mb-4 uppercase">Review & Create</h2>
       <div class="space-y-3 text-xs">
         <div class="border border-[var(--color-border)] divide-y divide-[var(--color-border)]">
+          <!-- Header row -->
+          <div class="px-3 py-2 flex justify-between bg-[var(--color-surface-active)]">
+            <span class="text-[10px] uppercase tracking-widest text-[var(--color-muted)]">FIELD</span>
+            <span class="text-[10px] uppercase tracking-widest text-[var(--color-muted)]">VALUE</span>
+          </div>
           <div class="px-3 py-2 flex justify-between">
-            <span class="text-[var(--color-muted)]">Name</span>
-            <span class="font-mono">{name}</span>
+            <span class="text-[10px] uppercase tracking-widest text-[var(--color-muted)]">Name</span>
+            <span class="text-xs font-mono text-[var(--color-text)]">{name}</span>
           </div>
           {#if description}
             <div class="px-3 py-2 flex justify-between">
-              <span class="text-[var(--color-muted)]">Description</span>
-              <span class="font-mono truncate max-w-[60%] text-right">{description}</span>
+              <span class="text-[10px] uppercase tracking-widest text-[var(--color-muted)]">Description</span>
+              <span class="text-xs font-mono text-[var(--color-text)] truncate max-w-[60%] text-right">{description}</span>
             </div>
           {/if}
           <div class="px-3 py-2 flex justify-between">
-            <span class="text-[var(--color-muted)]">Repository</span>
-            <span class="font-mono truncate max-w-[60%] text-right">{gitCloneUrl}</span>
+            <span class="text-[10px] uppercase tracking-widest text-[var(--color-muted)]">Repository</span>
+            <span class="text-xs font-mono text-[var(--color-text)] truncate max-w-[60%] text-right">{gitCloneUrl}</span>
           </div>
           <div class="px-3 py-2 flex justify-between">
-            <span class="text-[var(--color-muted)]">Branch</span>
-            <span class="font-mono">{gitBranch || 'main'}</span>
+            <span class="text-[10px] uppercase tracking-widest text-[var(--color-muted)]">Branch</span>
+            <span class="text-xs font-mono text-[var(--color-text)]">{gitBranch || 'main'}</span>
           </div>
           <div class="px-3 py-2 flex justify-between">
-            <span class="text-[var(--color-muted)]">Tracker</span>
-            <span class="font-mono">{trackerProvider}{trackerProjectKey ? ` / ${trackerProjectKey}` : ''}</span>
+            <span class="text-[10px] uppercase tracking-widest text-[var(--color-muted)]">Tracker</span>
+            <span class="text-xs font-mono text-[var(--color-text)]">{trackerProvider}{trackerProjectKey ? ` / ${trackerProjectKey}` : ''}</span>
           </div>
           <div class="px-3 py-2 flex justify-between">
-            <span class="text-[var(--color-muted)]">Agent Runner</span>
-            <span class="font-mono">{agentRunner}</span>
+            <span class="text-[10px] uppercase tracking-widest text-[var(--color-muted)]">Agent Runner</span>
+            <span class="text-xs font-mono text-[var(--color-text)]">{agentRunner}</span>
           </div>
           {#if modelPlanner}
             <div class="px-3 py-2 flex justify-between">
-              <span class="text-[var(--color-muted)]">Planner Model</span>
-              <span class="font-mono">{modelPlanner}</span>
+              <span class="text-[10px] uppercase tracking-widest text-[var(--color-muted)]">Planner Model</span>
+              <span class="text-xs font-mono text-[var(--color-text)]">{modelPlanner}</span>
             </div>
           {/if}
           {#if modelImplementer}
             <div class="px-3 py-2 flex justify-between">
-              <span class="text-[var(--color-muted)]">Implementer Model</span>
-              <span class="font-mono">{modelImplementer}</span>
+              <span class="text-[10px] uppercase tracking-widest text-[var(--color-muted)]">Implementer Model</span>
+              <span class="text-xs font-mono text-[var(--color-text)]">{modelImplementer}</span>
             </div>
           {/if}
         </div>

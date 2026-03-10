@@ -41,10 +41,10 @@
       byRank.get(r)!.push(t);
     });
 
-    const nodeWidth = 160;
-    const nodeHeight = 38;
-    const gapX = 56;
-    const gapY = 18;
+    const nodeWidth = 172;
+    const nodeHeight = 44;
+    const gapX = 60;
+    const gapY = 20;
 
     const result: DagNode[] = [];
     for (const [rank, rankTasks] of byRank) {
@@ -63,19 +63,19 @@
   let nodeMap = $derived(new Map(nodes.map(n => [n.task.ID, n])));
   let maxRank = $derived(Math.max(0, ...nodes.map(n => n.rank)));
 
-  let svgWidth = $derived((maxRank + 1) * 216 + 32);
+  let svgWidth = $derived((maxRank + 1) * (172 + 60) + 32);
   let svgHeight = $derived(Math.max(90, ...nodes.map(n => n.y + 56)));
 
   function statusStroke(status: string): string {
     if (status === 'done') return '#00E868';
-    if (status === 'failed') return '#FF3B3B';
+    if (status === 'failed') return '#FF4040';
     if (['implementing', 'tdd_verifying', 'testing', 'spec_review', 'quality_review'].includes(status)) return '#FFE600';
     return '#3c3c3c';
   }
 
   function statusTextColor(status: string): string {
     if (status === 'done') return '#00E868';
-    if (status === 'failed') return '#FF3B3B';
+    if (status === 'failed') return '#FF4040';
     if (['implementing', 'tdd_verifying', 'testing', 'spec_review', 'quality_review'].includes(status)) return '#FFE600';
     return '#9a9a9a';
   }
@@ -93,20 +93,21 @@
 </script>
 
 {#if hasDeps}
-  <div class="overflow-x-auto border-2 border-border bg-bg">
+  <div class="overflow-x-auto border border-[var(--color-border)] bg-[var(--color-bg)]">
+    <div class="px-3 py-2 border-b border-[var(--color-border)] text-[10px] tracking-[0.15em] text-[var(--color-muted)] uppercase">Task Dependencies</div>
     <svg width={svgWidth} height={svgHeight} class="block">
       <defs>
         <marker id="arrow" viewBox="0 0 8 6" refX="8" refY="3" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-          <path d="M 0 0 L 8 3 L 0 6 z" fill="#585858" />
+          <path d="M 0 0 L 8 3 L 0 6 z" fill="#666666" />
         </marker>
       </defs>
 
       <!-- Edges -->
       {#each edges as edge}
         <line
-          x1={edge.from.x + 160} y1={edge.from.y + 19}
-          x2={edge.to.x} y2={edge.to.y + 19}
-          stroke="#3c3c3c" stroke-width="1.5" marker-end="url(#arrow)"
+          x1={edge.from.x + 172} y1={edge.from.y + 22}
+          x2={edge.to.x} y2={edge.to.y + 22}
+          stroke="#444444" stroke-width="1.5" marker-end="url(#arrow)"
         />
       {/each}
 
@@ -117,19 +118,19 @@
         <g transform="translate({node.x},{node.y})">
           <!-- Node box — square corners (brutalist) -->
           <rect
-            width="160" height="38"
-            fill="#121212"
+            width="172" height="44"
+            fill="#111111"
             stroke={stroke}
-            stroke-width="2"
+            stroke-width="1.5"
           />
           <!-- Left accent bar -->
-          <rect width="3" height="38" fill={stroke} />
+          <rect width="3" height="44" fill={stroke} />
           <!-- Task label -->
-          <text x="12" y="15" fill="#F0F0F0" font-size="10" font-family="monospace" font-weight="600">
+          <text x="12" y="17" fill="#F0F0F0" font-size="11" font-family="monospace" font-weight="600">
             {node.task.Sequence}. {node.task.Title.slice(0, 16)}{node.task.Title.length > 16 ? '…' : ''}
           </text>
           <!-- Status -->
-          <text x="12" y="29" fill={textColor} font-size="9" font-family="monospace">
+          <text x="12" y="33" fill={textColor} font-size="10" font-family="monospace">
             {taskIcon(node.task.Status)} {node.task.Status.toUpperCase().replace('_', ' ')}
           </text>
         </g>

@@ -17,6 +17,7 @@ import (
 	"github.com/canhta/foreman/internal/models"
 	"github.com/canhta/foreman/internal/project"
 	"github.com/canhta/foreman/internal/util"
+	"github.com/rs/zerolog/log"
 )
 
 // TaskContextStats is an alias for db.TaskContextStats used in the dashboard package.
@@ -483,6 +484,10 @@ func (a *API) handleConfigSummary(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cfg := a.configProvider.GetConfig()
+	if cfg == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "config not available"})
+		return
+	}
 
 	modelsMap := map[string]string{
 		"planner":          cfg.Models.Planner,
@@ -1311,6 +1316,10 @@ func (a *API) handleGetProject(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
 		return
 	}
+	if cfg == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "project config not found"})
+		return
+	}
 	writeJSON(w, http.StatusOK, flattenProjectConfig(cfg))
 }
 
@@ -1698,10 +1707,18 @@ func (a *API) handleProjectDashboard(w http.ResponseWriter, r *http.Request) {
 		models.TicketStatusPlanning, models.TicketStatusImplementing,
 		models.TicketStatusReviewing, models.TicketStatusPlanValidating,
 	}
-	activeTickets, _ := projDB.ListTickets(r.Context(), models.TicketFilter{StatusIn: active})
+	activeTickets, err := projDB.ListTickets(r.Context(), models.TicketFilter{StatusIn: active})
+	if err != nil {
+		log.Warn().Err(err).Str("project_id", pid).Msg("dashboard: failed to list active tickets")
+		activeTickets = nil
+	}
 
 	date := time.Now().Format("2006-01-02")
-	costToday, _ := projDB.GetDailyCost(r.Context(), date)
+	costToday, err := projDB.GetDailyCost(r.Context(), date)
+	if err != nil {
+		log.Warn().Err(err).Str("project_id", pid).Msg("dashboard: failed to get daily cost")
+		costToday = 0
+	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"project_id":     pid,

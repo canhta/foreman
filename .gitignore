@@ -4,6 +4,7 @@ foreman
 # Build artifacts
 dist/
 internal/dashboard/dist/
+tmp/
 
 # Database
 *.db

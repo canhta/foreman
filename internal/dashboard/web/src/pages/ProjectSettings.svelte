@@ -96,12 +96,12 @@
   <ProjectTabs projectId={params.pid} projectName={project.name} />
 {/if}
 
-<div class="p-6 w-full max-w-4xl">
+<div class="p-6 w-full max-w-4xl pb-20">
   <!-- Section: Project -->
   <div class="border border-[var(--color-border)] mb-4 animate-fade-in">
     <button onclick={() => toggleSection('project')}
             class="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-[var(--color-surface-hover)] transition-colors">
-      <span class="text-[10px] tracking-widest text-[var(--color-muted)] uppercase">Project</span>
+      <span class="text-xs tracking-widest text-[var(--color-muted)] uppercase">◈ PROJECT</span>
       <span class="text-[var(--color-muted)] text-xs">{expandedSections.project ? '−' : '+'}</span>
     </button>
     {#if expandedSections.project}
@@ -122,7 +122,7 @@
   <div class="border border-[var(--color-border)] mb-4">
     <button onclick={() => toggleSection('git')}
             class="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-[var(--color-surface-hover)] transition-colors">
-      <span class="text-[10px] tracking-widest text-[var(--color-muted)] uppercase">Git</span>
+      <span class="text-xs tracking-widest text-[var(--color-muted)] uppercase">⌥ GIT</span>
       <span class="text-[var(--color-muted)] text-xs">{expandedSections.git ? '−' : '+'}</span>
     </button>
     {#if expandedSections.git}
@@ -140,7 +140,7 @@
           <input type="password" bind:value={config.git_token} class="mt-1 w-full bg-[var(--color-surface)] border border-[var(--color-border)] px-3 py-2 text-xs text-[var(--color-text)] focus:border-[var(--color-accent)] focus:outline-none" />
         </label>
         <button onclick={() => testConnection('git')} disabled={testingGit}
-                class="text-[10px] px-3 py-1.5 border border-[var(--color-border)] text-[var(--color-accent)] hover:bg-[var(--color-accent-bg)] disabled:opacity-50 tracking-wider">
+                class="w-full sm:w-auto text-[10px] px-3 py-1.5 border border-[var(--color-border)] text-[var(--color-accent)] hover:bg-[var(--color-accent-bg)] disabled:opacity-50 tracking-wider">
           {testingGit ? 'TESTING...' : 'TEST CONNECTION'}
         </button>
       </div>
@@ -151,7 +151,7 @@
   <div class="border border-[var(--color-border)] mb-4">
     <button onclick={() => toggleSection('tracker')}
             class="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-[var(--color-surface-hover)] transition-colors">
-      <span class="text-[10px] tracking-widest text-[var(--color-muted)] uppercase">Tracker</span>
+      <span class="text-xs tracking-widest text-[var(--color-muted)] uppercase">⊞ TRACKER</span>
       <span class="text-[var(--color-muted)] text-xs">{expandedSections.tracker ? '−' : '+'}</span>
     </button>
     {#if expandedSections.tracker}
@@ -170,7 +170,7 @@
           <input bind:value={config.tracker_labels} class="mt-1 w-full bg-[var(--color-surface)] border border-[var(--color-border)] px-3 py-2 text-xs text-[var(--color-text)] focus:border-[var(--color-accent)] focus:outline-none" placeholder="comma-separated" />
         </label>
         <button onclick={() => testConnection('tracker')} disabled={testingTracker}
-                class="text-[10px] px-3 py-1.5 border border-[var(--color-border)] text-[var(--color-accent)] hover:bg-[var(--color-accent-bg)] disabled:opacity-50 tracking-wider">
+                class="w-full sm:w-auto text-[10px] px-3 py-1.5 border border-[var(--color-border)] text-[var(--color-accent)] hover:bg-[var(--color-accent-bg)] disabled:opacity-50 tracking-wider">
           {testingTracker ? 'TESTING...' : 'TEST CONNECTION'}
         </button>
       </div>
@@ -181,7 +181,7 @@
   <div class="border border-[var(--color-border)] mb-4">
     <button onclick={() => toggleSection('models')}
             class="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-[var(--color-surface-hover)] transition-colors">
-      <span class="text-[10px] tracking-widest text-[var(--color-muted)] uppercase">Models</span>
+      <span class="text-xs tracking-widest text-[var(--color-muted)] uppercase">⬡ MODELS</span>
       <span class="text-[var(--color-muted)] text-xs">{expandedSections.models ? '−' : '+'}</span>
     </button>
     {#if expandedSections.models}
@@ -202,7 +202,7 @@
   <div class="border border-[var(--color-border)] mb-4">
     <button onclick={() => toggleSection('limits')}
             class="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-[var(--color-surface-hover)] transition-colors">
-      <span class="text-[10px] tracking-widest text-[var(--color-muted)] uppercase">Limits</span>
+      <span class="text-xs tracking-widest text-[var(--color-muted)] uppercase">⊟ LIMITS</span>
       <span class="text-[var(--color-muted)] text-xs">{expandedSections.limits ? '−' : '+'}</span>
     </button>
     {#if expandedSections.limits}
@@ -223,31 +223,32 @@
     {/if}
   </div>
 
-  <!-- Save button -->
-  <div class="mb-8">
-    <button onclick={saveConfig} disabled={saving}
-            class="px-6 py-2 bg-[var(--color-accent)] text-[var(--color-bg)] text-[10px] font-bold tracking-widest disabled:opacity-50 hover:opacity-90 transition-opacity">
-      {saving ? 'SAVING...' : 'SAVE SETTINGS'}
-    </button>
-  </div>
-
   <!-- Danger zone -->
   <div class="border border-[var(--color-danger)] mb-4">
     <button onclick={() => toggleSection('danger')}
             class="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-[var(--color-danger-bg)] transition-colors">
-      <span class="text-[10px] tracking-widest text-[var(--color-danger)] uppercase">Danger Zone</span>
+      <span class="text-xs tracking-widest text-[var(--color-danger)] uppercase font-bold">DANGER ZONE</span>
       <span class="text-[var(--color-danger)] text-xs">{expandedSections.danger ? '−' : '+'}</span>
     </button>
     {#if expandedSections.danger}
       <div class="px-4 pb-4 border-t border-[var(--color-danger)] pt-3">
         <p class="text-xs text-[var(--color-muted)] mb-3">Permanently delete this project and all its data.</p>
         <button onclick={() => showDeleteConfirm = true}
-                class="text-[10px] px-3 py-1.5 border border-[var(--color-danger)] text-[var(--color-danger)] hover:bg-[var(--color-danger-bg)] tracking-wider">
+                class="text-[10px] px-3 py-1.5 border border-[var(--color-danger)] bg-[var(--color-danger)] text-white hover:opacity-90 transition-opacity tracking-wider font-bold">
           DELETE PROJECT
         </button>
       </div>
     {/if}
   </div>
+</div>
+
+<!-- Sticky save bar -->
+<div class="fixed bottom-0 left-0 right-0 border-t border-[var(--color-border)] bg-[var(--color-bg)] px-6 py-3 flex justify-between items-center z-50">
+  <span class="text-[10px] tracking-widest text-[var(--color-muted)] uppercase"></span>
+  <button onclick={saveConfig} disabled={saving}
+          class="px-6 py-2 bg-[var(--color-accent)] text-[var(--color-bg)] text-[10px] font-bold tracking-widest disabled:opacity-50 hover:opacity-90 transition-opacity">
+    {saving ? 'SAVING...' : 'SAVE SETTINGS'}
+  </button>
 </div>
 
 <ConfirmDialog

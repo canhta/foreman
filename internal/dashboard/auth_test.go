@@ -98,7 +98,7 @@ func (m *mockErrorAuthDB) ValidateAuthToken(_ context.Context, _ string) (bool, 
 	return false, fmt.Errorf("db connection refused")
 }
 
-func TestAuthMiddleware_DBError_Returns401(t *testing.T) {
+func TestAuthMiddleware_DBError_Returns503(t *testing.T) {
 	handler := authMiddleware(&mockErrorAuthDB{})(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -109,9 +109,9 @@ func TestAuthMiddleware_DBError_Returns401(t *testing.T) {
 
 	handler.ServeHTTP(rec, req)
 
-	// A DB error must not let the request through — still 401.
-	if rec.Code != http.StatusUnauthorized {
-		t.Errorf("expected 401 when DB returns error, got %d", rec.Code)
+	// A DB error must return 503 Service Unavailable (not 401) to expose the real cause.
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected 503 when DB returns error, got %d", rec.Code)
 	}
 }
 
