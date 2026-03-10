@@ -239,17 +239,6 @@ func newStartCmd() *cobra.Command {
 			recordingProv := llm.NewRecordingProvider(llmProv, database, costCtrl)
 			llmProv = recordingProv
 
-			// 3. Initialize tracker.
-			tr, err := buildTracker(cfg)
-			if err != nil {
-				return fmt.Errorf("tracker: %w", err)
-			}
-
-			// 4. Initialize git provider and ensure the work repo is ready.
-			// WorkDir is empty in multi-project mode; per-project workers use their own dir.
-			gitProv := buildGitProvider(cfg)
-			repoReady := cfg.Daemon.WorkDir != "" && gitProv.EnsureRepo(context.Background(), cfg.Daemon.WorkDir) == nil
-
 			// 4b. Load user env files into process environment.
 			if len(cfg.Daemon.EnvFiles) > 0 {
 				if err := envloader.Load(cfg.Daemon.EnvFiles); err != nil {
@@ -258,10 +247,6 @@ func newStartCmd() *cobra.Command {
 					log.Info().Int("count", len(cfg.Daemon.EnvFiles)).Msg("env files loaded into process environment")
 				}
 			}
-
-			// 5. Initialize PR creator and checker.
-			prCreator := buildPRCreator(cfg)
-			prChecker := buildPRChecker(cfg)
 
 			// 6. Initialize command runner.
 			cmdRunner := buildCommandRunner(cfg)
@@ -272,101 +257,10 @@ func newStartCmd() *cobra.Command {
 				defer mcpMgr.Close()
 			}
 
-			// 7. Initialize scheduler.
-			scheduler := daemon.NewScheduler(database)
-
 			// 8. Build Prometheus registry and metrics (needed by planner and task runner).
 			// Created here so metrics are available for all pipeline components.
 			promReg := prometheus.NewRegistry()
 			appMetrics := telemetry.NewMetrics(promReg)
-
-			// 8b. Build pipeline agent runner (optional — only when provider != "builtin" and != "").
-			var pipelineAgentRunner agent.AgentRunner
-			agentRunnerName := cfg.AgentRunner.Provider
-			if agentRunnerName != "" && agentRunnerName != "builtin" {
-				var arErr error
-				pipelineAgentRunner, arErr = agent.NewAgentRunner(
-					cfg.AgentRunner, cmdRunner, llmProv, cfg.Models.Implementer,
-					database, cfg.LLM, mcpMgr, appMetrics,
-				)
-				if arErr != nil {
-					return fmt.Errorf("pipeline agent runner: %w", arErr)
-				}
-				// Wire prompt registry into ClaudeCodeRunner when applicable.
-				if ccr, ok := pipelineAgentRunner.(*agent.ClaudeCodeRunner); ok {
-					ccr.WithRegistry(promptRegistry)
-				}
-				if closer, ok := pipelineAgentRunner.(interface{ Close() error }); ok {
-					defer closer.Close()
-				}
-				log.Info().Str("provider", agentRunnerName).Msg("pipeline agent runner initialized")
-			}
-
-			// 8c. Build orchestrator adapters — select planner based on agent runner.
-			var ticketPlanner daemon.TicketPlanner
-			if pipelineAgentRunner != nil {
-				ap := pipeline.NewAgentPlanner(pipelineAgentRunner, &cfg.Limits)
-				ticketPlanner = &agentPlannerAdapter{planner: ap}
-				log.Info().Msg("using agent-based planner")
-			} else {
-				planner := pipeline.NewPlannerWithModel(llmProv, &cfg.Limits, cfg.Models.Planner).
-					WithConfidenceScoring(cfg.Limits.PlanConfidenceThreshold).
-					WithHandoffStore(database).
-					WithMetrics(appMetrics)
-				ticketPlanner = &plannerAdapter{planner: planner}
-			}
-			pipelineObj := pipeline.NewPipeline(pipeline.PipelineConfig{
-				EnableClarification: cfg.Limits.EnableClarification,
-			})
-
-			orch := daemon.NewOrchestrator(
-				database,
-				tr,
-				gitProv,
-				prCreator,
-				costCtrl,
-				scheduler,
-				ticketPlanner,
-				&clarityAdapter{pipeline: pipelineObj},
-				&taskRunnerFactory{
-					llm:             llmProv,
-					db:              database,
-					gitProv:         gitProv,
-					cmdRunner:       cmdRunner,
-					metrics:         appMetrics,
-					agentRunner:     pipelineAgentRunner,
-					agentRunnerName: agentRunnerName,
-					registry:        promptRegistry,
-				},
-				log.Logger,
-				daemon.OrchestratorConfig{
-					Models:                     cfg.Models,
-					WorkDir:                    cfg.Daemon.WorkDir,
-					DefaultBranch:              cfg.Git.DefaultBranch,
-					BranchPrefix:               cfg.Git.BranchPrefix,
-					TestCommand:                "",
-					ClarificationLabel:         cfg.Tracker.ClarificationLabel,
-					PRReviewers:                cfg.Git.PRReviewers,
-					MaxParallelTasks:           cfg.Daemon.MaxParallelTasks,
-					TaskTimeoutMinutes:         cfg.Daemon.TaskTimeoutMinutes,
-					MaxLlmCallsPerTask:         cfg.Cost.MaxLlmCallsPerTask,
-					MaxImplementRetries:        cfg.Limits.MaxImplementationRetries,
-					MaxSpecReviewCycles:        cfg.Limits.MaxSpecReviewCycles,
-					MaxQualityReviewCycles:     cfg.Limits.MaxQualityReviewCycles,
-					ContextTokenBudget:         cfg.Limits.ContextTokenBudget,
-					ContextFeedbackBoost:       cfg.Context.ContextFeedbackBoost,
-					PRDraft:                    cfg.Git.PRDraft,
-					RebaseBeforePR:             cfg.Git.RebaseBeforePR,
-					AutoPush:                   cfg.Git.AutoPush,
-					EnablePartialPR:            cfg.Limits.EnablePartialPR,
-					EnableTDDVerification:      cfg.Limits.EnableTDDVerification,
-					EnableClarification:        cfg.Limits.EnableClarification,
-					IntermediateReviewInterval: cfg.Limits.IntermediateReviewInterval,
-					PromptVersions:             hashes,
-					EnvFiles:                   cfg.Daemon.EnvFiles,
-					WorktreeStartCommand:       cfg.Git.Worktree.StartCommand,
-				},
-			)
 
 			// 9. Build daemon.
 			d := daemon.NewDaemon(daemon.DaemonConfig{
@@ -382,18 +276,6 @@ func newStartCmd() *cobra.Command {
 				LockTTLSeconds:            cfg.Daemon.LockTTLSeconds,
 			})
 			d.SetDB(database)
-			// In multi-project mode work_dir is always empty; per-project workers own
-			// tracker polling and ticket processing. Only wire them on the global daemon
-			// when running in legacy single-project mode (work_dir is set).
-			if cfg.Daemon.WorkDir != "" {
-				d.SetTracker(tr)
-				d.SetOrchestrator(orch)
-				d.SetScheduler(scheduler)
-				d.SetRepoReady(repoReady)
-			}
-			if prChecker != nil {
-				d.SetPRChecker(prChecker)
-			}
 
 			// 9b. Initialize channel (optional).
 			var ch channel.Channel
@@ -404,7 +286,6 @@ func newStartCmd() *cobra.Command {
 				}
 				sessionDB = expandHomePath(sessionDB)
 				ch = whatsapp.New(sessionDB, log.Logger)
-				orch.SetChannel(ch)
 				d.SetChannel(ch)
 
 				classifier := channel.NewClassifier(llmProv)
@@ -418,11 +299,10 @@ func newStartCmd() *cobra.Command {
 				d.SetChannelRouter(router)
 			}
 
-			// 9c. Wire event emitter to orchestrator (always, even without dashboard).
+			// 9c. Wire event emitter (for dashboard and skill hooks).
 			// appMetrics and promReg were created in step 8 above.
 			emitter := telemetry.NewEventEmitter(database)
 			emitter.SetDroppedCounter(appMetrics.EventsDroppedTotal)
-			orch.SetEventEmitter(emitter)
 
 			// 9c-2. Global event emitter fans in events from all project emitters for /ws/global.
 			globalEmitter := telemetry.NewGlobalEventEmitter()
@@ -457,7 +337,6 @@ func newStartCmd() *cobra.Command {
 				if len(loadedSkills) > 0 {
 					engine := skills.NewEngine(llmProv, cmdRunner, cfg.Daemon.WorkDir, cfg.Git.DefaultBranch)
 					hr := skills.NewHookRunner(engine, loadedSkills)
-					orch.SetHookRunner(hr)
 					d.SetHookRunner(hr)
 					d.SetSkillEventEmitter(emitter)
 					log.Info().Int("count", len(loadedSkills)).Str("skills_dir", skillsDir).Msg("skill hooks registered")
