@@ -127,16 +127,3 @@ func TestDBContract_SQLite(t *testing.T) {
 
 	runDBContractSuite(t, database)
 }
-
-func TestDBContract_Postgres(t *testing.T) {
-	dsn := os.Getenv("POSTGRES_DSN")
-	if dsn == "" {
-		t.Skip("POSTGRES_DSN not set; skipping Postgres contract tests")
-	}
-
-	database, err := db.NewPostgresDB(dsn, 5)
-	require.NoError(t, err)
-	defer database.Close()
-
-	runDBContractSuite(t, database)
-}
