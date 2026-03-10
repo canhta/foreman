@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/canhta/foreman/internal/command"
 	"github.com/canhta/foreman/internal/db"
+	"github.com/canhta/foreman/internal/git"
 	"github.com/canhta/foreman/internal/models"
 	"github.com/canhta/foreman/internal/project"
 	"github.com/canhta/foreman/internal/util"
@@ -1221,6 +1223,7 @@ type projectConfigDTO struct {
 	GitDefaultBranch   string  `json:"git_default_branch"`
 	GitToken           string  `json:"git_token"`
 	GitProvider        string  `json:"git_provider"`
+	RepoReady          bool    `json:"repo_ready"`
 	TrackerProvider    string  `json:"tracker_provider"`
 	TrackerToken       string  `json:"tracker_token"`
 	TrackerProjectKey  string  `json:"tracker_project_key"`
@@ -1316,7 +1319,7 @@ func (a *API) handleGetProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	pid := extractProjectID(r.URL.Path)
-	cfg, _, err := a.projects.GetProject(pid)
+	cfg, projDir, err := a.projects.GetProject(pid)
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
 		return
@@ -1325,7 +1328,10 @@ func (a *API) handleGetProject(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "project config not found"})
 		return
 	}
-	writeJSON(w, http.StatusOK, flattenProjectConfig(cfg))
+	dto := flattenProjectConfig(cfg)
+	workDir := project.ProjectWorkDir(projDir)
+	dto.RepoReady = isRepoReady(workDir)
+	writeJSON(w, http.StatusOK, dto)
 }
 
 // handleUpdateProject handles PUT /api/projects/{pid} — updates project config.
@@ -1346,6 +1352,54 @@ func (a *API) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// isRepoReady returns true if the given directory contains a valid git repository
+// (i.e. git rev-parse HEAD succeeds).
+func isRepoReady(workDir string) bool {
+	if _, err := os.Stat(workDir); err != nil {
+		return false
+	}
+	cmd := exec.Command("git", "-C", workDir, "rev-parse", "HEAD")
+	return cmd.Run() == nil
+}
+
+// handleProjectClone handles POST /api/projects/{pid}/clone — triggers a git clone.
+func (a *API) handleProjectClone(w http.ResponseWriter, r *http.Request) {
+	if a.projects == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "project registry not configured"})
+		return
+	}
+	pid := extractProjectID(r.URL.Path)
+	cfg, projDir, err := a.projects.GetProject(pid)
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		return
+	}
+	if cfg == nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "project config not found"})
+		return
+	}
+	cloneURL := cfg.Git.CloneURL
+	if cloneURL == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "no clone_url configured"})
+		return
+	}
+	workDir := project.ProjectWorkDir(projDir)
+
+	gitProv := git.NewNativeGitProviderWithClone(cloneURL)
+	if cfg.Git.GitHub.Token != "" {
+		gitProv = gitProv.WithHTTPToken(cfg.Git.GitHub.Token)
+	}
+
+	if err := gitProv.EnsureRepo(r.Context(), workDir); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{
+		"status":     "ok",
+		"repo_ready": true,
+	})
 }
 
 // handleProjectTicketDetail handles GET /api/projects/{pid}/tickets/{id}.

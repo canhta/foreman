@@ -24,6 +24,7 @@
   let saving = $state(false);
   let testingGit = $state(false);
   let testingTracker = $state(false);
+  let cloning = $state(false);
   let showDeleteConfirm = $state(false);
   let expandedSections = $state<Record<string, boolean>>({
     project: true, git: true, tracker: true, models: false, limits: false, danger: false
@@ -102,6 +103,27 @@
   function toggleSection(key: string) {
     expandedSections[key] = !expandedSections[key];
   }
+
+  async function cloneRepo() {
+    cloning = true;
+    try {
+      const res = await fetch(`/api/projects/${params.pid}/clone`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${getToken()}` },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toasts.add(`Clone failed: ${data.error ?? res.statusText}`, 'error');
+      } else {
+        config = { ...config, repo_ready: true };
+        toasts.add('Repository cloned successfully', 'success');
+      }
+    } catch (e: any) {
+      toasts.add(`Clone failed: ${e.message}`, 'error');
+    } finally {
+      cloning = false;
+    }
+  }
 </script>
 
 {#if project}
@@ -147,7 +169,16 @@
     {#if expandedSections.git}
       <div class="px-4 pb-4 border-t border-[var(--color-border)] pt-3 space-y-3">
         <label class="block">
-          <span class="text-[10px] tracking-widest text-[var(--color-muted)] uppercase">Clone URL</span>
+          <div class="flex items-center justify-between">
+            <span class="text-[10px] tracking-widest text-[var(--color-muted)] uppercase">Clone URL</span>
+            {#if config.git_clone_url}
+              {#if config.repo_ready}
+                <span class="text-[9px] tracking-widest px-1.5 py-0.5 border border-[var(--color-success,#22c55e)] text-[var(--color-success,#22c55e)] uppercase">CLONED</span>
+              {:else}
+                <span class="text-[9px] tracking-widest px-1.5 py-0.5 border border-[var(--color-warning,#f59e0b)] text-[var(--color-warning,#f59e0b)] uppercase">NOT CLONED</span>
+              {/if}
+            {/if}
+          </div>
           <input bind:value={config.git_clone_url} class="mt-1 w-full bg-[var(--color-surface)] border border-[var(--color-border)] px-3 py-2 text-xs text-[var(--color-text)] focus:border-[var(--color-accent)] focus:outline-none" />
         </label>
         <label class="block">
@@ -158,10 +189,18 @@
           <span class="text-[10px] tracking-widest text-[var(--color-muted)] uppercase">Access Token</span>
           <input type="password" bind:value={config.git_token} class="mt-1 w-full bg-[var(--color-surface)] border border-[var(--color-border)] px-3 py-2 text-xs text-[var(--color-text)] focus:border-[var(--color-accent)] focus:outline-none" />
         </label>
-        <button onclick={() => testConnection('git')} disabled={testingGit}
-                class="w-full sm:w-auto text-[10px] px-3 py-1.5 border border-[var(--color-border)] text-[var(--color-accent)] hover:bg-[var(--color-accent-bg)] disabled:opacity-50 tracking-wider">
-          {testingGit ? 'TESTING...' : 'TEST CONNECTION'}
-        </button>
+        <div class="flex flex-wrap gap-2">
+          <button onclick={() => testConnection('git')} disabled={testingGit}
+                  class="text-[10px] px-3 py-1.5 border border-[var(--color-border)] text-[var(--color-accent)] hover:bg-[var(--color-accent-bg)] disabled:opacity-50 tracking-wider">
+            {testingGit ? 'TESTING...' : 'TEST CONNECTION'}
+          </button>
+          {#if config.git_clone_url && !config.repo_ready}
+            <button onclick={cloneRepo} disabled={cloning}
+                    class="text-[10px] px-3 py-1.5 border border-[var(--color-accent)] text-[var(--color-accent)] hover:bg-[var(--color-accent-bg)] disabled:opacity-50 tracking-wider">
+              {cloning ? 'CLONING...' : 'CLONE REPO'}
+            </button>
+          {/if}
+        </div>
       </div>
     {/if}
   </div>

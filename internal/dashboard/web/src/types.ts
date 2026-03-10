@@ -217,6 +217,7 @@ export interface ProjectConfig {
   git_default_branch: string;
   git_token: string;
   git_provider: string;
+  repo_ready: boolean;
   tracker_provider: string;
   tracker_token: string;
   tracker_project_key: string;

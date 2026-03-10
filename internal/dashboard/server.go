@@ -312,6 +312,9 @@ func NewServer(db DashboardDB, emitter EventSubscriber, statusProvider DaemonSta
 		// POST /api/projects/{pid}/resume
 		case len(parts) == 2 && parts[1] == "resume" && r.Method == http.MethodPost:
 			api.handleProjectResume(w, r)
+		// POST /api/projects/{pid}/clone
+		case len(parts) == 2 && parts[1] == "clone" && r.Method == http.MethodPost:
+			api.handleProjectClone(w, r)
 		// GET /api/projects/{pid}/health
 		case len(parts) == 2 && parts[1] == "health":
 			api.handleProjectHealth(w, r)

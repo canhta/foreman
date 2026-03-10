@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -1884,6 +1886,7 @@ func TestFlattenThenExpand_RoundTrip_Jira(t *testing.T) {
 type mockProjectRegistry struct {
 	projects map[string]*project.ProjectConfig
 	updated  map[string]*project.ProjectConfig
+	dirs     map[string]string // optional: project ID → project dir override
 }
 
 func newMockProjectRegistry(cfgs ...*project.ProjectConfig) *mockProjectRegistry {
@@ -1913,7 +1916,13 @@ func (m *mockProjectRegistry) GetProject(id string) (*project.ProjectConfig, str
 	if !ok {
 		return nil, "", fmt.Errorf("project not found: %s", id)
 	}
-	return cfg, "/tmp/fake-dir", nil
+	dir := "/tmp/fake-dir"
+	if m.dirs != nil {
+		if d, ok := m.dirs[id]; ok {
+			dir = d
+		}
+	}
+	return cfg, dir, nil
 }
 
 func (m *mockProjectRegistry) CreateProject(cfg *project.ProjectConfig) (string, error) {
@@ -2058,4 +2067,255 @@ func TestAPIUpdateProject_Success(t *testing.T) {
 	if updated.Tracker.Jira.APIToken != "newtok" {
 		t.Errorf("tracker.jira.api_token after update: got %q", updated.Tracker.Jira.APIToken)
 	}
+}
+
+// ── isRepoReady ───────────────────────────────────────────────────────────────
+
+func TestIsRepoReady_NonExistentDir_ReturnsFalse(t *testing.T) {
+	if isRepoReady("/tmp/foreman-test-nonexistent-dir-xyz-9999") {
+		t.Error("expected false for non-existent directory")
+	}
+}
+
+func TestIsRepoReady_EmptyDir_ReturnsFalse(t *testing.T) {
+	dir := t.TempDir()
+	if isRepoReady(dir) {
+		t.Error("expected false for empty directory with no git repo")
+	}
+}
+
+func TestIsRepoReady_ValidGitRepo_ReturnsTrue(t *testing.T) {
+	dir := t.TempDir()
+
+	// Initialise a minimal git repo with one commit.
+	runGit := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = append(cmd.Environ(),
+			"GIT_AUTHOR_NAME=Test",
+			"GIT_AUTHOR_EMAIL=test@example.com",
+			"GIT_COMMITTER_NAME=Test",
+			"GIT_COMMITTER_EMAIL=test@example.com",
+		)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	runGit("init")
+	runGit("commit", "--allow-empty", "-m", "init")
+
+	if !isRepoReady(dir) {
+		t.Error("expected true for directory containing a valid git repository")
+	}
+}
+
+// ── handleGetProject: repo_ready field ───────────────────────────────────────
+
+func TestAPIGetProject_RepoReady_FalseWhenNotCloned(t *testing.T) {
+	cfg := &project.ProjectConfig{}
+	cfg.Git.CloneURL = "git@github.com:org/repo.git"
+
+	reg := newMockProjectRegistry(cfg)
+	// Leave dirs nil so GetProject returns /tmp/fake-dir which has no git repo.
+	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
+	api.SetProjectRegistry(reg)
+
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/projects/proj-1", nil)
+	rec := httptest.NewRecorder()
+	api.handleGetProject(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var dto map[string]interface{}
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&dto))
+	assert.Equal(t, false, dto["repo_ready"], "repo_ready should be false when work dir has no git repo")
+}
+
+func TestAPIGetProject_RepoReady_TrueWhenCloned(t *testing.T) {
+	dir := t.TempDir()
+	workDir := dir + "/work"
+
+	// Create work subdir and initialise a git repo in it.
+	require.NoError(t, os.MkdirAll(workDir, 0o755))
+	runGit := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = workDir
+		cmd.Env = append(cmd.Environ(),
+			"GIT_AUTHOR_NAME=Test",
+			"GIT_AUTHOR_EMAIL=test@example.com",
+			"GIT_COMMITTER_NAME=Test",
+			"GIT_COMMITTER_EMAIL=test@example.com",
+		)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	runGit("init")
+	runGit("commit", "--allow-empty", "-m", "init")
+
+	cfg := &project.ProjectConfig{}
+	cfg.Git.CloneURL = "git@github.com:org/repo.git"
+
+	reg := &mockProjectRegistry{
+		projects: map[string]*project.ProjectConfig{"proj-1": cfg},
+		updated:  make(map[string]*project.ProjectConfig),
+		dirs:     map[string]string{"proj-1": dir},
+	}
+	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
+	api.SetProjectRegistry(reg)
+
+	req := httptest.NewRequestWithContext(t.Context(), "GET", "/api/projects/proj-1", nil)
+	rec := httptest.NewRecorder()
+	api.handleGetProject(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var dto map[string]interface{}
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&dto))
+	assert.Equal(t, true, dto["repo_ready"], "repo_ready should be true when work dir contains a valid git repo")
+}
+
+// ── handleProjectClone ────────────────────────────────────────────────────────
+
+func TestAPIProjectClone_NilRegistry_Returns503(t *testing.T) {
+	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
+
+	req := httptest.NewRequestWithContext(t.Context(), "POST", "/api/projects/proj-1/clone", nil)
+	rec := httptest.NewRecorder()
+	api.handleProjectClone(rec, req)
+
+	assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
+}
+
+func TestAPIProjectClone_ProjectNotFound_Returns404(t *testing.T) {
+	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
+	api.SetProjectRegistry(newMockProjectRegistry()) // empty registry
+
+	req := httptest.NewRequestWithContext(t.Context(), "POST", "/api/projects/nonexistent/clone", nil)
+	rec := httptest.NewRecorder()
+	api.handleProjectClone(rec, req)
+
+	assert.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestAPIProjectClone_NoCloneURL_Returns400(t *testing.T) {
+	cfg := &project.ProjectConfig{}
+	// Deliberately leave cfg.Git.CloneURL empty.
+
+	reg := newMockProjectRegistry(cfg)
+	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
+	api.SetProjectRegistry(reg)
+
+	req := httptest.NewRequestWithContext(t.Context(), "POST", "/api/projects/proj-1/clone", nil)
+	rec := httptest.NewRecorder()
+	api.handleProjectClone(rec, req)
+
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	var body map[string]interface{}
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+	assert.Contains(t, body["error"], "clone_url")
+}
+
+func TestAPIProjectClone_ClonesIntoWorkDir(t *testing.T) {
+	// Set up a bare "remote" git repo that can be cloned locally.
+	remoteDir := t.TempDir()
+	runGitIn := func(dir string, args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = append(cmd.Environ(),
+			"GIT_AUTHOR_NAME=Test",
+			"GIT_AUTHOR_EMAIL=test@example.com",
+			"GIT_COMMITTER_NAME=Test",
+			"GIT_COMMITTER_EMAIL=test@example.com",
+		)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v in %s: %v\n%s", args, dir, err, out)
+		}
+	}
+	runGitIn(remoteDir, "init", "--bare")
+	// Seed the bare repo with one commit via a temporary working clone.
+	seedDir := t.TempDir()
+	runGitIn(seedDir, "clone", remoteDir, ".")
+	runGitIn(seedDir, "commit", "--allow-empty", "-m", "init")
+	runGitIn(seedDir, "push", "origin", "HEAD")
+
+	// Create the project directory structure with an empty work subdir.
+	projDir := t.TempDir()
+	workDir := projDir + "/work"
+	require.NoError(t, os.MkdirAll(workDir, 0o755))
+
+	cfg := &project.ProjectConfig{}
+	cfg.Git.CloneURL = remoteDir // use local bare repo as clone URL
+
+	reg := &mockProjectRegistry{
+		projects: map[string]*project.ProjectConfig{"proj-1": cfg},
+		updated:  make(map[string]*project.ProjectConfig),
+		dirs:     map[string]string{"proj-1": projDir},
+	}
+	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
+	api.SetProjectRegistry(reg)
+
+	req := httptest.NewRequestWithContext(t.Context(), "POST", "/api/projects/proj-1/clone", nil)
+	rec := httptest.NewRecorder()
+	api.handleProjectClone(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+	var body map[string]interface{}
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+	assert.Equal(t, true, body["repo_ready"])
+
+	// The work dir must now be a valid git repository.
+	assert.True(t, isRepoReady(workDir), "work dir should be a valid git repo after clone")
+}
+
+func TestAPIProjectClone_AlreadyCloned_IsIdempotent(t *testing.T) {
+	// Prepare a project dir whose work subdir already has a git repo.
+	projDir := t.TempDir()
+	workDir := projDir + "/work"
+	require.NoError(t, os.MkdirAll(workDir, 0o755))
+
+	runGitIn := func(dir string, args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		cmd.Env = append(cmd.Environ(),
+			"GIT_AUTHOR_NAME=Test",
+			"GIT_AUTHOR_EMAIL=test@example.com",
+			"GIT_COMMITTER_NAME=Test",
+			"GIT_COMMITTER_EMAIL=test@example.com",
+		)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	runGitIn(workDir, "init")
+	runGitIn(workDir, "commit", "--allow-empty", "-m", "init")
+
+	cfg := &project.ProjectConfig{}
+	cfg.Git.CloneURL = "git@github.com:org/repo.git" // URL won't be used — repo already exists.
+
+	reg := &mockProjectRegistry{
+		projects: map[string]*project.ProjectConfig{"proj-1": cfg},
+		updated:  make(map[string]*project.ProjectConfig),
+		dirs:     map[string]string{"proj-1": projDir},
+	}
+	api := NewAPI(&mockDashboardDB{}, nil, nil, models.CostConfig{}, "1.0.0")
+	api.SetProjectRegistry(reg)
+
+	req := httptest.NewRequestWithContext(t.Context(), "POST", "/api/projects/proj-1/clone", nil)
+	rec := httptest.NewRecorder()
+	api.handleProjectClone(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var body map[string]interface{}
+	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
+	assert.Equal(t, true, body["repo_ready"], "repo_ready should be true when repo was already present")
 }

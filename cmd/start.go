@@ -390,10 +390,15 @@ func newStartCmd() *cobra.Command {
 				LockTTLSeconds:            cfg.Daemon.LockTTLSeconds,
 			})
 			d.SetDB(database)
-			d.SetTracker(tr)
-			d.SetOrchestrator(orch)
-			d.SetScheduler(scheduler)
-			d.SetRepoReady(repoReady)
+			// In multi-project mode work_dir is always empty; per-project workers own
+			// tracker polling and ticket processing. Only wire them on the global daemon
+			// when running in legacy single-project mode (work_dir is set).
+			if cfg.Daemon.WorkDir != "" {
+				d.SetTracker(tr)
+				d.SetOrchestrator(orch)
+				d.SetScheduler(scheduler)
+				d.SetRepoReady(repoReady)
+			}
 			if prChecker != nil {
 				d.SetPRChecker(prChecker)
 			}
