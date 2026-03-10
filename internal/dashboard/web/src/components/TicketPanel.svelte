@@ -158,6 +158,31 @@
           {#if projectState.ticketTasks.length === 0}
             <div class="text-center text-[var(--color-muted)] text-xs py-8">No tasks yet</div>
           {/if}
+          <!-- Recent chat preview -->
+          {#if projectState.chatMessages.length > 0}
+            <div class="mt-4 pt-4 border-t border-[var(--color-border)]">
+              <div class="text-[10px] tracking-widest text-[var(--color-muted)] uppercase mb-2">Recent Chat</div>
+              {#each projectState.chatMessages.slice(-3) as msg (msg.id)}
+                <div class="text-xs mb-2 flex gap-1.5">
+                  <span class="shrink-0 text-[10px] font-bold tracking-wider"
+                        class:text-[var(--color-accent)]={msg.sender === 'agent'}
+                        class:text-[var(--color-success)]={msg.sender === 'user'}
+                        class:text-[var(--color-muted)]={msg.sender === 'system'}>
+                    {msg.sender === 'agent' ? 'AGENT' : msg.sender === 'user' ? 'YOU' : 'SYS'}:
+                  </span>
+                  <span class="text-[var(--color-muted-bright)] truncate">
+                    {msg.content.length > 80 ? msg.content.slice(0, 80) + '…' : msg.content}
+                  </span>
+                </div>
+              {/each}
+              <button
+                onclick={() => activeTab = 'chat'}
+                class="text-[10px] text-[var(--color-accent)] hover:underline"
+              >
+                {projectState.chatMessages.length > 3 ? `View all ${projectState.chatMessages.length} messages →` : 'Open chat →'}
+              </button>
+            </div>
+          {/if}
         </div>
 
       {:else if activeTab === 'events'}
