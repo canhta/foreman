@@ -32,8 +32,8 @@ This guide covers production deployment using Docker Compose or as a native syst
 
 2. **Copy and edit the config:**
    ```bash
-   cp foreman.example.toml foreman.toml
-   # Edit foreman.toml with your tracker, LLM, and pipeline settings
+   cp system.example.toml ~/.foreman/config.toml
+   # Edit ~/.foreman/config.toml with your LLM, dashboard, and channel settings
    ```
 
 3. **Create a `.env` file with your API keys:**
@@ -82,7 +82,7 @@ This guide covers production deployment using Docker Compose or as a native syst
 
 3. **Edit the configuration:**
    ```bash
-   sudo vim /var/lib/foreman/foreman.toml
+   sudo vim ~/.foreman/config.toml
    ```
 
 4. **Set API keys:**
@@ -165,14 +165,14 @@ sudo systemctl restart foreman
 | `foreman doctor` fails | Verify API keys are set and valid. Check network connectivity to api.anthropic.com and github.com. |
 | SSH / git clone fails | Run `foreman setup-ssh`, add the printed public key as a GitHub Deploy Key, then re-run `foreman doctor`. |
 | Dashboard not accessible | Ensure port 8080 is open in your firewall. Confirm `FOREMAN_DASHBOARD_TOKEN` is set. |
-| Daemon not picking up tickets | Check tracker configuration in `foreman.toml`. Verify `pickup_label` matches your issue labels. Run `foreman ps` to see current state. |
-| High costs | Run `foreman cost today` to inspect spend. Adjust token and cost limits in `foreman.toml`. |
+| Daemon not picking up tickets | Check tracker configuration in the project config (`~/.foreman/projects/<id>/config.toml`). Verify `pickup_label` matches your issue labels. Run `foreman ps` to see current state. |
+| High costs | Run `foreman cost today` to inspect spend. Adjust cost limits in the project config and daily/monthly caps in `~/.foreman/config.toml`. |
 
 ---
 
 ## See Also
 
 - [Getting Started](getting-started.md) — local setup before deploying to a server
-- [Configuration](configuration.md) — full `foreman.toml` reference
+- [Configuration](configuration.md) — global and project config reference
 - [Dashboard](dashboard.md) — web UI, REST API, and authentication details
 - [Integrations](integrations.md) — connecting to issue trackers and LLM providers

@@ -378,7 +378,7 @@ Resumes a paused daemon.
 
 **`GET /api/config/summary`**
 
-Returns a redacted summary of the active `foreman.toml` configuration — useful for the settings drawer in the dashboard UI. API keys are shown truncated (first 8 chars + `...`).
+Returns a redacted summary of the active configuration (global + project) — useful for the settings drawer in the dashboard UI. API keys are shown truncated (first 8 chars + `...`).
 
 ```json
 {

@@ -13,7 +13,8 @@ internal/dashboard/dist/
 # Config (contains secrets)
 foreman.toml
 *.toml
-!foreman.example.toml
+!system.example.toml
+!project.example.toml
 !.air.toml
 !internal/telemetry/pricing.toml
 

@@ -48,13 +48,15 @@ dashboard-test:
 clean:
 	rm -f $(BINARY)
 
-# Reset common runtime data (database + work/cache directories).
-# Safe to run repeatedly. Keeps SSH keys in ~/.foreman/ssh untouched.
+# Reset all runtime data (projects, legacy DBs, work dirs, WhatsApp session).
+# Safe to run repeatedly. Keeps SSH keys in ~/.foreman/ssh and global config untouched.
 reset:
 	@echo "Resetting Foreman runtime data..."
-	rm -f ~/.foreman/foreman.db ~/.foreman/foreman.db-wal ~/.foreman/foreman.db-shm
-	rm -f ~/.foreman/whatsapp.db ~/.foreman/whatsapp.db-wal ~/.foreman/whatsapp.db-shm
-	rm -rf ~/.foreman/work ./tmp/foreman
+	rm -rf ~/.foreman/projects/
+	rm -f ~/.foreman/projects.json
+	rm -f ~/.foreman/*.db ~/.foreman/*.db-wal ~/.foreman/*.db-shm
+	rm -rf ~/.foreman/work
+	rm -rf ./tmp/foreman
 	@echo "Reset complete."
 
 setup-hooks:

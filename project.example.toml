@@ -1,0 +1,199 @@
+# Foreman Project Configuration Example
+# Project configs live at ~/.foreman/projects/<id>/config.toml
+# Create a project via `foreman project create` or the dashboard wizard.
+
+[project]
+name        = "MyApp"
+description = "My application"
+
+[tracker]
+provider                    = "github"  # local_file | jira | github | linear
+pickup_label                = "foreman-ready"
+clarification_label         = "foreman-needs-info"
+clarification_timeout_hours = 72
+
+# ── GitHub Issues ──────────────────────────────────────
+[tracker.github]
+token = "${GITHUB_TOKEN}"
+owner = "your-org"
+repo  = "your-repo"
+# base_url = ""    # optional: override for GitHub Enterprise
+
+# ── Jira ───────────────────────────────────────────────
+# [tracker.jira]
+# base_url    = "https://yourcompany.atlassian.net"
+# email       = "bot@yourcompany.com"
+# api_token   = "${JIRA_API_TOKEN}"
+# project_key = "PROJ"
+# status_in_progress = "In Progress"
+# status_in_review   = "In Review"
+# status_done        = "Done"
+# status_blocked     = "Blocked"
+
+# ── Linear ─────────────────────────────────────────────
+# [tracker.linear]
+# api_key  = "${LINEAR_API_KEY}"
+# team_id  = "TEAM_ID"
+# base_url = ""   # optional override
+
+# ── Local File ─────────────────────────────────────────
+# [tracker.local_file]
+# path = "./tickets"
+
+[git]
+provider         = "github"
+clone_url        = "git@github.com:your-org/your-repo.git"
+default_branch   = "main"
+auto_push        = true
+pr_draft         = true
+pr_reviewers     = []
+branch_prefix    = "foreman"
+rebase_before_pr = true
+
+[git.github]
+token = "${GITHUB_TOKEN}"
+# base_url = ""    # optional: GitHub Enterprise URL
+
+# [git.gitlab]
+# token    = "${GITLAB_TOKEN}"
+# base_url = "https://gitlab.com"   # override for self-hosted
+
+[git.worktree]
+start_command = ""   # optional: command to run after worktree setup (e.g. "npm ci")
+
+[models]
+planner          = "anthropic:claude-sonnet-4-6"
+implementer      = "anthropic:claude-sonnet-4-6"
+spec_reviewer    = "anthropic:claude-haiku-4-5"
+quality_reviewer = "anthropic:claude-haiku-4-5"
+final_reviewer   = "anthropic:claude-sonnet-4-6"
+clarifier        = "anthropic:claude-haiku-4-5"
+
+# Optional per-project LLM API key overrides (falls back to global config if unset).
+# Useful for billing different projects to different accounts.
+# [llm.anthropic]
+# api_key = ""
+# [llm.openai]
+# api_key = ""
+
+[cost]
+max_cost_per_ticket_usd = 15.0
+
+[limits]
+max_tasks_per_ticket             = 20
+max_parallel_tickets             = 3       # max 3 (SQLite WAL constraint)
+max_parallel_tasks               = 3       # concurrent tasks per ticket (DAG executor)
+task_timeout_minutes             = 15      # per-task timeout in minutes
+max_implementation_retries       = 2
+max_spec_review_cycles           = 2
+max_quality_review_cycles        = 1
+max_llm_calls_per_task           = 8
+max_task_duration_secs           = 600
+max_total_duration_secs          = 7200
+context_token_budget             = 80000
+enable_partial_pr                = true
+enable_clarification             = true
+enable_tdd_verification          = true
+search_replace_similarity        = 0.92
+search_replace_min_context_lines = 3
+plan_confidence_threshold        = 0.60   # clarify if plan confidence below this (0 = disabled)
+intermediate_review_interval     = 3      # review every N completed tasks (0 = disabled)
+conflict_resolution_token_budget = 40000
+
+[runner]
+mode = "local"   # override global default if needed
+
+[runner.local]
+allowed_commands = ["npm", "yarn", "pnpm", "cargo", "go", "pytest", "make", "bun"]
+forbidden_paths  = []
+
+# Maps worktree-relative destination paths to source .env files outside the repo.
+# Use ~/ prefix (not $HOME) for home-relative paths.
+# [env_files]
+# ".env" = "~/.foreman/envs/myproject.env"
+# "packages/api/.env" = "~/.foreman/envs/myproject-api.env"
+
+[decompose]
+enabled            = false
+max_ticket_words   = 150
+max_scope_keywords = 2
+approval_label     = "foreman-ready"
+parent_label       = "foreman-decomposed"
+llm_assist         = false   # use LLM heuristic (slower but smarter)
+
+[context]
+context_generate_max_tokens = 32000   # token budget for `foreman context generate`
+context_feedback_boost      = 1.5     # score multiplier for files from prior similar tasks
+
+[pipeline.hooks]
+post_lint  = []
+pre_pr     = []
+post_pr    = []
+post_merge = []
+
+# ─── Core Pipeline Agent Runner ───────────────────────
+# Controls which runner drives pipeline planning and per-task implementation.
+# "builtin"    (default): uses direct LlmProvider calls.
+# "claudecode" / "copilot": external runner drives planning and implementation end-to-end.
+
+[agent_runner]
+provider = "builtin"   # builtin | claudecode | copilot
+
+[agent_runner.builtin]
+max_turns           = 15
+max_context_tokens  = 100000
+reflection_interval = 5      # self-reflection turn every N tool rounds (0 = disabled)
+# model = ""                 # override; empty = [models].implementer
+
+# [agent_runner.claudecode]
+# bin                  = "claude"   # path to claude binary
+# model                = "sonnet"   # optional: override default model
+# max_turns_default    = 20
+# timeout_secs_default = 300
+# max_budget_usd       = 0.0        # 0 = unlimited
+
+# [agent_runner.copilot]
+# cli_path             = "copilot"
+# github_token         = "${GITHUB_TOKEN}"
+# model                = "gpt-4o"
+# timeout_secs_default = 300
+
+# ─── Skills Agent Runner ────────────────────────────────
+# Backs "agentsdk" steps in YAML skills (separate cost cap from core pipeline).
+
+[skills.agent_runner]
+provider                = "builtin"
+max_cost_per_ticket_usd = 2.00
+max_turns_default       = 10
+timeout_secs_default    = 120
+
+[skills.agent_runner.builtin]
+default_allowed_tools = ["Read", "Glob", "Grep"]
+# model = ""   # optional: override model for all builtin agent sessions
+
+# [skills.agent_runner.claudecode]
+# bin                   = "claude"
+# default_allowed_tools = ["Read", "Edit", "Glob", "Grep", "Bash"]
+# max_turns_default     = 10
+# timeout_secs_default  = 180
+# max_budget_usd        = 2.00
+
+# ─── Custom Agent Roles ────────────────────────────────
+
+# [[agents]]
+# name          = "security-reviewer"
+# model         = "anthropic:claude-sonnet-4-6"
+# system_prompt = "You are a security reviewer. Check for OWASP Top 10 issues."
+# allowed_tools = ["Read", "Glob", "Grep"]
+# max_turns     = 8
+# timeout_secs  = 120
+# trigger       = "post_lint"
+
+# [[agents]]
+# name          = "docs-checker"
+# model         = "anthropic:claude-haiku-4-5"
+# system_prompt = "Verify that public functions have documentation."
+# allowed_tools = ["Read", "Glob", "Grep"]
+# max_turns     = 5
+# timeout_secs  = 60
+# trigger       = "pre_pr"

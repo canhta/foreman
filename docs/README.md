@@ -24,7 +24,7 @@ For the full details, see [How Foreman Works](features.md).
 |---|---|
 | [Getting Started](getting-started.md) | Installation, configuration, and first run |
 | [Features](features.md) | Complete capability overview |
-| [Configuration](configuration.md) | Full `foreman.toml` reference |
+| [Configuration](configuration.md) | Global (`~/.foreman/config.toml`) and project config reference |
 | [Integrations](integrations.md) | Issue trackers, LLM providers, and git hosts |
 | [Pipeline](pipeline.md) | State machine, TDD verification, review gates, and retry loops |
 | [Skills](skills.md) | YAML skill engine, hook points, and built-in skills |

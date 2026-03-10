@@ -254,7 +254,7 @@ Foreman integrates with WhatsApp via the Web multi-device protocol (whatsmeow). 
 
 **Setup:**
 
-1. Add the `[channel]` section to `foreman.toml`:
+1. Add the `[channel]` section to `~/.foreman/config.toml` (global config):
    ```toml
    [channel]
    provider = "whatsapp"

@@ -226,12 +226,13 @@ Implementations: `builtin.go`, `claudecode.go`, `copilot.go`.
 ## Data Flow
 
 ### 1. Daemon Startup
-1. Load and validate `foreman.toml`
-2. Open database, run schema migrations
-3. Recover any interrupted pipelines from `last_completed_task_seq`
-4. Start the HTTP dashboard server
-5. If configured, connect the WhatsApp channel and start listening for inbound messages
-6. Begin polling the issue tracker
+1. Load and validate `~/.foreman/config.toml` (global config)
+2. Scan `~/.foreman/projects/` and load each project config
+3. Initialize a `ProjectWorker` per project (SQLite DB, orchestrator, tracker, git)
+4. Recover any interrupted pipelines from `last_completed_task_seq`
+5. Start the HTTP dashboard server
+6. If configured, connect the global WhatsApp channel and start listening for inbound messages
+7. Each project worker begins polling its issue tracker independently
 
 ### 2. Ticket Pickup
 1. Fetch tickets with the pickup label from the issue tracker

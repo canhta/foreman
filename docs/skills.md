@@ -36,7 +36,7 @@ flowchart LR
 
 Hook failures are **logged but do not block the pipeline**. A skill that errors or times out is recorded as a `hook_skill_failed` event and execution continues.
 
-Enable skills at hook points in your `foreman.toml`:
+Enable skills at hook points in your project config (`~/.foreman/projects/<id>/config.toml`):
 
 ```toml
 [pipeline.hooks]
@@ -54,7 +54,7 @@ Skills are Markdown files with YAML frontmatter, located in `prompts/skills/*/SK
 
 ```markdown
 ---
-name: my-skill          # Must be unique; used in foreman.toml hooks config
+name: my-skill          # Must be unique; referenced in [pipeline.hooks] in project config
 description: "What this skill does"
 trigger: post_lint      # post_lint | pre_pr | post_pr | post_merge
 steps:
@@ -66,7 +66,7 @@ steps:
 Optional markdown body (documentation, notes, or additional context).
 ```
 
-The prompt registry (`internal/prompts`) loads all `SKILL.md` files at startup from the directory specified by `prompts_dir` in `foreman.toml` (default: `prompts/`). If `prompts_dir` does not exist, the registry is nil and the legacy YAML loader is used as a fallback.
+The prompt registry (`internal/prompts`) loads all `SKILL.md` files at startup from the `prompts/` directory (default). If the directory does not exist, the registry is nil and the legacy YAML loader is used as a fallback.
 
 ---
 
@@ -347,7 +347,7 @@ steps:
     mode: overwrite
 ```
 
-Enable in `foreman.toml`:
+Enable in the project config:
 
 ```toml
 [pipeline.hooks]
@@ -379,7 +379,7 @@ steps:
     mode: prepend
 ```
 
-Enable in `foreman.toml`:
+Enable in the project config:
 
 ```toml
 [pipeline.hooks]
@@ -411,7 +411,7 @@ steps:
     allow_failure: true
 ```
 
-2. Add the skill ID to the appropriate hook in `foreman.toml`:
+2. Add the skill ID to the appropriate hook in the project config:
 
 ```toml
 [pipeline.hooks]

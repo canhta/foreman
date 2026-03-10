@@ -26,7 +26,7 @@ var initCmd = &cobra.Command{
 			return fmt.Errorf("check config: %w", statErr)
 		}
 
-		template := `# Foreman configuration — see foreman.example.toml for all options
+		template := `# Foreman global configuration — see system.example.toml for all options
 
 [daemon]
 poll_interval_secs = 60

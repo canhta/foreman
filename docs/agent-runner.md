@@ -559,7 +559,7 @@ The `Manager` (`internal/agent/mcp/manager.go`) aggregates tools from all regist
 
 Tool names are normalized by `MCPToolName(server, tool string) string` (`internal/agent/mcp/naming.go`): special characters (`-`, `.`, spaces) are replaced with `_`, the result is prefixed with `mcp_`, and names longer than 64 characters (OpenAI limit) are truncated with a 6-character hash suffix.
 
-Configure stdio MCP servers in `foreman.toml`:
+Configure stdio MCP servers in `~/.foreman/config.toml` (global):
 
 ```toml
 [[mcp.servers]]

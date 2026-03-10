@@ -64,7 +64,7 @@ make build
 make test
 
 # Create a local config
-cp foreman.example.toml foreman.toml
+cp system.example.toml ~/.foreman/config.toml
 ```
 
 ## Build Targets
@@ -131,10 +131,10 @@ The dashboard port is resolved in this order (highest wins):
 
 1. `--dashboard-port` CLI flag
 2. `FOREMAN_DASHBOARD_PORT` environment variable
-3. `[dashboard].port` in `foreman.toml`
+3. `[dashboard].port` in `~/.foreman/config.toml`
 4. Default: `8080`
 
-The host follows a similar pattern: `FOREMAN_DASHBOARD_HOST` env var → `[dashboard].host` in TOML → default `127.0.0.1`.
+The host follows a similar pattern: `FOREMAN_DASHBOARD_HOST` env var → `[dashboard].host` in `~/.foreman/config.toml` → default `127.0.0.1`.
 
 For Docker, `FOREMAN_DASHBOARD_HOST` is set to `0.0.0.0` in `docker-compose.yml` so the container is reachable from the host.
 
@@ -142,7 +142,7 @@ For Docker, `FOREMAN_DASHBOARD_HOST` is set to `0.0.0.0` in `docker-compose.yml`
 
 ### Debug Logging
 
-Set `log_level = "debug"` in `foreman.toml` to enable verbose structured output:
+Set `log_level = "debug"` in `~/.foreman/config.toml` to enable verbose structured output:
 
 ```toml
 [daemon]
@@ -305,7 +305,7 @@ Tests that require a database use the SQLite in-memory driver. No external servi
 
 1. Implement `llm.LlmProvider` in `internal/llm/<provider>.go`.
 2. Register the provider in `internal/llm/factory.go`.
-3. Add a config section to `foreman.example.toml`.
+3. Add a config section to `system.example.toml`.
 4. Add doc entry to `docs/integrations.md`.
 
 ### New Issue Tracker
@@ -400,7 +400,7 @@ Before opening a PR, verify:
 - [ ] `make lint` passes with no new warnings
 - [ ] New or changed behaviour has a corresponding test
 - [ ] Bug fixes include a regression test
-- [ ] `foreman.example.toml` updated if new config keys were added
+- [ ] `system.example.toml` / `project.example.toml` updated if new config keys were added
 - [ ] Relevant docs in `docs/` updated for any user-facing change
 - [ ] No secrets, credentials, or API keys in code or tests
 - [ ] PR description explains what changed, why, and links the relevant issue
@@ -449,5 +449,5 @@ git push origin v0.2.0
 
 - [Architecture](architecture.md) — package layout and design principles
 - [Pipeline](pipeline.md) — the full ticket state machine
-- [Configuration](configuration.md) — `foreman.toml` reference
+- [Configuration](configuration.md) — global and project config reference
 - [CONTRIBUTING.md](../CONTRIBUTING.md) — contribution agreement and process

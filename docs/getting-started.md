@@ -49,7 +49,7 @@ docker pull ghcr.io/canhta/foreman:latest
 Copy the example config and edit it:
 
 ```bash
-cp foreman.example.toml foreman.toml
+cp system.example.toml ~/.foreman/config.toml
 ```
 
 Minimal working config using GitHub Issues + Anthropic:
@@ -104,7 +104,7 @@ Here is the end-to-end path from install to running ticket:
 
 ```mermaid
 flowchart TD
-    A([Install foreman<br/>binary or build from source]) --> B["Copy foreman.example.toml<br/>→ foreman.toml"]
+    A([Install foreman<br/>binary or build from source]) --> B["foreman init<br/>(or copy system.example.toml<br/>→ ~/.foreman/config.toml)"]
     B --> C["Set environment variables<br/>GITHUB_TOKEN · ANTHROPIC_API_KEY<br/>FOREMAN_DASHBOARD_TOKEN"]
     C --> D["./foreman setup-ssh<br/>(private repos only)<br/>then ./foreman doctor"]
     D -- "errors" --> C
@@ -189,15 +189,15 @@ export GITHUB_TOKEN=ghp_...
 export FOREMAN_DASHBOARD_TOKEN=your-token
 ```
 
-The default `docker-compose.yml` maps the dashboard to port `8080`. The config file `foreman.example.toml` is mounted as `/app/foreman.toml` inside the container — replace it with your own `foreman.toml`.
+The default `docker-compose.yml` maps the dashboard to port `8080`. Mount your `~/.foreman/config.toml` (global config) and `~/.foreman/projects/` directory into the container.
 
 ## WhatsApp Channel (Optional)
 
 If you want to interact with Foreman via WhatsApp DM:
 
 ```bash
-# 1. Add channel config to foreman.toml
-cat >> foreman.toml << 'EOF'
+# 1. Add channel config to ~/.foreman/config.toml
+cat >> ~/.foreman/config.toml << 'EOF'
 
 [channel]
 provider = "whatsapp"

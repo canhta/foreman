@@ -12,7 +12,7 @@ Foreman polls your issue tracker, breaks tickets into granular tasks, writes cod
 
 ```bash
 make build
-cp foreman.example.toml foreman.toml
+cp system.example.toml ~/.foreman/config.toml
 # Edit foreman.toml — set your tracker, LLM provider, and git tokens
 ./foreman doctor   # verify config
 ./foreman start    # start the daemon

@@ -220,7 +220,7 @@ For the full permission system with ruleset syntax and custom rules, see [Agent 
 ## See Also
 
 - [Pipeline](pipeline.md) — detailed state machine and per-task execution flow
-- [Configuration](configuration.md) — tune every feature with `foreman.toml`
+- [Configuration](configuration.md) — global and project config reference
 - [Skills](skills.md) — extend the pipeline with YAML hook steps
 - [Integrations](integrations.md) — issue tracker and LLM provider setup
 - [Agent Runner](agent-runner.md) — builtin runner, Claude Code, and Copilot integrations

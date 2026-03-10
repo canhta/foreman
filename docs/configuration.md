@@ -1,58 +1,71 @@
 # Configuration
 
-Foreman is configured via a TOML file named `foreman.toml` in the working directory, or via the `--config` flag. Copy `foreman.example.toml` from the repo as a starting point.
+Foreman uses two TOML config files:
 
-Environment variables can be interpolated using `${VAR_NAME}` syntax anywhere in the config. All secrets should use this form — never hardcode API keys in the config file.
+- **`~/.foreman/config.toml`** — global config shared across all projects (daemon, dashboard, LLM API keys, cost limits, channel)
+- **`~/.foreman/projects/<id>/config.toml`** — per-project config (tracker, git, models, limits, agent runner)
 
-## Configuration Sections
+Use `system.example.toml` as the global config template and `project.example.toml` as the project config template.
 
-| Section | Purpose |
-|---|---|
-| `[daemon]` | Poll intervals, parallelism limits, working directory, log level, env file injection |
-| `[dashboard]` | Web UI port, host binding, authentication token |
-| `[tracker]` | Issue tracker provider and credentials |
-| `[git]` | Repository clone URL, branch settings, PR options |
-| `[llm]` | LLM provider selection and API keys |
-| `[models]` | Per-role model routing (planner, implementer, reviewers…) |
-| `[cost]` | Per-ticket / per-day / per-month spend limits |
-| `[limits]` | Task counts, retry caps, token budgets, feature flags |
-| `[pipeline.hooks]` | YAML skill names to run at each hook point |
-| `[decompose]` | Automatic large-ticket decomposition settings |
-| `[secrets]` | Secrets scanner patterns and always-excluded files |
-| `[rate_limit]` | LLM request rate limiting and backoff |
-| `[runner]` | Local or Docker command runner |
-| `[database]` | SQLite connection |
-| `[agent_runner]` | Agent runner type (builtin / claudecode / copilot) |
-| `[mcp]` | MCP server connections (stdio transport) |
-| `[channel]` | Messaging channel (WhatsApp) for inbound tickets and notifications |
-| `[context]` | Context assembly tuning (AGENTS.md generation, feedback boost) |
+Run `foreman init` to bootstrap the global config interactively, then `foreman project create` (or the dashboard wizard) to add projects.
+
+Environment variables can be interpolated using `${VAR_NAME}` syntax anywhere in either config file. All secrets should use this form — never hardcode API keys.
+
+## Config Resolution
+
+Project config values take precedence over global defaults. LLM API keys check the project config first, then fall back to global. This allows different projects to bill to different accounts.
 
 ---
 
-## Daemon
+## Global Config Sections
+
+| Section | Purpose |
+|---|---|
+| `[daemon]` | Poll intervals, log level, lock TTL |
+| `[dashboard]` | Web UI port, host binding, authentication token |
+| `[llm]` | LLM provider selection and API keys (default for all projects) |
+| `[cost]` | Daily / monthly spend limits |
+| `[runner]` | Global default runner mode (local or docker) |
+| `[secrets]` | Secrets scanner patterns and always-excluded files |
+| `[mcp]` | MCP server connections (stdio transport) |
+| `[channel]` | Global WhatsApp channel — routes messages to the correct project |
+
+## Project Config Sections
+
+| Section | Purpose |
+|---|---|
+| `[project]` | Project name and description |
+| `[tracker]` | Issue tracker provider and credentials |
+| `[git]` | Repository clone URL, branch settings, PR options |
+| `[models]` | Per-role model routing (planner, implementer, reviewers…) |
+| `[llm]` | Optional per-project API key overrides |
+| `[cost]` | Per-ticket spend limit |
+| `[limits]` | Parallelism, task counts, retry caps, token budgets, feature flags |
+| `[env_files]` | Worktree → source .env file mapping |
+| `[decompose]` | Automatic large-ticket decomposition settings |
+| `[context]` | Context assembly tuning (AGENTS.md generation, feedback boost) |
+| `[pipeline.hooks]` | YAML skill names to run at each hook point |
+| `[runner]` | Optional runner override (falls back to global) |
+| `[rate_limit]` | Optional rate limit override (falls back to global) |
+| `[agent_runner]` | Agent runner type (builtin / claudecode / copilot) |
+| `[skills.agent_runner]` | Skills agent runner (separate from core pipeline) |
+
+---
+
+## Daemon (Global)
 
 ```toml
 [daemon]
 poll_interval_secs      = 60    # How often to check for new tickets (seconds)
 idle_poll_interval_secs = 300   # Longer interval when no work is queued
-max_parallel_tickets    = 3     # Concurrent pipeline limit (max 3)
-max_parallel_tasks      = 3     # Concurrent tasks per ticket (DAG executor worker pool)
-task_timeout_minutes       = 15    # Per-task timeout in minutes
-merge_check_interval_secs  = 300   # How often to poll PR merge status (seconds)
-work_dir   = "~/.foreman/work"  # Directory where repos are cloned
-log_level  = "info"             # trace | debug | info | warn | error
-log_format = "json"             # json | pretty
-
-# env_files maps worktree-relative destination paths to source file paths on disk.
-# Each file is copied into every task worktree and all vars are loaded into the
-# process environment before the pipeline runs. Use ~/ for home-relative paths.
-# [daemon.env_files]
-# ".env" = "~/.foreman/envs/myproject.env"
+log_level               = "info"  # trace | debug | info | warn | error
+log_format              = "json"  # json | pretty
+lock_ttl_seconds        = 3600  # Distributed lock TTL (must exceed max ticket processing time)
 ```
 
 ---
 
-## Dashboard
+## Dashboard (Global)
 
 ```toml
 [dashboard]
@@ -70,7 +83,17 @@ Generate a dashboard token:
 
 ---
 
-## Issue Tracker
+## Project
+
+```toml
+[project]
+name        = "MyApp"
+description = "My application"
+```
+
+---
+
+## Issue Tracker (Project)
 
 ```toml
 [tracker]
@@ -133,19 +156,23 @@ path = "./tickets"   # Directory containing .json ticket files
 
 ---
 
-## Git
+## Git (Project)
 
 ```toml
 [git]
-provider          = "github"    # github | gitlab | bitbucket
-backend           = "native"    # native (git CLI) | gogit (pure Go fallback)
-clone_url         = "git@github.com:your-org/your-repo.git"
-default_branch    = "main"
-auto_push         = true
-pr_draft          = true
-pr_reviewers      = ["team-lead"]
-branch_prefix     = "foreman"   # Branch names: foreman/PROJ-123-add-auth
-rebase_before_pr  = true
+provider         = "github"    # github | gitlab | bitbucket
+clone_url        = "git@github.com:your-org/your-repo.git"
+default_branch   = "main"
+auto_push        = true
+pr_draft         = true
+pr_reviewers     = ["team-lead"]
+branch_prefix    = "foreman"   # Branch names: foreman/PROJ-123-add-auth
+rebase_before_pr = true
+```
+
+```toml
+[git.worktree]
+start_command = ""   # Optional: command run after worktree setup (e.g. "npm ci")
 ```
 
 ### GitHub
@@ -185,7 +212,7 @@ clone_url = "git@github.com:your-org/your-repo.git"
 
 ---
 
-## LLM Providers
+## LLM Providers (Global, with per-project override)
 
 ```toml
 [llm]
@@ -236,9 +263,18 @@ fallback_provider           = ""   # Optional: "openai", "openrouter", etc.
 # The ticket is NOT failed.
 ```
 
+### Per-project API Key Overrides
+
+Set in the project config to bill that project to a different account:
+
+```toml
+[llm.anthropic]
+api_key = "${MYAPP_ANTHROPIC_KEY}"
+```
+
 ---
 
-## Model Routing
+## Model Routing (Project)
 
 Route each pipeline role to a specific provider and model. This lets you use cheaper models for lightweight review roles and your best model for implementation.
 
@@ -257,13 +293,20 @@ clarifier        = "anthropic:claude-haiku-4-5"
 
 ## Cost Control
 
+### Global — daily / monthly caps
+
 ```toml
 [cost]
-max_cost_per_ticket_usd  = 15.00    # Abort + escalate when exceeded
-max_cost_per_day_usd     = 150.00   # Pause all pipelines when exceeded
-max_cost_per_month_usd   = 3000.00  # Hard stop
-alert_threshold_percent  = 80       # Alert at 80% of any budget level
-max_llm_calls_per_task   = 8        # Absolute per-task cap (all roles combined)
+max_cost_per_day_usd    = 150.00   # Pause all pipelines when exceeded
+max_cost_per_month_usd  = 3000.00  # Hard stop
+alert_threshold_percent = 80       # Alert at 80% of any budget level
+```
+
+### Project — per-ticket cap
+
+```toml
+[cost]
+max_cost_per_ticket_usd = 15.00    # Abort + escalate when exceeded
 ```
 
 ### Per-Model Pricing Override
@@ -274,44 +317,62 @@ Default pricing is bundled for common models. Override when provider pricing cha
 [cost.pricing]
 "anthropic:claude-sonnet-4-6" = { input = 3.00,  output = 15.00 }
 "anthropic:claude-haiku-4-5"  = { input = 0.80,  output = 4.00  }
-"openai:gpt-4o"                         = { input = 2.50,  output = 10.00 }
-"openai:o3-mini"                        = { input = 1.10,  output = 4.40  }
+"openai:gpt-4o"               = { input = 2.50,  output = 10.00 }
+"openai:o3-mini"              = { input = 1.10,  output = 4.40  }
 ```
 
 Units: USD per 1 million tokens.
 
 ---
 
-## Pipeline Limits
+## Pipeline Limits (Project)
 
 ```toml
 [limits]
-max_tasks_per_ticket        = 20     # Planner is instructed not to exceed this
-max_implementation_retries  = 2      # Per lint/test feedback tier
-max_spec_review_cycles      = 2
-max_quality_review_cycles   = 1
-max_task_duration_secs      = 600    # 10 minutes per task before timeout
-max_total_duration_secs     = 7200   # 2 hours per ticket before timeout
-context_token_budget        = 80000  # Base token budget per LLM call (scaled by task complexity)
-enable_partial_pr           = true   # Create PR with completed tasks on partial failure
-enable_clarification        = true   # Ask for clarification on ambiguous tickets
-enable_tdd_verification     = true   # Mechanical RED/GREEN TDD verification
-search_replace_similarity   = 0.92   # Fuzzy match threshold for SEARCH blocks (0.0–1.0)
-search_replace_min_context_lines = 3 # Minimum surrounding lines in each SEARCH block
+max_tasks_per_ticket             = 20     # Planner is instructed not to exceed this
+max_parallel_tickets             = 3      # Concurrent pipeline limit (max 3)
+max_parallel_tasks               = 3      # Concurrent tasks per ticket (DAG executor worker pool)
+task_timeout_minutes             = 15     # Per-task timeout in minutes
+max_implementation_retries       = 2      # Per lint/test feedback tier
+max_spec_review_cycles           = 2
+max_quality_review_cycles        = 1
+max_llm_calls_per_task           = 8      # Absolute per-task cap (all roles combined)
+max_task_duration_secs           = 600    # 10 minutes per task before timeout
+max_total_duration_secs          = 7200   # 2 hours per ticket before timeout
+context_token_budget             = 80000  # Base token budget per LLM call (scaled by task complexity)
+enable_partial_pr                = true   # Create PR with completed tasks on partial failure
+enable_clarification             = true   # Ask for clarification on ambiguous tickets
+enable_tdd_verification          = true   # Mechanical RED/GREEN TDD verification
+search_replace_similarity        = 0.92   # Fuzzy match threshold for SEARCH blocks (0.0–1.0)
+search_replace_min_context_lines = 3      # Minimum surrounding lines in each SEARCH block
 
-# Plan quality gate (Wave 1+)
-plan_confidence_threshold    = 0.60  # Confidence score below which clarification is triggered (0.0–1.0)
+# Plan quality gate
+plan_confidence_threshold        = 0.60  # Confidence score below which clarification is triggered (0.0–1.0)
 
-# Cross-task consistency review (Wave 2+)
-intermediate_review_interval = 3     # Run consistency review every N completed tasks (0 = disabled)
+# Cross-task consistency review
+intermediate_review_interval     = 3     # Run consistency review every N completed tasks (0 = disabled)
 
-# Rebase conflict resolution (Wave 2+)
+# Rebase conflict resolution
 conflict_resolution_token_budget = 40000  # Token budget for LLM-assisted conflict resolution
+```
+
+> `max_parallel_tickets` is capped at 3 — this is a hard SQLite WAL concurrency limit.
+
+---
+
+## Env Files (Project)
+
+Maps worktree-relative destination paths to source `.env` files outside the repo. Each file is copied into every task worktree before the pipeline runs. Use `~/` for home-relative paths.
+
+```toml
+[env_files]
+".env"              = "~/.foreman/envs/myproject.env"
+"packages/api/.env" = "~/.foreman/envs/myproject-api.env"
 ```
 
 ---
 
-## Pipeline Hooks
+## Pipeline Hooks (Project)
 
 ```toml
 [pipeline.hooks]
@@ -327,7 +388,7 @@ See [Skills](skills.md) for how to write skill files.
 
 ---
 
-## Decomposition
+## Decomposition (Project)
 
 Automatic ticket decomposition breaks oversized tickets into child tracker issues before planning.
 
@@ -348,7 +409,7 @@ Child tickets are not further decomposed (max depth = 1). When all children's PR
 
 ---
 
-## Secrets Scanning
+## Secrets Scanning (Global)
 
 ```toml
 [secrets]
@@ -363,9 +424,7 @@ Built-in patterns detect: AWS keys, GitHub tokens, private key blocks (`BEGIN RS
 
 ---
 
-## Rate Limiting
-
-Shared across all pipeline workers for a given provider.
+## Rate Limiting (Global, overridable per project)
 
 ```toml
 [rate_limit]
@@ -378,7 +437,7 @@ jitter_percent      = 25      # Random jitter applied to all retry delays
 
 ---
 
-## Execution Runner
+## Execution Runner (Global default, overridable per project)
 
 ```toml
 [runner]
@@ -407,34 +466,13 @@ auto_reinstall_deps = true           # Reinstall deps when package manifests cha
 
 ---
 
-## Database
+## Messaging Channel (Global)
 
-```toml
-[database]
-driver = "sqlite"
-```
-
-### SQLite (Default)
-
-```toml
-[database.sqlite]
-path                    = "~/.foreman/foreman.db"
-busy_timeout_ms         = 5000    # SQLite PRAGMA busy_timeout
-wal_mode                = true    # PRAGMA journal_mode=WAL (required for concurrency)
-event_flush_interval_ms = 100     # Batch flush interval for non-critical writes
-```
-
-> `max_parallel_tickets` is capped at 3.
-
----
-
-## Messaging Channel (WhatsApp)
-
-Foreman supports a bidirectional WhatsApp channel for receiving tickets and sending notifications via direct message.
+One WhatsApp channel is shared across all projects. Incoming messages are routed to the correct project. Omit `[channel]` entirely to disable.
 
 ```toml
 [channel]
-provider = "whatsapp"   # Currently only "whatsapp" is supported; omit to disable
+provider = "whatsapp"
 
 [channel.whatsapp]
 session_db      = "~/.foreman/whatsapp.db"   # SQLite session storage for whatsmeow
@@ -465,12 +503,12 @@ allowed_numbers = ["+84123456789"]            # E.164 phone numbers allowed to s
 
 | Command | Action |
 |---------|--------|
-| `/status` | Show active tickets |
+| `/status` | Show active tickets across all projects |
 | `/pause` | Pause the daemon |
 | `/resume` | Resume the daemon |
 | `/cost` | Show daily/monthly spend |
 
-Any non-command message from an allowed sender is classified (via LLM) and can create a new ticket.
+Any non-command message from an allowed sender is classified (via LLM) and can create a new ticket in the appropriate project.
 
 ### Pairing Management
 
@@ -482,7 +520,7 @@ Any non-command message from an allowed sender is classified (via LLM) and can c
 
 ---
 
-## Agent Runner
+## Agent Runner (Project)
 
 Controls which runner drives the core pipeline and `agentsdk` skill steps.
 
@@ -527,7 +565,7 @@ timeout_secs_default = 300
 
 ---
 
-## Skills Agent Runner
+## Skills Agent Runner (Project)
 
 A separate agent runner configuration for YAML skill `agentsdk` steps. Does **not** draw from the core pipeline LLM budget.
 
@@ -554,11 +592,11 @@ model                 = ""   # empty = use [models].implementer
 
 ```toml
 [skills.agent_runner.claudecode]
-bin                  = "claude"   # resolved via $PATH if relative
+bin                   = "claude"   # resolved via $PATH if relative
 default_allowed_tools = ["Read", "Edit", "Glob", "Grep", "Bash"]
-max_turns_default    = 10
-timeout_secs_default = 180
-max_budget_usd       = 2.00
+max_turns_default     = 10
+timeout_secs_default  = 180
+max_budget_usd        = 2.00
 # model = "sonnet"             # optional: override default model
 ```
 
@@ -566,16 +604,16 @@ max_budget_usd       = 2.00
 
 ```toml
 [skills.agent_runner.copilot]
-cli_path             = "copilot"
-github_token         = "${GITHUB_TOKEN}"
-model                = "gpt-4o"
+cli_path              = "copilot"
+github_token          = "${GITHUB_TOKEN}"
+model                 = "gpt-4o"
 default_allowed_tools = ["Read", "Edit", "Glob", "Grep", "Bash"]
-timeout_secs_default = 180
+timeout_secs_default  = 180
 ```
 
 ---
 
-## MCP Servers (stdio transport)
+## MCP Servers (Global)
 
 Connect Foreman's builtin agent runner to external MCP servers via stdin/stdout subprocess.
 
@@ -587,13 +625,13 @@ resource_max_bytes = 524288   # Max bytes per MCP resource read (default: 512 KB
 name    = "internal-db"
 command = "npx"
 args    = ["-y", "@company/db-mcp-server"]
-allowed_tools          = ["query", "schema"]   # optional whitelist
-restart_policy         = "on-failure"           # always | never | on-failure (default: on-failure)
-max_restarts           = 3                      # default: 3
-restart_delay_secs     = 2                      # default: 2
-health_check_interval_secs = 30                 # Ping interval; 0 = disabled (default: 30)
+allowed_tools              = ["query", "schema"]   # optional whitelist
+restart_policy             = "on-failure"           # always | never | on-failure (default: on-failure)
+max_restarts               = 3                      # default: 3
+restart_delay_secs         = 2                      # default: 2
+health_check_interval_secs = 30                     # Ping interval; 0 = disabled (default: 30)
 [mcp.servers.env]
-DB_URL = "${DATABASE_URL}"                      # explicit env passthrough only
+DB_URL = "${DATABASE_URL}"                          # explicit env passthrough only
 ```
 
 Multiple servers can be configured by repeating `[[mcp.servers]]` blocks. Tools from all registered servers are automatically added to the builtin agent's tool registry with normalized names (`mcp_{server}_{tool}`, max 64 chars).
@@ -602,7 +640,7 @@ If a server exceeds its restart budget, its tools are marked unavailable and the
 
 ---
 
-## Context Generation
+## Context Generation (Project)
 
 ```toml
 [context]
@@ -613,6 +651,8 @@ context_feedback_boost      = 1.5     # Score multiplier for files seen in prior
 See [Context Generate](getting-started.md#generating-agentsmd) for usage.
 
 ---
+
+## Environment Variables Reference
 
 | Variable | Used By |
 |---|---|
