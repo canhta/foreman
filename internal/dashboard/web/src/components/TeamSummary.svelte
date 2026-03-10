@@ -19,7 +19,15 @@
   );
 
   let todayStr = localDateStr();
-  let todayTickets = $derived(appState.tickets.filter(t => t.CreatedAt?.slice(0, 10) === todayStr));
+  // Handle tickets with zero CreatedAt (pre-fix data) by falling back to StartedAt then UpdatedAt
+  function ticketDateStr(t: { CreatedAt?: string; StartedAt?: string | null; UpdatedAt?: string }): string {
+    const c = t.CreatedAt;
+    if (c && !c.startsWith('0001')) return c.slice(0, 10);
+    const s = t.StartedAt;
+    if (s && !s.startsWith('0001')) return s.slice(0, 10);
+    return t.UpdatedAt?.slice(0, 10) ?? '';
+  }
+  let todayTickets = $derived(appState.tickets.filter(t => ticketDateStr(t) === todayStr));
   let todayActive = $derived(todayTickets.filter(t => ACTIVE_STATUSES.includes(t.Status)).length);
   let todayDone = $derived(todayTickets.filter(t => DONE_STATUSES.includes(t.Status)).length);
   let todayFailed = $derived(todayTickets.filter(t => FAIL_STATUSES.includes(t.Status)).length);

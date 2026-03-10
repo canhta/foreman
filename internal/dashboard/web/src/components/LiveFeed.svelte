@@ -1,6 +1,6 @@
 <script lang="ts">
   import { appState, selectTicket, setFeedCollapsed } from '../state.svelte';
-  import { formatTime, severityIcon, runnerBadgeCls, shortModel } from '../format';
+  import { formatTime, severityIcon, runnerBadgeCls, shortModel, linkifyParts } from '../format';
 
   function toggleCollapse() {
     setFeedCollapsed(!appState.feedCollapsed);
@@ -53,7 +53,16 @@
 
           <!-- Message -->
           {#if evt.Message}
-            <div class="text-text/50 mt-0.5 truncate pl-3.5">{evt.Message}</div>
+            <div class="text-text/50 mt-0.5 pl-3.5 break-words">
+              {#each linkifyParts(evt.Message) as part}
+                {#if part.type === 'url'}
+                  <a href={part.content} target="_blank" rel="noopener noreferrer"
+                    class="text-accent hover:underline break-all">{part.content}</a>
+                {:else}
+                  {part.content}
+                {/if}
+              {/each}
+            </div>
           {/if}
 
           <!-- Runner / model badges -->

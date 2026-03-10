@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { EventRecord, Task } from '../types';
-  import { severityIcon, formatRelative, taskIcon } from '../format';
+  import { severityIcon, formatRelative, taskIcon, linkifyParts } from '../format';
 
   let { events = [], tasks = [] }: { events: EventRecord[]; tasks: Task[] } = $props();
 
@@ -88,7 +88,16 @@
 
           <!-- Message -->
           {#if evt.Message}
-            <div class="text-[10px] text-text/70 mt-0.5 break-words">{evt.Message}</div>
+            <div class="text-[10px] text-text/70 mt-0.5 break-words">
+              {#each linkifyParts(evt.Message) as part}
+                {#if part.type === 'url'}
+                  <a href={part.content} target="_blank" rel="noopener noreferrer"
+                    class="text-accent hover:underline break-all">{part.content}</a>
+                {:else}
+                  {part.content}
+                {/if}
+              {/each}
+            </div>
           {/if}
 
           <!-- Raw detail expand -->

@@ -61,6 +61,22 @@ export function severityIcon(severity: string): string {
   }
 }
 
+/** Split text into alternating text/url parts for linkified rendering. */
+export function linkifyParts(text: string): { type: 'text' | 'url'; content: string }[] {
+  if (!text) return [];
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  const parts: { type: 'text' | 'url'; content: string }[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = urlRegex.exec(text)) !== null) {
+    if (match.index > lastIndex) parts.push({ type: 'text', content: text.slice(lastIndex, match.index) });
+    parts.push({ type: 'url', content: match[0] });
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < text.length) parts.push({ type: 'text', content: text.slice(lastIndex) });
+  return parts;
+}
+
 export function taskIcon(status: string): string {
   switch (status) {
     case 'done': return '\u2713';

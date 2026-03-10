@@ -415,6 +415,11 @@ func (d *Daemon) ingestFromTracker(ctx context.Context, database db.Database, tr
 		if existing != nil {
 			continue
 		}
+		now := time.Now()
+		createdAt := t.CreatedAt
+		if createdAt.IsZero() {
+			createdAt = now
+		}
 		dbTicket := &models.Ticket{
 			ID:                 uuid.New().String(),
 			ExternalID:         t.ExternalID,
@@ -424,8 +429,11 @@ func (d *Daemon) ingestFromTracker(ctx context.Context, database db.Database, tr
 			Priority:           t.Priority,
 			Assignee:           t.Assignee,
 			Reporter:           t.Reporter,
+			ChannelSenderID:    t.Reporter,
 			Labels:             t.Labels,
 			Status:             models.TicketStatusQueued,
+			CreatedAt:          createdAt,
+			UpdatedAt:          now,
 		}
 		if err := database.CreateTicket(ctx, dbTicket); err != nil {
 			log.Warn().Err(err).Str("external_id", t.ExternalID).Msg("failed to insert ticket")

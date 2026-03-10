@@ -657,12 +657,16 @@ func (a *API) handleGlobalEvents(w http.ResponseWriter, r *http.Request) {
 			offset = n
 		}
 	}
-	events, err := a.db.GetGlobalEvents(r.Context(), limit, offset)
+	rawEvents, err := a.db.GetGlobalEvents(r.Context(), limit, offset)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, http.StatusOK, events)
+	enriched := make([]*enrichedEvent, 0, len(rawEvents))
+	for i := range rawEvents {
+		enriched = append(enriched, a.enrichEvent(r.Context(), &rawEvents[i]))
+	}
+	writeJSON(w, http.StatusOK, enriched)
 }
 
 func (a *API) handleRetryTask(w http.ResponseWriter, r *http.Request) {

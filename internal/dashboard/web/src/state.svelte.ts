@@ -191,6 +191,16 @@ export function deselectTicket() {
   history.pushState({}, '', url);
 }
 
+export async function loadRecentEvents() {
+  try {
+    const data = await fetchJSON<EventRecord[]>('/api/events?limit=50');
+    // Only populate if feed is empty (don't overwrite live events)
+    if (appState.events.length === 0) {
+      appState.events = data || [];
+    }
+  } catch { /* ignore */ }
+}
+
 export async function loadTeamStats() {
   try {
     const [stats, prs] = await Promise.all([
@@ -336,11 +346,16 @@ export function connectWebSocket() {
       } catch { /* ignore parse errors */ }
     }
 
-    appState.events = [evt, ...appState.events.slice(0, 49)];
+    // Prepend, deduplicating by ID in case of reconnect replays
+    if (!appState.events.some(e => e.ID === evt.ID)) {
+      appState.events = [evt, ...appState.events.slice(0, 49)];
+    }
     setTimeout(() => { evt.isNew = false; }, 1200);
 
     if (evt.TicketID && evt.TicketID === appState.selectedTicketId) {
-      appState.ticketEvents = [evt, ...appState.ticketEvents];
+      if (!appState.ticketEvents.some(e => e.ID === evt.ID)) {
+        appState.ticketEvents = [evt, ...appState.ticketEvents];
+      }
 
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
@@ -383,6 +398,7 @@ export function startPolling() {
   loadCosts();
   loadActive();
   loadTeamStats();
+  loadRecentEvents();
 
   intervals = [
     setInterval(loadStatus, 15000),
