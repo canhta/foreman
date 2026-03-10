@@ -3,6 +3,7 @@
   import { getToken } from '../api';
   import { toasts } from '../state/toasts.svelte';
   import { push } from 'svelte-spa-router';
+  import { IconCircleCheck } from '@tabler/icons-svelte';
 
   // Step state
   let step = $state(1);
@@ -138,7 +139,7 @@
             class:text-[var(--color-muted)]={step < n}
             class:text-[var(--color-success)]={step > n}
           >
-            {step > n ? '✓' : n}
+            {#if step > n}<IconCircleCheck size={14} stroke={1.5} />{:else}{n}{/if}
           </div>
           <span class="text-[10px] tracking-wider hidden sm:inline"
                 class:text-[var(--color-accent)]={step === n}
