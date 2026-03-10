@@ -156,7 +156,7 @@ allowed_commands = ["npm", "yarn", "pnpm", "cargo", "go", "pytest", "make", "bun
 forbidden_paths = []
 
 [database]
-driver = "sqlite"  # sqlite, postgres
+driver = "sqlite"
 
 [database.sqlite]
 path = "~/.foreman/foreman.db"
