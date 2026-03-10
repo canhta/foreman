@@ -227,3 +227,44 @@ func TestHandleEventConnectionState(t *testing.T) {
 		assert.False(t, w.IsConnected())
 	})
 }
+
+func TestHandleEventMessageDispatch(t *testing.T) {
+	t.Parallel()
+
+	handler := &captureInboundHandler{}
+	w := New("", zerolog.Nop())
+	w.handler = handler
+	w.limiter = newRateLimiter(10, time.Minute)
+
+	sender := types.NewJID("4004", types.DefaultUserServer)
+	now := time.Now()
+
+	w.handleEvent(context.Background(), &events.Message{
+		Info:    types.MessageInfo{MessageSource: types.MessageSource{Sender: sender}, Timestamp: now},
+		Message: &waE2E.Message{ExtendedTextMessage: &waE2E.ExtendedTextMessage{Text: proto.String("from event")}},
+	})
+
+	require.Equal(t, 1, handler.count())
+	got := handler.first()
+	assert.Equal(t, sender.String(), got.SenderID)
+	assert.Equal(t, "from event", got.Body)
+}
+
+func TestHandleMessageIgnoresEmptyBody(t *testing.T) {
+	t.Parallel()
+
+	handler := &captureInboundHandler{}
+	w := New("", zerolog.Nop())
+	w.handler = handler
+	w.limiter = newRateLimiter(10, time.Minute)
+
+	sender := types.NewJID("5005", types.DefaultUserServer)
+	now := time.Now()
+
+	w.handleMessage(context.Background(), &events.Message{
+		Info:    types.MessageInfo{MessageSource: types.MessageSource{Sender: sender}, Timestamp: now},
+		Message: &waE2E.Message{},
+	})
+
+	assert.Equal(t, 0, handler.count())
+}

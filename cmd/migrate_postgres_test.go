@@ -110,6 +110,23 @@ func TestRunMigrateFromPostgres_OutputIncludesForemanDBPath(t *testing.T) {
 	assert.Contains(t, stdout, "sqlite3 "+dbPath+" < postgres_dump.sql")
 }
 
+func TestRunMigrateFromPostgres_OutputDirCreationFails(t *testing.T) {
+	tmpDir := t.TempDir()
+	chdirForTest(t, tmpDir)
+
+	require.NoError(t, os.WriteFile("postgres_dump.sql", []byte("-- test dump"), 0o644))
+
+	filePath := filepath.Join(tmpDir, "not-a-directory")
+	require.NoError(t, os.WriteFile(filePath, []byte("x"), 0o644))
+
+	_, err := captureStdoutAndRun(t, func() error {
+		return runMigrateFromPostgres(filepath.Join(filePath, "child"))
+	})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "create output directory")
+}
+
 func chdirForTest(t *testing.T, dir string) {
 	t.Helper()
 
