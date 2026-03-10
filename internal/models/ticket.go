@@ -118,6 +118,7 @@ type ProgressPattern struct {
 type EventRecord struct {
 	CreatedAt time.Time
 	ID        string
+	ProjectID string // optional: set when event comes from a specific project
 	TicketID  string
 	TaskID    string
 	EventType string

@@ -114,6 +114,7 @@ type API struct {
 	startedAt       time.Time
 	db              DashboardDB
 	emitter         EventSubscriber
+	globalEmitter   EventSubscriber // fans in events from all projects
 	statusProvider  DaemonStatusProvider
 	controller      DaemonController
 	retrier         TicketRetrier
@@ -175,6 +176,11 @@ func (a *API) SetCommandRegistry(r *command.Registry) {
 // SetProjectRegistry wires the project registry for multi-project API endpoints.
 func (a *API) SetProjectRegistry(r ProjectRegistry) {
 	a.projects = r
+}
+
+// SetGlobalEmitter wires a global event emitter that fans in events from all projects.
+func (a *API) SetGlobalEmitter(e EventSubscriber) {
+	a.globalEmitter = e
 }
 
 // projectDB resolves the database for a project from the URL path value "pid".

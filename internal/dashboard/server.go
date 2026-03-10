@@ -202,6 +202,8 @@ func NewServer(db DashboardDB, emitter EventSubscriber, statusProvider DaemonSta
 
 	// WebSocket (auth via token query param)
 	mux.HandleFunc("/ws/events", api.handleWebSocket)
+	mux.HandleFunc("/ws/global", api.handleGlobalWebSocket)
+	mux.HandleFunc("/ws/projects/", api.handleProjectWebSocket)
 
 	// Static frontend files embedded at build time
 	webContent, err := fs.Sub(webFS, "dist")
@@ -273,6 +275,11 @@ type ProjectRegistry interface {
 // SetProjectRegistry wires the project manager for project-scoped API endpoints.
 func (s *Server) SetProjectRegistry(r ProjectRegistry) {
 	s.api.SetProjectRegistry(r)
+}
+
+// SetGlobalEmitter wires a global event emitter for the /ws/global WebSocket endpoint.
+func (s *Server) SetGlobalEmitter(e EventSubscriber) {
+	s.api.SetGlobalEmitter(e)
 }
 
 // Handler returns the HTTP handler, useful for testing with httptest.NewServer.
